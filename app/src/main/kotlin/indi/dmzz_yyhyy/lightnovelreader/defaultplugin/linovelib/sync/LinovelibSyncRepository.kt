@@ -1,6 +1,5 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.sync
 
-import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalBookDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
@@ -11,26 +10,34 @@ import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.account.Linoveli
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book.LinovelibWebsiteDataSource
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibJsoup
 import io.nightfish.lightnovelreader.api.book.BookVolumes
+import io.nightfish.lightnovelreader.api.book.ChapterInformation
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfSortType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.math.max
 
 @Singleton
 class LinovelibSyncRepository @Inject constructor(
     private val userDataRepository: UserDataRepository,
     private val bookshelfRepository: BookshelfRepository,
-    private val bookRepository: BookRepository,
     private val localBookDataSource: LocalBookDataSource,
-    private val webBookDataSourceProvider: WebBookDataSourceProvider
+    private val webBookDataSourceProvider: WebBookDataSourceProvider,
+    private val bookmarkRepository: LinovelibBookmarkRepository
 ) {
     private val accountStore = LinovelibAccountStore(userDataRepository)
     private val jsoup = LinovelibJsoup(accountStore)
     private val websiteDataSource = LinovelibWebsiteDataSource(jsoup)
     private val accountDataSource = LinovelibAccountDataSource(jsoup, accountStore)
+
+    suspend fun isRemoteBookmarkAt(bookId: String, chapterId: String, chapterTitle: String): Boolean = withContext(Dispatchers.IO) {
+        val remoteBook = accountDataSource.getRemoteBookshelf().firstOrNull { it.bookId == bookId }
+            ?: return@withContext false
+        val remoteChapterId = remoteBook.bookmarkChapterId.substringBefore('_')
+        remoteChapterId == chapterId ||
+            (chapterTitle.isNotBlank() && remoteBook.bookmarkChapterTitle.normalizeBookmarkTitle() == chapterTitle.normalizeBookmarkTitle())
+    }
 
     suspend fun syncRemoteToLocal(): LinovelibSyncResult = withContext(Dispatchers.IO) {
         if (webBookDataSourceProvider.default.id != LinovelibConstants.SOURCE_ID) {
@@ -47,7 +54,8 @@ class LinovelibSyncRepository @Inject constructor(
             ensureSyncBookshelf()
             val remoteBooks = accountDataSource.getRemoteBookshelf()
             var addedOrUpdatedBooks = 0
-            var readingProgressUpdated = 0
+            var bookmarksUpdated = 0
+            var unresolvedBookmarks = 0
             val failedBookIds = mutableListOf<String>()
             remoteBooks.forEach { remoteBook ->
                 runCatching {
@@ -56,12 +64,18 @@ class LinovelibSyncRepository @Inject constructor(
                     localBookDataSource.updateBookInformation(bookInformation)
                     bookshelfRepository.addBookIntoBookShelf(LinovelibConstants.SYNC_BOOKSHELF_ID, bookInformation)
                     addedOrUpdatedBooks++
-                    if (remoteBook.lastReadChapterId.isNotBlank()) {
+
+                    if (remoteBook.hasBookmark()) {
                         val volumes = websiteDataSource.getBookVolumes(remoteBook.bookId)
-                        if (!volumes.isEmpty()) {
-                            localBookDataSource.updateBookVolumes(volumes)
-                            if (updateReadingProgress(remoteBook, volumes)) readingProgressUpdated++
-                        }
+                        if (!volumes.isEmpty()) localBookDataSource.updateBookVolumes(volumes)
+                        val bookmark = resolveBookmark(remoteBook, volumes)
+                        bookmarkRepository.upsertRemoteBookmark(
+                            bookId = remoteBook.bookId,
+                            chapterId = bookmark?.id.orEmpty(),
+                            chapterTitle = bookmark?.title ?: remoteBook.bookmarkChapterTitle,
+                            resolved = bookmark != null
+                        )
+                        if (bookmark == null) unresolvedBookmarks++ else bookmarksUpdated++
                     }
                 }.onFailure {
                     it.printStackTrace()
@@ -69,11 +83,13 @@ class LinovelibSyncRepository @Inject constructor(
                 }
             }
             val now = LocalDateTime.now().toString()
-            val summary = "同步完成：书籍 $addedOrUpdatedBooks 本，阅读进度 $readingProgressUpdated 本，失败 ${failedBookIds.size} 本"
+            val summary = "同步完成：书籍 $addedOrUpdatedBooks 本，章节书签 $bookmarksUpdated 本，待解析 $unresolvedBookmarks 本，失败 ${failedBookIds.size} 本"
             accountStore.markSyncSuccess(now, summary)
             LinovelibSyncResult(
                 syncedBooks = addedOrUpdatedBooks,
-                syncedReadingProgress = readingProgressUpdated,
+                syncedReadingProgress = 0,
+                syncedBookmarks = bookmarksUpdated,
+                unresolvedBookmarks = unresolvedBookmarks,
                 failedBookIds = failedBookIds,
                 summary = summary
             )
@@ -96,39 +112,40 @@ class LinovelibSyncRepository @Inject constructor(
         )
     }
 
-    private fun updateReadingProgress(
+    private fun resolveBookmark(
         remoteBook: LinovelibAccountDataSource.LinovelibRemoteBook,
         volumes: BookVolumes
-    ): Boolean {
+    ): ChapterInformation? {
         val chapters = volumes.volumes.flatMap { it.chapters }
-        val remoteIndex = chapters.indexOfFirst { it.id == remoteBook.lastReadChapterId }
-        if (remoteIndex < 0) return false
-        val remoteChapter = chapters[remoteIndex]
-        val remoteOverallProgress = ((remoteIndex + remoteBook.progress.coerceIn(0f, 1f)) / chapters.size)
-            .coerceIn(0f, 1f)
-        var updated = false
-        bookRepository.updateUserReadingData(remoteBook.bookId) { local ->
-            val localIndex = chapters.indexOfFirst { it.id == local.lastReadChapterId }
-            val localChapterProgress = local.currentChapterReadingProgressMap[remoteBook.lastReadChapterId] ?: 0f
-            val isRemoteAhead = remoteIndex > localIndex ||
-                (remoteIndex == localIndex && remoteBook.progress > localChapterProgress)
-            if (!isRemoteAhead) return@updateUserReadingData local
-            updated = true
-            local.lastReadTime = LocalDateTime.now()
-            local.totalReadTime = max(local.totalReadTime, 0)
-            local.readingProgress = max(local.readingProgress, remoteOverallProgress)
-            local.lastReadChapterId = remoteChapter.id
-            local.lastReadChapterTitle = remoteChapter.title
-            local.updateChapterReadingProgress(remoteChapter.id, remoteBook.progress.coerceIn(0f, 1f))
-            local
+        if (chapters.isEmpty()) return null
+        remoteBook.bookmarkChapterId.takeIf { it.isNotBlank() }?.let { remoteId ->
+            chapters.firstOrNull { it.id == remoteId || it.id == remoteId.substringBefore('_') }?.let { return it }
         }
-        return updated
+        val remoteTitle = remoteBook.bookmarkChapterTitle.normalizeBookmarkTitle()
+        if (remoteTitle.isBlank()) return null
+        chapters.firstOrNull { it.title.normalizeBookmarkTitle() == remoteTitle }?.let { return it }
+        return chapters.firstOrNull { chapter ->
+            val title = chapter.title.normalizeBookmarkTitle()
+            title.isNotBlank() && (remoteTitle.contains(title) || title.contains(remoteTitle))
+        }
     }
+
+    private fun LinovelibAccountDataSource.LinovelibRemoteBook.hasBookmark(): Boolean =
+        bookmarkChapterId.isNotBlank() || bookmarkChapterTitle.isNotBlank()
+
+    private fun String.normalizeBookmarkTitle(): String =
+        replace('　', ' ')
+            .replace(Regex("\\s+"), "")
+            .replace(Regex("^[书签章节阅读至读到看到继续上次最近：:]+"), "")
+            .replace("：", ":")
+            .trim()
 }
 
 data class LinovelibSyncResult(
     val syncedBooks: Int = 0,
     val syncedReadingProgress: Int = 0,
+    val syncedBookmarks: Int = 0,
+    val unresolvedBookmarks: Int = 0,
     val failedBookIds: List<String> = emptyList(),
     val summary: String = "",
     val error: String? = null

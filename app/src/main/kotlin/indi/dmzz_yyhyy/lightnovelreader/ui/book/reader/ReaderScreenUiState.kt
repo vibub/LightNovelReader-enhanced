@@ -14,7 +14,15 @@ interface ReaderScreenUiState {
     val userReadingData: UserReadingData
     val bookVolumes: BookVolumes
     val contentUiState: ContentUiState
+    val bookmarkUiState: ReaderBookmarkUiState
 }
+
+data class ReaderBookmarkUiState(
+    val isAvailable: Boolean = false,
+    val chapterId: String = "",
+    val chapterTitle: String = "",
+    val syncState: String = ""
+)
 
 class MutableReaderScreenUiState(
     contentUiState: ContentUiState
@@ -23,4 +31,5 @@ class MutableReaderScreenUiState(
     override var userReadingData by mutableStateOf(UserReadingData.empty())
     override var bookVolumes by mutableStateOf(BookVolumes.empty(""))
     override var contentUiState by mutableStateOf(contentUiState)
+    override var bookmarkUiState by mutableStateOf(ReaderBookmarkUiState())
 }

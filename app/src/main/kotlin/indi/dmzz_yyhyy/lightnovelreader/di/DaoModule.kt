@@ -12,6 +12,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookshelfDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.ChapterContentDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.DailyCountDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.FormattingRuleDao
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.LinovelibChapterBookmarkDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.UserDataDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.UserReadingDataDao
 import javax.inject.Singleton
@@ -66,4 +67,9 @@ object DaoModule {
     fun provideFormattingRuleDao(db: LightNovelReaderDatabase): FormattingRuleDao {
         return db.formattingRuleDao()
     }
+
+    @Provides
+    @Singleton
+    fun provideLinovelibChapterBookmarkDao(db: LightNovelReaderDatabase): LinovelibChapterBookmarkDao =
+        db.linovelibChapterBookmarkDao()
 }

@@ -1,7 +1,9 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.ui
 
 import android.webkit.WebView
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -15,21 +17,31 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LinovelibWebBookScreen(
     bookId: String,
     chapterId: String = "",
-    onClickBack: () -> Unit
+    autoBookmark: Boolean = false,
+    onClickBack: () -> Unit,
+    viewModel: LinovelibWebBookViewModel = hiltViewModel()
 ) {
     var webView: WebView? by remember { mutableStateOf(null) }
+    var autoBookmarkTriggered by remember(bookId, chapterId, autoBookmark) { mutableStateOf(false) }
+    var autoBookmarkMessage by remember { mutableStateOf("") }
+    val coroutineScope = rememberCoroutineScope()
 
     val initialUrl = remember(bookId, chapterId) {
         if (chapterId.isNotBlank()) {
@@ -66,12 +78,62 @@ fun LinovelibWebBookScreen(
             )
         }
     ) { innerPadding ->
-        LinovelibWebView(
+        Column(
             modifier = Modifier
                 .padding(innerPadding)
-                .fillMaxSize(),
-            initialUrl = initialUrl,
-            onWebViewCreated = { webView = it }
-        )
+                .fillMaxSize()
+        ) {
+            if (autoBookmarkMessage.isNotBlank()) {
+                Text(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    text = autoBookmarkMessage
+                )
+            }
+            LinovelibWebView(
+                modifier = Modifier.fillMaxSize(),
+                initialUrl = initialUrl,
+                initialCookies = viewModel.getCookie(),
+                onWebViewCreated = { webView = it },
+                onPageFinished = { view, _ ->
+                    if (!autoBookmark || chapterId.isBlank() || autoBookmarkTriggered) return@LinovelibWebView
+                    autoBookmarkTriggered = true
+                    autoBookmarkMessage = "正在同步章节书签…"
+                    view.postDelayed({
+                        view.evaluateJavascript(AUTO_BOOKMARK_SCRIPT) { result ->
+                            if (result.contains("clicked")) {
+                                coroutineScope.launch {
+                                    delay(1500L)
+                                    val synced = viewModel.verifyBookmarkSynced(bookId, chapterId)
+                                    autoBookmarkMessage = if (synced) {
+                                        "章节书签已同步到 Bilinovel"
+                                    } else {
+                                        "已尝试同步，请在网页或稍后同步书架确认"
+                                    }
+                                }
+                            } else {
+                                viewModel.markBookmarkSyncFailed(bookId)
+                                autoBookmarkMessage = "未找到网页书签按钮，请在网页中手动点击星星"
+                            }
+                        }
+                    }, 1000L)
+                }
+            )
+        }
     }
 }
+
+private const val AUTO_BOOKMARK_SCRIPT = """
+(function() {
+  const nodes = Array.from(document.querySelectorAll('a,button,[onclick],[role="button"],.star,.bookmark,.bookshelf'));
+  const target = nodes.find(function(el) {
+    const text = [el.innerText, el.title, el.getAttribute('aria-label'), el.className, el.getAttribute('href'), el.getAttribute('onclick')]
+      .filter(Boolean).join(' ');
+    return /书签|标记|收藏|bookmark|star/i.test(text) && !/取消|删除|移除|remove|delete/i.test(text);
+  });
+  if (!target) return 'not_found';
+  target.click();
+  return 'clicked';
+})();
+"""

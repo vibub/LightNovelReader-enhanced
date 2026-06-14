@@ -108,6 +108,7 @@ fun ReaderScreen(
     onClickNextChapter: () -> Unit,
     onChangeChapter: (chapterId: String) -> Unit,
     onClickThemeSettings: () -> Unit,
+    onClickBookmark: () -> Unit,
     onClickWebView: (() -> Unit)? = null
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
@@ -196,6 +197,8 @@ fun ReaderScreen(
                     onClickNextChapter = onClickNextChapter,
                     onClickSettings = { showSettingsBottomSheet = true },
                     onClickChapterSelector = { showChapterSelectionBottomSheet = true },
+                    bookmarkUiState = readingScreenUiState.bookmarkUiState,
+                    onClickBookmark = onClickBookmark,
                     onClickWebView = onClickWebView
                 )
             }
@@ -533,6 +536,8 @@ private fun BottomBar(
     onClickNextChapter: () -> Unit,
     onClickSettings: () -> Unit,
     onClickChapterSelector: () -> Unit,
+    bookmarkUiState: ReaderBookmarkUiState,
+    onClickBookmark: () -> Unit,
     onClickWebView: (() -> Unit)? = null
 ) {
     BottomAppBar {
@@ -567,15 +572,17 @@ private fun BottomBar(
             Row(
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val isBookmarked = bookmarkUiState.chapterId.isNotBlank() &&
+                    bookmarkUiState.chapterId == chapterContent.id
                 IconButton(
-                    enabled = false,
-                    onClick = {
-                        // TODO 添加至书签
-                    }
+                    enabled = bookmarkUiState.isAvailable && chapterContent.id.isNotBlank(),
+                    onClick = onClickBookmark
                 ) {
                     Icon(
-                        painter = painterResource(R.drawable.outline_bookmark_24px),
-                        contentDescription = "mark"
+                        painter = painterResource(
+                            if (isBookmarked) R.drawable.star_24px else R.drawable.star_outline_24px
+                        ),
+                        contentDescription = stringResource(R.string.linovelib_bookmark_current_chapter)
                     )
                 }
 

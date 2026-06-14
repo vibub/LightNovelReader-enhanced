@@ -12,12 +12,16 @@ import indi.dmzz_yyhyy.lightnovelreader.data.content.ContentComponentRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.statistics.ReadingStatsUpdate
 import indi.dmzz_yyhyy.lightnovelreader.data.statistics.StatsRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.sync.LinovelibBookmarkRepository
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentViewModel
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip.FlipPageContentViewModel
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.scroll.ScrollContentViewModel
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import javax.inject.Inject
@@ -27,7 +31,9 @@ class ReaderViewModel @Inject constructor(
     private val statsRepository: StatsRepository,
     private val bookRepository: BookRepository,
     userDataRepository: UserDataRepository,
-    val contentComponentRepository: ContentComponentRepository
+    val contentComponentRepository: ContentComponentRepository,
+    private val linovelibBookmarkRepository: LinovelibBookmarkRepository,
+    private val webBookDataSourceProvider: WebBookDataSourceProvider
 ) : ViewModel() {
     val settingState = SettingState(userDataRepository, viewModelScope)
     private var contentViewModel: ContentViewModel by mutableStateOf(ContentViewModel.empty)
@@ -35,6 +41,8 @@ class ReaderViewModel @Inject constructor(
     val uiState: ReaderScreenUiState = _uiState
     private val readingBookListUserData =
         userDataRepository.stringListUserData(UserDataPath.ReadingBooks.path)
+    private var bookVolumesJob: Job? = null
+    private var bookmarkJob: Job? = null
     var bookId = ""
         set(value) {
             field = value
@@ -50,8 +58,24 @@ class ReaderViewModel @Inject constructor(
                 )
             }
 
-            viewModelScope.launch(Dispatchers.IO) {
+            bookVolumesJob?.cancel()
+            bookVolumesJob = viewModelScope.launch(Dispatchers.IO) {
                 bookRepository.getBookVolumesFlow(value).collect { _uiState.bookVolumes = it }
+            }
+            bookmarkJob?.cancel()
+            val isLinovelib = webBookDataSourceProvider.default.id == LinovelibConstants.SOURCE_ID
+            _uiState.bookmarkUiState = ReaderBookmarkUiState(isAvailable = isLinovelib)
+            if (isLinovelib) {
+                bookmarkJob = viewModelScope.launch(Dispatchers.IO) {
+                    linovelibBookmarkRepository.getBookmarkFlow(value).collect { bookmark ->
+                        _uiState.bookmarkUiState = ReaderBookmarkUiState(
+                            isAvailable = true,
+                            chapterId = bookmark?.chapterId.orEmpty(),
+                            chapterTitle = bookmark?.chapterTitle.orEmpty(),
+                            syncState = bookmark?.syncState.orEmpty()
+                        )
+                    }
+                }
             }
         }
     private var chapterId = ""
@@ -94,6 +118,21 @@ class ReaderViewModel @Inject constructor(
     fun changeChapter(chapterId: String) {
         this.chapterId = chapterId
         contentViewModel.changeChapter(chapterId)
+    }
+
+    fun bookmarkCurrentChapter(): Boolean {
+        if (!_uiState.bookmarkUiState.isAvailable || bookId.isBlank()) return false
+        val chapter = _uiState.contentUiState.readingChapterContent
+        if (chapter.id.isBlank()) return false
+        val currentBookId = bookId
+        viewModelScope.launch(Dispatchers.IO) {
+            linovelibBookmarkRepository.upsertLocalBookmark(
+                bookId = currentBookId,
+                chapterId = chapter.id,
+                chapterTitle = chapter.title
+            )
+        }
+        return true
     }
 
     private fun saveReadingProgress(chapterId: String, progress: Float) {

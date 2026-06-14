@@ -20,6 +20,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookshelfDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.ChapterContentDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.DailyCountDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.FormattingRuleDao
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.LinovelibChapterBookmarkDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.StorageStatsDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.UserDataDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.UserReadingDataDao
@@ -31,6 +32,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookshelfEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.ChapterContentEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.ChapterInformationEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.FormattingRuleEntity
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.LinovelibChapterBookmarkEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.UserDataEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.UserReadingDataEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.VolumeEntity
@@ -51,9 +53,10 @@ import io.nightfish.lightnovelreader.api.content.builder.simpleText
         BookshelfBookMetadataEntity::class,
         BookRecordEntity::class,
         DailyCountEntity::class,
-        FormattingRuleEntity::class
+        FormattingRuleEntity::class,
+        LinovelibChapterBookmarkEntity::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = false
 )
 abstract class LightNovelReaderDatabase : RoomDatabase() {
@@ -67,6 +70,7 @@ abstract class LightNovelReaderDatabase : RoomDatabase() {
     abstract fun dailyCountDao(): DailyCountDao
     abstract fun formattingRuleDao(): FormattingRuleDao
     abstract fun storageStatsDao(): StorageStatsDao
+    abstract fun linovelibChapterBookmarkDao(): LinovelibChapterBookmarkDao
 
     companion object {
         @Volatile
@@ -92,7 +96,8 @@ abstract class LightNovelReaderDatabase : RoomDatabase() {
                             MIGRATION_13_14,
                             MIGRATION_14_15,
                             MIGRATION_15_16,
-                            MIGRATION_16_17
+                            MIGRATION_16_17,
+                            MIGRATION_17_18
                         )
                         .allowMainThreadQueries()
                         .build()
@@ -883,6 +888,24 @@ abstract class LightNovelReaderDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
                     "alter table book_shelf add sort_reversed INTEGER NOT NULL DEFAULT 0"
+                )
+            }
+        }
+
+        private val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE linovelib_chapter_bookmark (
+                        book_id TEXT NOT NULL,
+                        chapter_id TEXT NOT NULL,
+                        chapter_title TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        remote_updated_at TEXT,
+                        sync_state TEXT NOT NULL,
+                        PRIMARY KEY(book_id)
+                    )
+                    """
                 )
             }
         }

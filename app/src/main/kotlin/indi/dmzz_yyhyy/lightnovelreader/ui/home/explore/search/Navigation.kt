@@ -64,6 +64,7 @@ fun NavGraphBuilder.exploreSearchDestination() {
         LinovelibWebBookScreen(
             bookId = route.bookId,
             chapterId = route.chapterId,
+            autoBookmark = route.autoBookmark,
             onClickBack = { navController.popBackStackIfResumed() }
         )
     }
@@ -79,7 +80,11 @@ fun NavController.navigateToLinovelibWebSearchDestination(keyword: String) {
     navigate(Route.Main.Explore.LinovelibWebSearch(keyword))
 }
 
-fun NavController.navigateToLinovelibWebBookDestination(bookId: String, chapterId: String = "") {
+fun NavController.navigateToLinovelibWebBookDestination(
+    bookId: String,
+    chapterId: String = "",
+    autoBookmark: Boolean = false
+) {
     if (!this.isResumed()) return
-    navigate(Route.Main.Explore.LinovelibWebBook(bookId, chapterId))
+    navigate(Route.Main.Explore.LinovelibWebBook(bookId, chapterId, autoBookmark))
 }

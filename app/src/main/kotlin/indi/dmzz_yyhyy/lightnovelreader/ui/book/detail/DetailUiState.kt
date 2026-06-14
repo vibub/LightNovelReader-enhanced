@@ -15,16 +15,24 @@ interface DetailUiState {
     val bookInformation: BookInformation
     val bookVolumes: BookVolumes
     val userReadingData: UserReadingData
+    val bookmarkUiState: DetailBookmarkUiState
     val isCached: Boolean
     val downloadItem: DownloadItem?
     val isInBookshelf: Boolean
 }
+
+data class DetailBookmarkUiState(
+    val chapterId: String = "",
+    val chapterTitle: String = "",
+    val syncState: String = ""
+)
 
 class MutableDetailUiState: DetailUiState {
     override var isLoading: Boolean by mutableStateOf(true)
     override var bookInformation: BookInformation by mutableStateOf(BookInformation.empty())
     override var bookVolumes: BookVolumes by mutableStateOf(BookVolumes.empty(""))
     override var userReadingData: UserReadingData by mutableStateOf(UserReadingData.empty())
+    override var bookmarkUiState: DetailBookmarkUiState by mutableStateOf(DetailBookmarkUiState())
     override var isCached: Boolean by mutableStateOf(false)
     override var downloadItem: DownloadItem? by mutableStateOf(null)
     override var isInBookshelf: Boolean by mutableStateOf(false)

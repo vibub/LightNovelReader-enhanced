@@ -20,6 +20,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadProgressRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadType
 import indi.dmzz_yyhyy.lightnovelreader.data.work.ExportBookToEPUBWork
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.sync.LinovelibBookmarkRepository
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -31,7 +32,8 @@ class DetailViewModel @Inject constructor(
     private val bookRepository: BookRepository,
     private val bookshelfRepository: BookshelfRepository,
     private val downloadProgressRepository: DownloadProgressRepository,
-    private val workManager: WorkManager
+    private val workManager: WorkManager,
+    private val linovelibBookmarkRepository: LinovelibBookmarkRepository
 ) : ViewModel() {
     private val _uiState = MutableDetailUiState()
     var exportSettings = ExportSettings()
@@ -66,6 +68,15 @@ class DetailViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             bookRepository.getUserReadingDataFlow(bookId).collect {
                 _uiState.userReadingData = it
+            }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            linovelibBookmarkRepository.getBookmarkFlow(bookId).collect { bookmark ->
+                _uiState.bookmarkUiState = DetailBookmarkUiState(
+                    chapterId = bookmark?.chapterId.orEmpty(),
+                    chapterTitle = bookmark?.chapterTitle.orEmpty(),
+                    syncState = bookmark?.syncState.orEmpty()
+                )
             }
         }
         viewModelScope.launch(Dispatchers.IO) {

@@ -484,6 +484,16 @@ private fun DetailContent(
             )
         }
 
+        if (visible >= 4 && uiState.bookmarkUiState.chapterTitle.isNotBlank()) item {
+            LinovelibBookmarkBlock(
+                modifier = Modifier.fadeInOnce("linovelib-bookmark"),
+                bookmarkUiState = uiState.bookmarkUiState,
+                onClick = {
+                    uiState.bookmarkUiState.chapterId.takeIf { it.isNotBlank() }?.let(onClickChapter)
+                }
+            )
+        }
+
         if (visible >= 4) item {
             IntroBlock(
                 modifier = Modifier.fadeInOnce("intro"),
@@ -541,7 +551,8 @@ private fun DetailContent(
                 readCompletedChapterIds = uiState.userReadingData.currentChapterReadingProgressMap.filterValues { it >= 1f }.keys.toList(),
                 onClickChapter = onClickChapter,
                 volumesSize = uiState.bookVolumes.volumes.size,
-                lastReadingChapterId = uiState.userReadingData.lastReadChapterId
+                lastReadingChapterId = uiState.userReadingData.lastReadChapterId,
+                bookmarkChapterId = uiState.bookmarkUiState.chapterId
             )
         }
 
@@ -945,6 +956,54 @@ private fun QuickOperationsBlock(
 }
 
 @Composable
+private fun LinovelibBookmarkBlock(
+    modifier: Modifier,
+    bookmarkUiState: DetailBookmarkUiState,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = itemHorizontalPadding, vertical = itemVerticalPadding)
+            .clip(RoundedCornerShape(16.dp))
+            .background(colorScheme.surfaceContainerLow)
+            .clickable(enabled = bookmarkUiState.chapterId.isNotBlank(), onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Icon(
+            modifier = Modifier.size(24.dp),
+            painter = painterResource(R.drawable.star_24px),
+            tint = colorScheme.primary,
+            contentDescription = null
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(R.string.linovelib_saved_bookmark),
+                style = typography.labelMedium,
+                color = colorScheme.primary,
+                fontWeight = FontWeight.W600
+            )
+            Text(
+                text = bookmarkUiState.chapterTitle,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                style = typography.bodyLarge,
+                color = colorScheme.onSurface
+            )
+            if (bookmarkUiState.chapterId.isBlank()) {
+                Text(
+                    text = stringResource(R.string.linovelib_bookmark_unresolved),
+                    style = typography.labelSmall,
+                    color = colorScheme.secondary
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun IntroBlock(
     modifier: Modifier,
     description: String
@@ -1027,7 +1086,8 @@ private fun VolumeItem(
     readCompletedChapterIds: List<String>,
     onClickChapter: (String) -> Unit,
     volumesSize: Int,
-    lastReadingChapterId: String
+    lastReadingChapterId: String,
+    bookmarkChapterId: String
 ) {
     val readIds = remember(readCompletedChapterIds) { readCompletedChapterIds.toSet() }
     val (readCount, totalCount) = remember(volume.volumeId, readIds) {
@@ -1100,6 +1160,7 @@ private fun VolumeItem(
                             chapter = chapter,
                             isRead = chapter.id in readIds,
                             isLastRead = chapter.id == lastReadingChapterId,
+                            isBookmarked = chapter.id == bookmarkChapterId,
                             onClick = { onClickChapter(chapter.id) }
                         )
                     }
@@ -1114,6 +1175,7 @@ private fun ChapterItem(
     chapter: ChapterInformation,
     isRead: Boolean,
     isLastRead: Boolean,
+    isBookmarked: Boolean,
     onClick: () -> Unit
 ) {
     Box(
@@ -1147,8 +1209,26 @@ private fun ChapterItem(
                         color = colorScheme.primary
                     )
                 }
+                if (isBookmarked) {
+                    Text(
+                        text = stringResource(R.string.linovelib_saved_bookmark),
+                        maxLines = 1,
+                        style = typography.titleSmall,
+                        fontWeight = FontWeight.Normal,
+                        color = colorScheme.tertiary
+                    )
+                }
             }
-            if (isLastRead)
+            if (isBookmarked)
+                Icon(
+                    modifier = Modifier
+                        .padding(start = 22.dp)
+                        .size(24.dp),
+                    painter = painterResource(R.drawable.star_24px),
+                    tint = colorScheme.tertiary,
+                    contentDescription = "linovelib_bookmark"
+                )
+            else if (isLastRead)
                 Icon(
                     modifier = Modifier
                         .padding(start = 22.dp)

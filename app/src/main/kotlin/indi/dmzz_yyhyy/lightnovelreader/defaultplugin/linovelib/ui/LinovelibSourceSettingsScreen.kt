@@ -264,13 +264,18 @@ fun LinovelibWebSearchScreen(
 fun LinovelibWebView(
     modifier: Modifier,
     initialUrl: String,
+    initialCookies: String = "",
     onWebViewCreated: (WebView) -> Unit = {},
-    onUrlChanged: (String) -> Unit = {}
+    onUrlChanged: (String) -> Unit = {},
+    onPageFinished: (WebView, String) -> Unit = { _, _ -> }
 ) {
     AndroidView(
         modifier = modifier,
         factory = { context ->
             CookieManager.getInstance().setAcceptCookie(true)
+            if (initialCookies.isNotBlank()) {
+                CookieManager.getInstance().applyLinovelibCookie(initialCookies)
+            }
             WebView(context).apply {
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
@@ -285,6 +290,7 @@ fun LinovelibWebView(
                         super.onPageFinished(view, url)
                         CookieManager.getInstance().flush()
                         onUrlChanged(url)
+                        onPageFinished(view, url)
                     }
                 }
                 onWebViewCreated(this)
@@ -293,6 +299,17 @@ fun LinovelibWebView(
         },
         update = {}
     )
+}
+
+private fun CookieManager.applyLinovelibCookie(cookie: String) {
+    cookie.split(';')
+        .map { it.trim() }
+        .filter { it.isNotBlank() && '=' in it }
+        .forEach { value ->
+            setCookie(LinovelibConstants.MOBILE_BASE_URL, value)
+            setCookie(LinovelibConstants.BASE_URL, value)
+        }
+    flush()
 }
 
 private fun CookieManager.collectLinovelibCookie(currentUrl: String): String {
