@@ -22,6 +22,9 @@ class FlipPageContentViewModel(
 ) : ContentViewModel {
     private var notRecoveredProgress = 0f
     private var collectProgressJob: Job? = null
+    private var changeChapterJob: Job? = null
+    private var restoreProgressJob: Job? = null
+    private var requestedChapterId = ""
     override val uiState: MutableFlipPageContentUiState = MutableFlipPageContentUiState(
         loadLastChapter = ::loadLastChapter,
         loadNextChapter = ::loadNextChapter,
@@ -84,25 +87,29 @@ class FlipPageContentViewModel(
             Log.e("FlipPageContentViewModel", "a id less than 0 was transferred")
             return
         }
+        val targetChapterId = id
+        requestedChapterId = targetChapterId
+        changeChapterJob?.cancel()
+        restoreProgressJob?.cancel()
         notRecoveredProgress = 0f
         uiState.readingProgress = 0f
-        coroutineScope.launch {
+        changeChapterJob = coroutineScope.launch {
             bookRepository.getChapterContentFlow(
-                id,
+                targetChapterId,
                 uiState.bookId,
                 WebDataSourcePriority.High
             ).collect { content ->
-                if (content.isEmpty()) return@collect
+                if (content.isEmpty() || content.id != targetChapterId || requestedChapterId != targetChapterId) return@collect
                 uiState.readingChapterContent = content
                 uiState.contentComponentsMap[content.id] = contentComponentRepository.getContentDataFromJson(content.content).components
                 bookRepository.updateUserReadingData(uiState.bookId) {
                     it.apply {
                         lastReadTime = LocalDateTime.now()
-                        lastReadChapterId = id
+                        lastReadChapterId = targetChapterId
                         lastReadChapterTitle = content.title
                     }
                 }
-                if (content.hasNextChapter()) {
+                if (content.hasNextChapter() && requestedChapterId == targetChapterId) {
                     bookRepository.getChapterContent(
                         chapterId = content.nextChapter,
                         bookId = uiState.bookId,
@@ -110,9 +117,11 @@ class FlipPageContentViewModel(
                 }
             }
         }
-        coroutineScope.launch(Dispatchers.IO) {
-            bookRepository.getUserReadingData(uiState.bookId).let {
-                notRecoveredProgress = it.currentChapterReadingProgressMap[id] ?: 0f
+        restoreProgressJob = coroutineScope.launch(Dispatchers.IO) {
+            val progress = bookRepository.getUserReadingData(uiState.bookId)
+                .currentChapterReadingProgressMap[targetChapterId] ?: 0f
+            if (requestedChapterId == targetChapterId) {
+                notRecoveredProgress = progress
             }
         }
     }

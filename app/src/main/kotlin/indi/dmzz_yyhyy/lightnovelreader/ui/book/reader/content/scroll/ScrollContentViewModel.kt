@@ -28,6 +28,7 @@ class ScrollContentViewModel(
     private var collectLastChapterJob: Job? = null
     private var collectCurrentChapterJob: Job? = null
     private var collectNextChapterJob: Job? = null
+    private var requestedChapterId = ""
 
     override val uiState: MutableScrollContentUiSate = MutableScrollContentUiSate(
         loadLastChapter = ::loadLastChapter,
@@ -126,6 +127,7 @@ class ScrollContentViewModel(
                     collectNextChapterJob = collectChapter(2, uiState.readingContentId)
                     collectCurrentChapterJob = collectChapter(1, uiState.readingChapterContent.lastChapter)
                     uiState.readingContentId = uiState.readingChapterContent.lastChapter
+                    requestedChapterId = uiState.readingContentId
                     bookRepository.updateUserReadingData(uiState.bookId) {
                         it.apply {
                             lastReadTime = LocalDateTime.now()
@@ -152,6 +154,7 @@ class ScrollContentViewModel(
                     collectLastChapterJob = collectChapter(0, uiState.readingContentId)
                     collectCurrentChapterJob = collectChapter(1, uiState.readingChapterContent.nextChapter)
                     uiState.readingContentId = uiState.readingChapterContent.nextChapter
+                    requestedChapterId = uiState.readingContentId
                     bookRepository.updateUserReadingData(uiState.bookId) {
                         it.apply {
                             lastReadTime = LocalDateTime.now()
@@ -196,6 +199,10 @@ class ScrollContentViewModel(
     }
 
     override fun changeChapter(id: String) {
+        requestedChapterId = id
+        collectLastChapterJob?.cancel()
+        collectCurrentChapterJob?.cancel()
+        collectNextChapterJob?.cancel()
         resetContentList()
         uiState.readingContentId = id
         uiState.readingProgress = 0f
@@ -211,7 +218,7 @@ class ScrollContentViewModel(
         collectCurrentChapterJob?.cancel()
         collectCurrentChapterJob = coroutineScope.launch(Dispatchers.IO) {
             bookRepository.getChapterContentFlow(id, uiState.bookId).collect { content ->
-                if (content.isEmpty()) return@collect
+                if (content.isEmpty() || content.id != id || requestedChapterId != id) return@collect
                 uiState.contentList[1] = content
                 uiState.contentComponentsMap[content.id] = contentComponentRepository.getContentDataFromJson(content.content).components
                 bookRepository.updateUserReadingData(uiState.bookId) { userReadingData ->
@@ -222,7 +229,7 @@ class ScrollContentViewModel(
                         lastReadChapterTitle = content.title
                     }
                 }
-                if (content.hasNextChapter()) {
+                if (content.hasNextChapter() && requestedChapterId == id) {
                     bookRepository.getChapterContent(content.nextChapter, uiState.bookId)
                 }
             }
@@ -233,7 +240,7 @@ class ScrollContentViewModel(
         collectCurrentChapterJob?.cancel()
         collectCurrentChapterJob = coroutineScope.launch(Dispatchers.IO) {
             bookRepository.getChapterContentFlow(id, uiState.bookId).collect { content ->
-                if (content.isEmpty()) return@collect
+                if (content.isEmpty() || content.id != id || requestedChapterId != id) return@collect
                 uiState.contentList[1] = content
                 uiState.contentComponentsMap[content.id] = contentComponentRepository.getContentDataFromJson(content.content).components
                 bookRepository.updateUserReadingData(uiState.bookId) { userReadingData ->
@@ -256,10 +263,17 @@ class ScrollContentViewModel(
         }
     }
 
+    private fun isExpectedChapter(index: Int, chapterId: String): Boolean = when (index) {
+        0 -> uiState.readingChapterContent.lastChapter == chapterId
+        1 -> uiState.readingContentId == chapterId && requestedChapterId == chapterId
+        2 -> uiState.readingChapterContent.nextChapter == chapterId
+        else -> false
+    }
+
     private fun collectChapter(index: Int, chapterId: String) = coroutineScope.launch {
             bookRepository.getChapterContentFlow(chapterId, uiState.bookId)
                 .collect { content ->
-                    if (content.isEmpty()) return@collect
+                    if (content.isEmpty() || content.id != chapterId || !isExpectedChapter(index, chapterId)) return@collect
                     uiState.contentList[index] = content
                     uiState.contentComponentsMap[content.id] = contentComponentRepository.getContentDataFromJson(content.content).components
                 }

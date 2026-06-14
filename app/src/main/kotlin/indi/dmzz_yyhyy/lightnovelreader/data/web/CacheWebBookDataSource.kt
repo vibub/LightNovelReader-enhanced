@@ -52,7 +52,6 @@ class CacheWebBookDataSource(
         webBookDataSource.getBookVolumes(id)
     }
 
-    override suspend fun getChapterContent(chapterId: String, bookId: String) = ifCache(chapterId + bookId) {
+    override suspend fun getChapterContent(chapterId: String, bookId: String) =
         webBookDataSource.getChapterContent(chapterId, bookId)
-    }
 }

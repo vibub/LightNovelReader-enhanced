@@ -6,7 +6,7 @@ import org.jsoup.nodes.TextNode
 
 internal object LinovelibChapterContentParser {
     const val WARNING_KEY = "linovelibParserWarning"
-    const val WARNING_MESSAGE = "Linovelib 本章段落顺序还原失败，已使用网页源码顺序显示，段落可能仍然乱序。"
+    const val WARNING_MESSAGE = "Linovelib 本章段落顺序还原失败，已停止使用网页源码乱序正文。请刷新章节或反馈该章节 ID。"
 
     sealed interface Part {
         data class Text(val text: String) : Part
@@ -19,7 +19,11 @@ internal object LinovelibChapterContentParser {
     )
 
     fun parse(content: Element, chapterId: String? = null, imageUrl: (Element) -> String): ParseResult {
-        val orderedNodes = content.orderedChildNodes(chapterId)
+        val orderedContent = content.orderedContent(chapterId)
+        if (orderedContent is OrderedContent.Failed) {
+            return ParseResult(listOf(Part.Text(orderedContent.warning)), orderedContent.warning)
+        }
+        val orderedNodes = orderedContent as OrderedContent.Nodes
         val parts = buildList {
             val pendingText = StringBuilder()
 
@@ -56,38 +60,59 @@ internal object LinovelibChapterContentParser {
         return ParseResult(parts, orderedNodes.warning)
     }
 
-    private data class OrderedNodes(
-        val nodes: List<Node>,
-        val warning: String? = null
-    )
+    private sealed interface OrderedContent {
+        data class Nodes(
+            val nodes: List<Node>,
+            val warning: String? = null
+        ) : OrderedContent
 
-    private fun Element.orderedChildNodes(chapterId: String?): OrderedNodes {
-        val nodes = childNodes()
-        restoreByExplicitOrder(nodes)?.let { return it }
-        restoreByLinovelibSeededOrder(nodes, chapterId)?.let { return it }
-        return OrderedNodes(nodes)
+        data class Failed(
+            val warning: String
+        ) : OrderedContent
     }
 
-    private fun restoreByExplicitOrder(nodes: List<Node>): OrderedNodes? {
+    private sealed interface RestoreResult {
+        data class Restored(val nodes: List<Node>) : RestoreResult
+        object NotApplicable : RestoreResult
+        data class Failed(val warning: String) : RestoreResult
+    }
+
+    private fun Element.orderedContent(chapterId: String?): OrderedContent {
+        val nodes = childNodes()
+        val explicitResult = restoreByExplicitOrder(nodes)
+        if (explicitResult is RestoreResult.Restored) return OrderedContent.Nodes(explicitResult.nodes)
+
+        val seededResult = restoreByLinovelibSeededOrder(this, chapterId)
+        return when (seededResult) {
+            is RestoreResult.Restored -> OrderedContent.Nodes(seededResult.nodes)
+            is RestoreResult.Failed -> OrderedContent.Failed(seededResult.warning)
+            RestoreResult.NotApplicable -> when (explicitResult) {
+                is RestoreResult.Failed -> OrderedContent.Failed(explicitResult.warning)
+                else -> OrderedContent.Nodes(nodes)
+            }
+        }
+    }
+
+    private fun restoreByExplicitOrder(nodes: List<Node>): RestoreResult {
         val sortableElements = nodes
             .filterIsInstance<Element>()
             .filterNot { it.`is`("script, style, noscript") }
             .filter { it.isParagraphLikeForOrdering() }
-        if (sortableElements.size < 2) return null
+        if (sortableElements.size < 2) return RestoreResult.NotApplicable
 
         val keyed = sortableElements.map { element -> element to element.explicitOrderKey() }
-        if (keyed.none { it.second != null }) return null
-        if (keyed.any { it.second == null }) return OrderedNodes(nodes, WARNING_MESSAGE)
+        if (keyed.none { it.second != null }) return RestoreResult.NotApplicable
+        if (keyed.any { it.second == null }) return RestoreResult.Failed(WARNING_MESSAGE)
 
         val keys = keyed.mapNotNull { it.second }
-        if (keys.distinct().size != keys.size) return OrderedNodes(nodes, WARNING_MESSAGE)
+        if (keys.distinct().size != keys.size) return RestoreResult.Failed(WARNING_MESSAGE)
 
         val sortedElements = keyed
             .sortedWith(compareBy<Pair<Element, Int?>> { it.second ?: Int.MAX_VALUE })
             .map { it.first }
         val beforeTexts = sortableElements.map { it.cleanOwnTextForCompare() }.sorted()
         val afterTexts = sortedElements.map { it.cleanOwnTextForCompare() }.sorted()
-        if (beforeTexts != afterTexts) return OrderedNodes(nodes, WARNING_MESSAGE)
+        if (beforeTexts != afterTexts) return RestoreResult.Failed(WARNING_MESSAGE)
 
         val queue = ArrayDeque(sortedElements)
         val sortedNodes = nodes.map { node ->
@@ -97,50 +122,59 @@ internal object LinovelibChapterContentParser {
                 node
             }
         }
-        return OrderedNodes(sortedNodes)
+        return RestoreResult.Restored(sortedNodes)
     }
 
-    private fun restoreByLinovelibSeededOrder(nodes: List<Node>, chapterId: String?): OrderedNodes? {
-        val paragraphs = nodes.mapNotNull { node ->
-            val element = node as? Element ?: return@mapNotNull null
-            if (!element.`is`("p") || element.html().replace(Regex("\\s+"), "").isEmpty()) {
-                return@mapNotNull null
-            }
-            element
-        }
-        if (paragraphs.size <= LINOVELIB_STABLE_PARAGRAPH_COUNT) return null
+    private fun restoreByLinovelibSeededOrder(content: Element, chapterId: String?): RestoreResult {
+        val nodes = content.childNodes()
+        val paragraphs = content.seededParagraphs()
+        if (paragraphs.isEmpty()) return RestoreResult.NotApplicable
+        if (paragraphs.size <= LINOVELIB_STABLE_PARAGRAPH_COUNT) return RestoreResult.NotApplicable
         val normalizedChapterId = chapterId
             ?.substringBefore('_')
             ?.toLongOrNull()
-            ?: return OrderedNodes(nodes, WARNING_MESSAGE)
+            ?: return RestoreResult.Failed(WARNING_MESSAGE)
 
         val permutation = linovelibParagraphPermutation(paragraphs.size, normalizedChapterId)
-        if (permutation.distinct().size != paragraphs.size) return OrderedNodes(nodes, WARNING_MESSAGE)
+        if (permutation.distinct().size != paragraphs.size) return RestoreResult.Failed(WARNING_MESSAGE)
 
         val restoredParagraphs = MutableList<Element?>(paragraphs.size) { null }
         permutation.forEachIndexed { sourceIndex, targetIndex ->
-            if (targetIndex !in restoredParagraphs.indices) return OrderedNodes(nodes, WARNING_MESSAGE)
+            if (targetIndex !in restoredParagraphs.indices) return RestoreResult.Failed(WARNING_MESSAGE)
             restoredParagraphs[targetIndex] = paragraphs[sourceIndex]
         }
-        if (restoredParagraphs.any { it == null }) return OrderedNodes(nodes, WARNING_MESSAGE)
+        if (restoredParagraphs.any { it == null }) return RestoreResult.Failed(WARNING_MESSAGE)
+
+        val restored = restoredParagraphs.filterNotNull()
+        val beforeTexts = paragraphs.map { it.cleanOwnTextForCompare() }.sorted()
+        val afterTexts = restored.map { it.cleanOwnTextForCompare() }.sorted()
+        if (beforeTexts != afterTexts) return RestoreResult.Failed(WARNING_MESSAGE)
+
+        val directParagraphs = nodes
+            .filterIsInstance<Element>()
+            .filter { it.isNonEmptyParagraph() }
+        val allParagraphsAreDirect = directParagraphs.size == paragraphs.size &&
+            directParagraphs.zip(paragraphs).all { (direct, paragraph) -> direct === paragraph }
+
+        if (!allParagraphsAreDirect) {
+            return RestoreResult.Restored(restored.map { it.clone() })
+        }
 
         var paragraphIndex = 0
         val restoredNodes = nodes.map { node ->
-            if (node is Element && node.`is`("p") && node.html().replace(Regex("\\s+"), "").isNotEmpty()) {
-                restoredParagraphs[paragraphIndex++] ?: return OrderedNodes(nodes, WARNING_MESSAGE)
+            if (node is Element && node.isNonEmptyParagraph()) {
+                restored[paragraphIndex++]
             } else {
                 node
             }
         }
-        val beforeTexts = paragraphs.map { it.cleanOwnTextForCompare() }.sorted()
-        val afterTexts = restoredNodes
-            .filterIsInstance<Element>()
-            .filter { it.`is`("p") && it.html().replace(Regex("\\s+"), "").isNotEmpty() }
-            .map { it.cleanOwnTextForCompare() }
-            .sorted()
-        if (beforeTexts != afterTexts) return OrderedNodes(nodes, WARNING_MESSAGE)
-        return OrderedNodes(restoredNodes)
+        return RestoreResult.Restored(restoredNodes)
     }
+
+    private fun Element.seededParagraphs(): List<Element> = select("p")
+        .filter { it.isNonEmptyParagraph() }
+
+    private fun Element.isNonEmptyParagraph(): Boolean = `is`("p") && html().replace(Regex("\\s+"), "").isNotEmpty()
 
     private fun linovelibParagraphPermutation(size: Int, chapterId: Long): List<Int> {
         val fixedCount = minOf(LINOVELIB_STABLE_PARAGRAPH_COUNT, size)

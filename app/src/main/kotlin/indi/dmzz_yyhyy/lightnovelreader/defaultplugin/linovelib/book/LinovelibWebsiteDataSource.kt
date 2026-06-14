@@ -125,7 +125,7 @@ class LinovelibWebsiteDataSource(
             ?: if (page == 1) return@runCatching ChapterContent.empty(normalizedChapterId) else break
             val signature = content.text().cleanText().take(300)
             if (signature.isBlank() || !seenPageSignatures.add(signature)) break
-            val parseResult = LinovelibChapterContentParser.parse(content, normalizedChapterId) { it.imageUrl() }
+            val parseResult = LinovelibChapterContentParser.parse(content, pageChapterId) { it.imageUrl() }
             parseResult.warning?.let(parserWarnings::add)
             parseResult.parts.forEach { part ->
                 when (part) {
@@ -134,7 +134,7 @@ class LinovelibWebsiteDataSource(
                 }
             }
             val nextPage = page + 1
-            shouldTryNext = document.hasChapterPage(normalizedBookId, normalizedChapterId, nextPage) || page == 1
+            shouldTryNext = document.hasChapterPage(normalizedBookId, normalizedChapterId, nextPage)
             page++
         }
         val content = builder.build().withParserWarnings(parserWarnings)

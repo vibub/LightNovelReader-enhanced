@@ -332,7 +332,7 @@ fun ScrollContentTextComponent(
                                 Spacer(Modifier.height(16.dp))
                             }
                         }
-                        val components = remember { uiState.contentComponentsMap[content.id] }
+                        val components = uiState.contentComponentsMap[content.id]
                         components?.let {
                             for (component in it) {
                                 component.Content(modifier)
