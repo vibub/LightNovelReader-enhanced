@@ -15,9 +15,11 @@ import io.nightfish.lightnovelreader.api.book.WordCount
 import io.nightfish.lightnovelreader.api.content.builder.ContentBuilder
 import io.nightfish.lightnovelreader.api.content.builder.image
 import io.nightfish.lightnovelreader.api.content.builder.simpleText
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import org.jsoup.nodes.TextNode
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -101,6 +103,7 @@ class LinovelibWebsiteDataSource(
             return@runCatching ChapterContent.empty(chapterId)
         }
         val builder = ContentBuilder()
+        val parserWarnings = mutableListOf<String>()
         val seenPageSignatures = mutableSetOf<String>()
         var title = ""
         var page = 1
@@ -122,12 +125,19 @@ class LinovelibWebsiteDataSource(
             ?: if (page == 1) return@runCatching ChapterContent.empty(normalizedChapterId) else break
             val signature = content.text().cleanText().take(300)
             if (signature.isBlank() || !seenPageSignatures.add(signature)) break
-            appendContent(content, builder)
+            val parseResult = LinovelibChapterContentParser.parse(content, normalizedChapterId) { it.imageUrl() }
+            parseResult.warning?.let(parserWarnings::add)
+            parseResult.parts.forEach { part ->
+                when (part) {
+                    is LinovelibChapterContentParser.Part.Text -> builder.simpleText(part.text)
+                    is LinovelibChapterContentParser.Part.Image -> part.url.toUri().let(builder::image)
+                }
+            }
             val nextPage = page + 1
             shouldTryNext = document.hasChapterPage(normalizedBookId, normalizedChapterId, nextPage) || page == 1
             page++
         }
-        val content = builder.build()
+        val content = builder.build().withParserWarnings(parserWarnings)
         val navigation = getChapterNavigation(normalizedBookId, normalizedChapterId)
         MutableChapterContent(
             id = normalizedChapterId,
@@ -216,36 +226,12 @@ class LinovelibWebsiteDataSource(
         )
     }
 
-    private fun appendContent(content: Element, builder: ContentBuilder) {
-        var pendingText = StringBuilder()
-        fun flushText() {
-            val text = pendingText.toString().cleanText()
-            pendingText = StringBuilder()
-            if (text.isNotBlank() && !text.isNoiseText()) builder.simpleText(text)
+    private fun JsonObject.withParserWarnings(warnings: List<String>): JsonObject {
+        val warning = warnings.distinct().joinToString("\n").takeIf { it.isNotBlank() } ?: return this
+        return buildJsonObject {
+            this@withParserWarnings.forEach { (key, value) -> put(key, value) }
+            put(LinovelibChapterContentParser.WARNING_KEY, warning)
         }
-        content.childNodes().forEach { node ->
-            when (node) {
-                is TextNode -> pendingText.append(node.text()).append('\n')
-                is Element -> {
-                    val images = if (node.`is`("img")) listOf(node) else node.select("img")
-                    if (images.isNotEmpty()) {
-                        flushText()
-                        images.forEach { image ->
-                            image.imageUrl().takeIf { it.isNotBlank() }?.toUri()?.let { uri ->
-                                builder.image(uri)
-                            }
-                        }
-                    }
-                    val text = when {
-                        node.`is`("br") -> "\n"
-                        node.`is`("script, style, noscript") -> ""
-                        else -> node.text()
-                    }.cleanText()
-                    if (text.isNotBlank() && images.isEmpty()) pendingText.append(text).append('\n')
-                }
-            }
-        }
-        flushText()
     }
 
     private fun Element.toChapterInformation(bookId: String): ChapterInformation? {

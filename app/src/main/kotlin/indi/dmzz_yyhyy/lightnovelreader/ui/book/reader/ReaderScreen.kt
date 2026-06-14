@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.safeContent
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -77,6 +78,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import coil3.compose.AsyncImagePainter
 import indi.dmzz_yyhyy.lightnovelreader.R
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book.LinovelibChapterContentParser
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentComponent
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.AnimatedText
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.AnimatedTextLine
@@ -90,6 +92,8 @@ import indi.dmzz_yyhyy.lightnovelreader.utils.rememberReaderBackgroundPainter
 import indi.dmzz_yyhyy.lightnovelreader.utils.showSnackbar
 import io.nightfish.lightnovelreader.api.book.ChapterContent
 import kotlinx.coroutines.delay
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.coroutines.launch
 import java.time.LocalTime
 import java.util.Locale
@@ -120,6 +124,8 @@ fun ReaderScreen(
     var showSettingsBottomSheet by remember { mutableStateOf(false) }
     var showChapterSelectionBottomSheet by remember { mutableStateOf(false) }
     var selectedVolumeId by remember { mutableStateOf("") }
+    var shownParserWarningKey by remember { mutableStateOf("") }
+    var parserWarningToShow by remember { mutableStateOf<String?>(null) }
 
     val coroutineScope = rememberCoroutineScope()
     val settingsBottomSheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden)
@@ -130,6 +136,20 @@ fun ReaderScreen(
     DisposableEffect(Unit) {
         claim(true)
         onDispose { claim(false) }
+    }
+
+    val currentChapter = readingScreenUiState.contentUiState.readingChapterContent
+    val parserWarning = currentChapter.content[LinovelibChapterContentParser.WARNING_KEY]
+        ?.jsonPrimitive
+        ?.contentOrNull
+        ?.takeIf { it.isNotBlank() }
+    LaunchedEffect(currentChapter.id, parserWarning) {
+        val warning = parserWarning ?: return@LaunchedEffect
+        val warningKey = "${currentChapter.id}:$warning"
+        if (warningKey != shownParserWarningKey) {
+            shownParserWarningKey = warningKey
+            parserWarningToShow = warning
+        }
     }
 
     BackHandler {
@@ -231,6 +251,18 @@ fun ReaderScreen(
             onClickPrevChapter = onClickPrevChapter,
             onClickNextChapter = onClickNextChapter,
             onChangeIsImmersive = { isImmersive = !isImmersive }
+        )
+    }
+    parserWarningToShow?.let { warning ->
+        AlertDialog(
+            onDismissRequest = { parserWarningToShow = null },
+            title = { Text(stringResource(R.string.linovelib_parser_warning_title)) },
+            text = { Text(warning) },
+            confirmButton = {
+                TextButton(onClick = { parserWarningToShow = null }) {
+                    Text(stringResource(R.string.close))
+                }
+            }
         )
     }
     AnimatedVisibility(visible = showSettingsBottomSheet) {

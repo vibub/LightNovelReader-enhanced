@@ -625,6 +625,7 @@
     <string name="linovelib_bookmark_current_chapter">标记当前章节书签</string>
     <string name="linovelib_saved_bookmark">Bilinovel 章节书签</string>
     <string name="linovelib_bookmark_unresolved">已保存远端书签标题，暂未匹配到本地章节</string>
+    <string name="linovelib_parser_warning_title">Linovelib 段落顺序可能异常</string>
     <string name="action_webview">网页</string>
 
     <!-- Notifications -->
