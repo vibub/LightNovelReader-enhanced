@@ -77,7 +77,7 @@
     <string name="book_word_count_limit">Word limit: </string>
     <string name="source_available_title">Available sources</string>
     <string name="unavailable">Unavailable</string>
-    <string name="overview">Overview</string>
+    <string name="overview">概览</string>
     <string name="settings">Settings</string>
 
 
@@ -234,8 +234,8 @@
     <string name="settings_snap_data_desc">Create a snapshot of current user data as a .lnr file</string>
     <string name="settings_import_data">Import User Data</string>
     <string name="settings_import_data_desc">Import user data from a selected .lnr file</string>
-    <string name="settings_storage_manager">Storage Usage</string>
-    <string name="settings_storage_manager_desc">View detailed app storage usage</string>
+    <string name="settings_storage_manager">存储空间</string>
+    <string name="settings_storage_manager_desc">查看应用存储空间使用详情</string>
     <string name="settings_select_data_source">Data Source</string>
     <string name="settings_select_data_source_desc">Switch the app\'s data source</string>
     <string name="settings_plugins">Plugins</string>
@@ -261,19 +261,19 @@
     <string name="book_manager_clear_orphaned_content">Remove chapter data that is no longer linked to any local book?</string>
     <string name="book_manager_group_index_only">Books without cached content (%1$d)</string>
     <string name="book_manager_cleared_items">Cleared %1$d items</string>
-    <string name="storage_manager_title">Storage Manager</string>
-    <string name="storage_manager_empty_description">There is no local cache available to analyze.</string>
-    <string name="storage_manager_used">used</string>
-    <string name="storage_manager_section_app_title">App</string>
-    <string name="storage_manager_section_app_description">Space used by the installed application itself.</string>
-    <string name="storage_manager_section_database_title">Database</string>
-    <string name="storage_manager_section_database_description">Disk space used by the current database files, including user data and cached content in the current data source.</string>
-    <string name="storage_manager_section_plugins_title">Plugin resources</string>
-    <string name="storage_manager_section_plugins_description">Space used by installed plugins and their resource files.</string>
-    <string name="storage_manager_section_cache_title">Temporary cache</string>
-    <string name="storage_manager_section_cache_description">Cached content used to improve loading speed, such as images and temporary files.</string>
-    <string name="storage_manager_section_other_title">Other local files</string>
-    <string name="storage_manager_section_other_description">Other local files stored in the app data directory.</string>
+    <string name="storage_manager_title">存储管理器</string>
+    <string name="storage_manager_empty_description">没有可分析的本地缓存。</string>
+    <string name="storage_manager_used">已使用</string>
+    <string name="storage_manager_section_app_title">应用</string>
+    <string name="storage_manager_section_app_description">已安装应用本身占用的空间。</string>
+    <string name="storage_manager_section_database_title">数据库</string>
+    <string name="storage_manager_section_database_description">当前数据库文件占用的磁盘空间，包括用户数据和当前数据源的缓存内容。</string>
+    <string name="storage_manager_section_plugins_title">插件资源</string>
+    <string name="storage_manager_section_plugins_description">已安装插件及其资源文件占用的空间。</string>
+    <string name="storage_manager_section_cache_title">临时缓存</string>
+    <string name="storage_manager_section_cache_description">用于提高加载速度的缓存内容，如图片和临时文件。</string>
+    <string name="storage_manager_section_other_title">其他本地文件</string>
+    <string name="storage_manager_section_other_description">存储在应用数据目录中的其他本地文件。</string>
 
     <string name="about_settings">About</string>
     <string name="settings_debug_tools">Debug Options</string>
