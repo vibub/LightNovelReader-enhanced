@@ -1,0 +1,377 @@
+package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book
+
+import android.net.Uri
+import androidx.core.net.toUri
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibJsoup
+import io.nightfish.lightnovelreader.api.book.BookInformation
+import io.nightfish.lightnovelreader.api.book.BookVolumes
+import io.nightfish.lightnovelreader.api.book.ChapterContent
+import io.nightfish.lightnovelreader.api.book.ChapterInformation
+import io.nightfish.lightnovelreader.api.book.MutableBookInformation
+import io.nightfish.lightnovelreader.api.book.MutableChapterContent
+import io.nightfish.lightnovelreader.api.book.Volume
+import io.nightfish.lightnovelreader.api.book.WordCount
+import io.nightfish.lightnovelreader.api.content.builder.ContentBuilder
+import io.nightfish.lightnovelreader.api.content.builder.image
+import io.nightfish.lightnovelreader.api.content.builder.simpleText
+import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
+import org.jsoup.nodes.TextNode
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+
+class LinovelibWebsiteDataSource(
+    private val jsoup: LinovelibJsoup
+) {
+    private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-M-d")
+
+    suspend fun getBookInformation(id: String): BookInformation = runCatching {
+        val bookId = id.normalizeBookId()
+        if (bookId.isBlank()) return@runCatching BookInformation.empty(id)
+        val document = jsoup.getDocument(LinovelibConstants.detailUrl(bookId))
+        if (document.text().contains("作品已下架") || document.title().contains("404")) {
+            return@runCatching BookInformation.empty(bookId)
+        }
+        val title = document.metaContent("name")
+            ?: document.metaContent("og:novel:book_name")
+            ?: document.metaContent("og:title")?.substringBefore("_")
+            ?: document.firstText("h1", ".book-title", ".book-name", ".book-info h2")
+            ?: return@runCatching BookInformation.empty(bookId)
+        val author = document.metaContent("author")
+            ?: document.metaContent("og:novel:author")
+            ?: document.labelValue("作者")
+            ?: document.firstText(".book-info a[href*=author]", ".book-author", ".author")
+            ?: ""
+        val cover = document.metaContent("pic")
+            ?: document.metaContent("og:image")
+            ?: document.firstImageUrl(".book-img img", ".book-cover img", ".book-info img", "img[src*=cover]", "img[data-src*=cover]")
+            ?: ""
+        val description = document.metaContent("description")
+            ?: document.firstText("#bookIntro", ".book-intro", ".book-desc", ".intro", ".book-dec")
+            ?: ""
+        val tags = (document.metaContent("tags") ?: document.metaContent("keywords") ?: document.labelValue("标签") ?: "")
+            .split(" ", ",", "，", "/", "、")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && it != title }
+            .distinct()
+        val statusText = document.metaContent("og:novel:status")
+            ?: document.labelValue("状态")
+            ?: document.text()
+        val updateText = document.metaContent("og:novel:update_time")
+            ?: document.metaContent("lastupdate")
+            ?: document.labelValue("更新")
+            ?: document.labelValue("最后更新")
+            ?: ""
+        val wordText = document.labelValue("字数") ?: document.labelValue("全文长度") ?: ""
+        MutableBookInformation(
+            id = bookId,
+            title = title.cleanText(),
+            subtitle = "",
+            coverUrl = LinovelibJsoup.normalizeUrl(cover).takeIf { it.isNotBlank() }?.toUri() ?: Uri.EMPTY,
+            author = author.cleanText(),
+            description = description.cleanDescription(),
+            tags = tags,
+            publishingHouse = document.labelValue("文库")?.cleanText() ?: "",
+            wordCount = WordCount(wordText.parseWordCount()),
+            lastUpdated = updateText.parseDateTime(),
+            isComplete = statusText.contains("完结") || statusText.contains("已完成")
+        )
+    }.getOrElse {
+        it.printStackTrace()
+        BookInformation.empty(id)
+    }
+
+    suspend fun getBookVolumes(id: String): BookVolumes = runCatching {
+        val bookId = id.normalizeBookId()
+        if (bookId.isBlank()) return@runCatching BookVolumes.empty(id)
+        val document = jsoup.getDocument(LinovelibConstants.catalogUrl(bookId), referer = LinovelibConstants.detailUrl(bookId))
+        val volumes = parseVolumes(document, bookId)
+        if (volumes.isEmpty()) BookVolumes.empty(bookId) else BookVolumes(bookId, volumes)
+    }.getOrElse {
+        it.printStackTrace()
+        BookVolumes.empty(id)
+    }
+
+    suspend fun getChapterContent(chapterId: String, bookId: String): ChapterContent = runCatching {
+        val normalizedBookId = bookId.normalizeBookId()
+        val normalizedChapterId = chapterId.normalizeChapterId()
+        if (normalizedBookId.isBlank() || normalizedChapterId.isBlank()) {
+            return@runCatching ChapterContent.empty(chapterId)
+        }
+        val builder = ContentBuilder()
+        val seenPageSignatures = mutableSetOf<String>()
+        var title = ""
+        var page = 1
+        var shouldTryNext = true
+        while (page <= MAX_CHAPTER_PAGE && shouldTryNext) {
+            val pageChapterId = if (page == 1) normalizedChapterId else "${normalizedChapterId}_$page"
+            val document = try {
+                jsoup.getDocument(
+                    LinovelibConstants.chapterUrl(normalizedBookId, pageChapterId),
+                    referer = LinovelibConstants.catalogUrl(normalizedBookId),
+                    retryTime = if (page == 1) 2 else 0
+                )
+            } catch (throwable: Throwable) {
+                if (page == 1) throw throwable else break
+            }
+            if (title.isBlank()) title = document.firstText("h1", ".chapter-title", ".bookname h1") ?: ""
+            val content = document.selectFirst("#TextContent") ?: document.selectFirst("#textcontent")
+            ?: document.selectFirst(".chapter-content") ?: document.selectFirst("#content")
+            ?: if (page == 1) return@runCatching ChapterContent.empty(normalizedChapterId) else break
+            val signature = content.text().cleanText().take(300)
+            if (signature.isBlank() || !seenPageSignatures.add(signature)) break
+            appendContent(content, builder)
+            val nextPage = page + 1
+            shouldTryNext = document.hasChapterPage(normalizedBookId, normalizedChapterId, nextPage) || page == 1
+            page++
+        }
+        val content = builder.build()
+        val navigation = getChapterNavigation(normalizedBookId, normalizedChapterId)
+        MutableChapterContent(
+            id = normalizedChapterId,
+            title = title.cleanText().ifBlank { navigation.currentTitle },
+            content = content,
+            lastChapter = navigation.lastChapterId,
+            nextChapter = navigation.nextChapterId
+        ).takeIf { !it.isEmpty() } ?: ChapterContent.empty(normalizedChapterId)
+    }.getOrElse {
+        it.printStackTrace()
+        ChapterContent.empty(chapterId)
+    }
+
+    fun parseSearchBooks(document: Document): List<BookInformation> {
+        val elements = document.select(".book-list li, .search-result li, .bookbox, .book-item, .book-layout")
+            .ifEmpty { document.select("a[href~=/novel/\\d+\\.html]").map { it.parent() ?: it } }
+        return elements.mapNotNull { element ->
+            val href = element.selectFirst("a[href~=/novel/\\d+\\.html]")?.attr("href") ?: return@mapNotNull null
+            val bookId = href.extractBookId() ?: return@mapNotNull null
+            val title = element.selectFirst("a[href~=/novel/\\d+\\.html]")?.text()?.cleanText().orEmpty()
+            if (title.isBlank()) return@mapNotNull null
+            val cover = element.selectFirst("img")?.imageUrl().orEmpty()
+            MutableBookInformation(
+                id = bookId,
+                title = title,
+                subtitle = "",
+                coverUrl = cover.takeIf { it.isNotBlank() }?.toUri() ?: Uri.EMPTY,
+                author = element.textAfterLabel("作者") ?: "",
+                description = element.selectFirst(".desc, .intro, p")?.text()?.cleanDescription() ?: "",
+                tags = emptyList(),
+                publishingHouse = "",
+                wordCount = WordCount(0),
+                lastUpdated = LocalDateTime.MIN,
+                isComplete = element.text().contains("完结")
+            )
+        }.distinctBy { it.id }
+    }
+
+    fun parseExploreBooks(document: Document): List<LinovelibExploreBook> = document
+        .select("a[href~=/novel/\\d+\\.html]")
+        .mapNotNull { a ->
+            val bookId = a.attr("href").extractBookId() ?: return@mapNotNull null
+            val container = a.parents().firstOrNull { it.selectFirst("img") != null } ?: a.parent() ?: a
+            val title = a.text().cleanText().ifBlank { a.attr("title").cleanText() }
+            if (title.isBlank()) return@mapNotNull null
+            val cover = container.selectFirst("img")?.imageUrl().orEmpty()
+            LinovelibExploreBook(
+                id = bookId,
+                title = title,
+                author = container.textAfterLabel("作者") ?: "",
+                coverUrl = cover
+            )
+        }
+        .distinctBy { it.id }
+
+    private fun parseVolumes(document: Document, bookId: String): List<Volume> {
+        val volumeElements = document.select("#volume-list .volume, .volume-list .volume, .catalog-volume, .chapter-list .volume")
+        if (volumeElements.isNotEmpty()) {
+            val volumes = volumeElements.mapIndexedNotNull { index, element ->
+                val chapters = element.select("a[href]")
+                    .mapNotNull { it.toChapterInformation(bookId) }
+                    .distinctBy { it.id }
+                if (chapters.isEmpty()) return@mapIndexedNotNull null
+                Volume(
+                    volumeId = "${bookId}_$index",
+                    volumeTitle = element.firstText("h2", "h3", ".volume-title", ".title") ?: "第 ${index + 1} 卷",
+                    chapters = chapters
+                )
+            }
+            if (volumes.isNotEmpty()) return volumes
+        }
+        val chapters = document.select("#volume-list a[href], #chapter-list a[href], .chapter-list a[href], .catalog a[href], a[href]")
+            .mapNotNull { it.toChapterInformation(bookId) }
+            .distinctBy { it.id }
+        return if (chapters.isEmpty()) emptyList() else listOf(Volume(bookId, "正文", chapters))
+    }
+
+    private suspend fun getChapterNavigation(bookId: String, chapterId: String): ChapterNavigation {
+        val chapters = getBookVolumes(bookId).volumes.flatMap { it.chapters }
+        val index = chapters.indexOfFirst { it.id == chapterId }
+        if (index < 0) return ChapterNavigation()
+        return ChapterNavigation(
+            currentTitle = chapters[index].title,
+            lastChapterId = chapters.getOrNull(index - 1)?.id ?: "",
+            nextChapterId = chapters.getOrNull(index + 1)?.id ?: ""
+        )
+    }
+
+    private fun appendContent(content: Element, builder: ContentBuilder) {
+        var pendingText = StringBuilder()
+        fun flushText() {
+            val text = pendingText.toString().cleanText()
+            pendingText = StringBuilder()
+            if (text.isNotBlank() && !text.isNoiseText()) builder.simpleText(text)
+        }
+        content.childNodes().forEach { node ->
+            when (node) {
+                is TextNode -> pendingText.append(node.text()).append('\n')
+                is Element -> {
+                    val images = if (node.`is`("img")) listOf(node) else node.select("img")
+                    if (images.isNotEmpty()) {
+                        flushText()
+                        images.forEach { image ->
+                            image.imageUrl().takeIf { it.isNotBlank() }?.toUri()?.let { uri ->
+                                builder.image(uri)
+                            }
+                        }
+                    }
+                    val text = when {
+                        node.`is`("br") -> "\n"
+                        node.`is`("script, style, noscript") -> ""
+                        else -> node.text()
+                    }.cleanText()
+                    if (text.isNotBlank() && images.isEmpty()) pendingText.append(text).append('\n')
+                }
+            }
+        }
+        flushText()
+    }
+
+    private fun Element.toChapterInformation(bookId: String): ChapterInformation? {
+        val href = attr("href")
+        if (href.startsWith("javascript:") || "cid(0)" in href || "vol_" in href) return null
+        if (Regex("/novel/${Regex.escape(bookId)}/\\d+_\\d+\\.html").containsMatchIn(href)) return null
+        val id = href.extractChapterId(bookId) ?: return null
+        val title = text().cleanText().ifBlank { attr("title").cleanText() }
+        if (title.isBlank()) return null
+        return ChapterInformation(id, title)
+    }
+
+    private fun Document.hasChapterPage(bookId: String, chapterId: String, page: Int): Boolean =
+        select("a[href]").any { it.attr("href").contains("/novel/$bookId/${chapterId}_$page.html") }
+
+    private fun Document.metaContent(name: String): String? =
+        selectFirst("meta[name=\"$name\"]")?.attr("content")?.takeIf { it.isNotBlank() }
+            ?: selectFirst("meta[property=\"$name\"]")?.attr("content")?.takeIf { it.isNotBlank() }
+
+    private fun Document.firstText(vararg selectors: String): String? = selectors.firstNotNullOfOrNull { selector ->
+        selectFirst(selector)?.text()?.cleanText()?.takeIf { it.isNotBlank() }
+    }
+
+    private fun Document.firstImageUrl(vararg selectors: String): String? = selectors.firstNotNullOfOrNull { selector ->
+        selectFirst(selector)?.imageUrl()?.takeIf { it.isNotBlank() }
+    }
+
+    private fun Element.firstText(vararg selectors: String): String? = selectors.firstNotNullOfOrNull { selector ->
+        selectFirst(selector)?.text()?.cleanText()?.takeIf { it.isNotBlank() }
+    }
+
+    private fun Element.imageUrl(): String {
+        IMAGE_URL_ATTRS.forEach { attrName ->
+            val url = absUrl(attrName).ifBlank { attr(attrName) }.toRealImageUrl()
+            if (url.isNotBlank()) return url
+        }
+        attr("srcset")
+            .split(",")
+            .asSequence()
+            .map { it.trim().substringBefore(" ") }
+            .map { it.toRealImageUrl() }
+            .firstOrNull { it.isNotBlank() }
+            ?.let { return it }
+        return ""
+    }
+
+    private fun String.toRealImageUrl(): String {
+        val normalizedUrl = LinovelibJsoup.normalizeUrl(this)
+        val lowerUrl = normalizedUrl.lowercase()
+        return normalizedUrl.takeIf {
+            lowerUrl.isNotBlank() &&
+                "loading." !in lowerUrl &&
+                "placeholder" !in lowerUrl &&
+                !lowerUrl.endsWith("/blank.gif") &&
+                !lowerUrl.endsWith("/spacer.gif") &&
+                !lowerUrl.endsWith("/transparent.png")
+        }.orEmpty()
+    }
+
+    private fun Document.labelValue(label: String): String? = body().textAfterLabel(label)
+
+    private fun Element.textAfterLabel(label: String): String? {
+        val regex = Regex("$label[：:]\\s*([^\\s　/／|｜]+(?:\\s+[^\\s　/／|｜]+){0,4})")
+        return regex.find(text())?.groups?.get(1)?.value?.cleanText()
+    }
+
+    private fun String.extractBookId(): String? = Regex("/novel/(\\d+)(?:\\.html|/|$)").find(this)?.groups?.get(1)?.value
+
+    private fun String.extractChapterId(bookId: String): String? =
+        Regex("/novel/${Regex.escape(bookId)}/(\\d+)\\.html").find(this)?.groups?.get(1)?.value
+
+    private fun String.normalizeBookId(): String = trim().substringBefore('.').substringAfterLast('/').filter { it.isDigit() }
+
+    private fun String.normalizeChapterId(): String = trim().substringBefore('.').substringAfterLast('/').filter { it.isDigit() || it == '_' }
+
+    private fun String.cleanDescription(): String = cleanText()
+        .removePrefix("简介：")
+        .removePrefix("内容简介：")
+        .trim()
+
+    private fun String.cleanText(): String = replace(' ', ' ')
+        .replace(Regex("[ \\t\\x0B\\f\\r]+"), " ")
+        .replace(Regex("\\n{3,}"), "\n\n")
+        .trim()
+
+    private fun String.isNoiseText(): Boolean = contains("最新网址") || contains("请收藏") || contains("本章未完")
+
+    private fun String.parseWordCount(): Int {
+        val number = Regex("(\\d+(?:\\.\\d+)?)\\s*([万千]?)").find(this) ?: return 0
+        val value = number.groups[1]?.value?.toFloatOrNull() ?: return 0
+        return when (number.groups[2]?.value) {
+            "万" -> (value * 10_000).toInt()
+            "千" -> (value * 1_000).toInt()
+            else -> value.toInt()
+        }
+    }
+
+    private fun String.parseDateTime(): LocalDateTime {
+        val dateText = Regex("\\d{4}-\\d{1,2}-\\d{1,2}").find(this)?.value ?: return LocalDateTime.MIN
+        return runCatching { LocalDate.parse(dateText, dateFormatter).atStartOfDay() }.getOrDefault(LocalDateTime.MIN)
+    }
+
+    private data class ChapterNavigation(
+        val currentTitle: String = "",
+        val lastChapterId: String = "",
+        val nextChapterId: String = ""
+    )
+
+    data class LinovelibExploreBook(
+        val id: String,
+        val title: String,
+        val author: String,
+        val coverUrl: String
+    )
+
+    companion object {
+        private const val MAX_CHAPTER_PAGE = 10
+        private val IMAGE_URL_ATTRS = listOf(
+            "data-src",
+            "data-original",
+            "data-original-url",
+            "data-url",
+            "data-lazy-src",
+            "data-echo",
+            "data-cover",
+            "src"
+        )
+    }
+}

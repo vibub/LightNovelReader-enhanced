@@ -20,3 +20,7 @@ local.properties
 ./local.properties
 .kotlin/
 /app/snapshot/
+
+.claude/
+.codegraph/
+.idea/studiobot.xml

@@ -20,6 +20,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dalvik.system.DexClassLoader
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceManager
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibApi
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.wenku8.Wenku8Api
 import indi.dmzz_yyhyy.lightnovelreader.utils.AnnotationScanner
 import indi.dmzz_yyhyy.lightnovelreader.utils.getApkSignatures
@@ -176,6 +177,10 @@ class PluginManager @Inject constructor(
         pluginsTempDir.deleteRecursively()
         webBookDataSourceManager.loadWebDataSourceFromClass(
             Wenku8Api::class.java,
+            pluginInjector
+        )
+        webBookDataSourceManager.loadWebDataSourceFromClass(
+            LinovelibApi::class.java,
             pluginInjector
         )
         appPluginInfos = initAllAppPlugin()

@@ -46,6 +46,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import indi.dmzz_yyhyy.lightnovelreader.R
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.SectionHeader
 import indi.dmzz_yyhyy.lightnovelreader.utils.navigationBarSpacer
 import io.nightfish.lightnovelreader.api.web.WebDataSourceItem
@@ -54,7 +55,8 @@ import io.nightfish.lightnovelreader.api.web.WebDataSourceItem
 fun SourceChangeScreen(
     uiState: SourceChangeUiState,
     onClickBack: () -> Unit,
-    onApplyClick: (Int) -> Unit
+    onApplyClick: (Int) -> Unit,
+    onSourceSettingsClick: (Int) -> Unit
 ) {
     var selectedSourceId by rememberSaveable(uiState.currentSourceId) {
         mutableIntStateOf(uiState.currentSourceId)
@@ -81,7 +83,8 @@ fun SourceChangeScreen(
             modifier = Modifier.padding(innerPadding),
             uiState = uiState,
             selectedSourceId = selectedSourceId,
-            onSelectedChange = { selectedSourceId = it }
+            onSelectedChange = { selectedSourceId = it },
+            onSourceSettingsClick = onSourceSettingsClick
         )
     }
 }
@@ -176,7 +179,8 @@ private fun SourceChangeContent(
     modifier: Modifier = Modifier,
     uiState: SourceChangeUiState,
     selectedSourceId: Int,
-    onSelectedChange: (Int) -> Unit
+    onSelectedChange: (Int) -> Unit,
+    onSourceSettingsClick: (Int) -> Unit
 ) {
     LazyColumn(
         modifier = modifier
@@ -199,6 +203,8 @@ private fun SourceChangeContent(
                 item = item,
                 selected = item.id == selectedSourceId,
                 onClick = { onSelectedChange(item.id) },
+                settingsEnabled = item.id == LinovelibConstants.SOURCE_ID,
+                onSettingsClick = { onSourceSettingsClick(item.id) },
                 showDivider = index != uiState.webDataSourceItems.lastIndex,
             )
         }
