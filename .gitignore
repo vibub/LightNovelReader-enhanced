@@ -26,3 +26,7 @@ local.properties
 .idea/studiobot.xml
 
 proxy/build/
+
+build/
+
+Keystore/
