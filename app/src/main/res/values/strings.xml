@@ -620,6 +620,9 @@
     <string name="linovelib_webview_hint">请在下方登录并通过站点检查，然后点击“保存当前 Cookie”。当前页面：%1$s</string>
     <string name="linovelib_web_search_title">Linovelib 网页搜索</string>
     <string name="linovelib_refresh">刷新</string>
+    <string name="linovelib_sync_bookcase">同步书架</string>
+    <string name="linovelib_web_book_title">网页浏览</string>
+    <string name="action_webview">网页</string>
 
     <!-- Notifications -->
     <string name="epub_export_notification_channel_name">EPUB export progress</string>

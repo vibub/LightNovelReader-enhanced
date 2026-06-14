@@ -90,15 +90,15 @@ fun LinovelibSourceSettingsScreen(
                             onSaveCookie = {
                                 CookieManager.getInstance().flush()
                                 onSaveCookie(CookieManager.getInstance().collectLinovelibCookie(lastLoadedUrl))
-                                menuExpanded = false
                             },
                             onClearCookie = {
                                 onClearCookie()
-                                menuExpanded = false
                             },
-                            onSyncNow = {
+                            onSyncBookcase = {
+                                if (!lastLoadedUrl.contains("bookcase.php")) {
+                                    webView?.loadUrl(LinovelibConstants.bookcaseUrl())
+                                }
                                 onSyncNow()
-                                menuExpanded = false
                             }
                         )
                     }
@@ -123,7 +123,7 @@ private fun LinovelibAccountMenuContent(
     currentUrl: String,
     onSaveCookie: () -> Unit,
     onClearCookie: () -> Unit,
-    onSyncNow: () -> Unit
+    onSyncBookcase: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -181,7 +181,7 @@ private fun LinovelibAccountMenuContent(
         }
         Button(
             modifier = Modifier.fillMaxWidth(),
-            onClick = onSyncNow,
+            onClick = onSyncBookcase,
             enabled = uiState.hasCookie && uiState.canSync && !uiState.isSyncing
         ) {
             if (uiState.isSyncing) {
@@ -191,7 +191,7 @@ private fun LinovelibAccountMenuContent(
                 )
                 Spacer(Modifier.padding(horizontal = 4.dp))
             }
-            Text(stringResource(R.string.linovelib_sync_now))
+            Text(stringResource(R.string.linovelib_sync_bookcase))
         }
         if (!uiState.canSync) {
             Text(
@@ -301,8 +301,7 @@ private fun CookieManager.collectLinovelibCookie(currentUrl: String): String {
         currentUrl,
         LinovelibConstants.loginUrl(),
         LinovelibConstants.MOBILE_BASE_URL,
-        LinovelibConstants.BASE_URL,
-        LinovelibConstants.API_BASE_URL
+        LinovelibConstants.BASE_URL
     ).distinct()
         .mapNotNull { url -> runCatching { getCookie(url) }.getOrNull() }
         .flatMap { it.split(';') }

@@ -72,10 +72,6 @@ class LinovelibSearchProvider(
             SearchUrl(
                 referer = "${LinovelibConstants.MOBILE_BASE_URL}/search.html",
                 url = { keyword -> "${LinovelibConstants.MOBILE_BASE_URL}/search.php?searchkey=$keyword" }
-            ),
-            SearchUrl(
-                referer = LinovelibConstants.BASE_URL,
-                url = { keyword -> "${LinovelibConstants.BASE_URL}/S6/?searchkey=$keyword" }
             )
         )
     }

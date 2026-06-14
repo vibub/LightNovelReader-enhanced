@@ -102,6 +102,17 @@ object Route {
                 val keyword: String = ""
             )
             /**
+             * Linovelib 网页浏览路由（书籍详情/章节阅读）
+             *
+             * @param bookId 书籍 ID
+             * @param chapterId 章节 ID（可选，提供则打开章节页）
+             */
+            @Serializable
+            data class LinovelibWebBook(
+                val bookId: String,
+                val chapterId: String = ""
+            )
+            /**
              * 探索展开页界面路由
              *
              * @param expandedPageDataSourceId 展开页数据源的唯一标识

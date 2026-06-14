@@ -107,7 +107,8 @@ fun ReaderScreen(
     onClickPrevChapter: () -> Unit,
     onClickNextChapter: () -> Unit,
     onChangeChapter: (chapterId: String) -> Unit,
-    onClickThemeSettings: () -> Unit
+    onClickThemeSettings: () -> Unit,
+    onClickWebView: (() -> Unit)? = null
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     var isImmersive by remember { mutableStateOf(true) }
@@ -195,6 +196,7 @@ fun ReaderScreen(
                     onClickNextChapter = onClickNextChapter,
                     onClickSettings = { showSettingsBottomSheet = true },
                     onClickChapterSelector = { showChapterSelectionBottomSheet = true },
+                    onClickWebView = onClickWebView
                 )
             }
         },
@@ -530,7 +532,8 @@ private fun BottomBar(
     onClickPrevChapter: () -> Unit,
     onClickNextChapter: () -> Unit,
     onClickSettings: () -> Unit,
-    onClickChapterSelector: () -> Unit
+    onClickChapterSelector: () -> Unit,
+    onClickWebView: (() -> Unit)? = null
 ) {
     BottomAppBar {
         Row(
@@ -574,6 +577,15 @@ private fun BottomBar(
                         painter = painterResource(R.drawable.outline_bookmark_24px),
                         contentDescription = "mark"
                     )
+                }
+
+                if (onClickWebView != null) {
+                    IconButton(onClick = onClickWebView) {
+                        Icon(
+                            painter = painterResource(R.drawable.open_in_new_24px),
+                            contentDescription = "webview"
+                        )
+                    }
                 }
 
                 IconButton(onClick = onClickChapterSelector) {

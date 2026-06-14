@@ -6,6 +6,7 @@ import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.ui.LinovelibWebBookScreen
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.ui.LinovelibWebSearchScreen
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.detail.navigateToBookDetailDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.dialog.navigateToAddBookToBookshelfDialog
@@ -57,6 +58,15 @@ fun NavGraphBuilder.exploreSearchDestination() {
             }
         )
     }
+    composable<Route.Main.Explore.LinovelibWebBook> { entry ->
+        val navController = LocalNavController.current
+        val route = entry.toRoute<Route.Main.Explore.LinovelibWebBook>()
+        LinovelibWebBookScreen(
+            bookId = route.bookId,
+            chapterId = route.chapterId,
+            onClickBack = { navController.popBackStackIfResumed() }
+        )
+    }
 }
 
 fun NavController.navigateToSearchDestination() {
@@ -67,4 +77,9 @@ fun NavController.navigateToSearchDestination() {
 fun NavController.navigateToLinovelibWebSearchDestination(keyword: String) {
     if (!this.isResumed()) return
     navigate(Route.Main.Explore.LinovelibWebSearch(keyword))
+}
+
+fun NavController.navigateToLinovelibWebBookDestination(bookId: String, chapterId: String = "") {
+    if (!this.isResumed()) return
+    navigate(Route.Main.Explore.LinovelibWebBook(bookId, chapterId))
 }

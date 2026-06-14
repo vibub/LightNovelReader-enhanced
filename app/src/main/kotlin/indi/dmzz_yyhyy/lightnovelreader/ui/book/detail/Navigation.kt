@@ -23,6 +23,7 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.navigateToBookReaderDesti
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.navigateToImageViewerDialog
 import indi.dmzz_yyhyy.lightnovelreader.ui.dialog.navigateToAddBookToBookshelfDialog
 import indi.dmzz_yyhyy.lightnovelreader.ui.dialog.navigateToMarkAllChaptersAsReadDialog
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.search.navigateToLinovelibWebBookDestination
 import io.nightfish.lightnovelreader.api.Route
 import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
 import indi.dmzz_yyhyy.lightnovelreader.utils.isResumed
@@ -136,7 +137,10 @@ fun NavGraphBuilder.bookDetailDestination() {
             requestAddBookToBookshelf = navController::navigateToAddBookToBookshelfDialog,
             onClickTag = viewModel::onClickTag,
             onClickCover = navController::navigateToImageViewerDialog,
-            onClickMarkAsRead = { navController.navigateToMarkAllChaptersAsReadDialog(viewModel.uiState.bookInformation.id) }
+            onClickMarkAsRead = { navController.navigateToMarkAllChaptersAsReadDialog(viewModel.uiState.bookInformation.id) },
+            onClickWebView = {
+                navController.navigateToLinovelibWebBookDestination(bookId)
+            }
         )
     }
 }

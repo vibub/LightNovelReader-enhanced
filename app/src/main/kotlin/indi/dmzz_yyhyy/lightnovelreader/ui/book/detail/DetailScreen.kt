@@ -125,7 +125,8 @@ fun DetailScreen(
     requestAddBookToBookshelf: (String) -> Unit,
     onClickTag: (String) -> Unit,
     onClickCover: (Uri) -> Unit,
-    onClickMarkAsRead: () -> Unit
+    onClickMarkAsRead: () -> Unit,
+    onClickWebView: (() -> Unit)? = null
 ) {
     val navController = LocalNavController.current
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
@@ -272,7 +273,8 @@ fun DetailScreen(
                         requestAddBookToBookshelf = requestAddBookToBookshelf,
                         onClickTag = onClickTag,
                         onClickCover = onClickCover,
-                        onClickShowInfo = { showInfoBottomSheet = true }
+                        onClickShowInfo = { showInfoBottomSheet = true },
+                        onClickWebView = onClickWebView
                     )
                 }
             }
@@ -429,7 +431,8 @@ private fun DetailContent(
     requestAddBookToBookshelf: (String) -> Unit,
     onClickTag: (String) -> Unit,
     onClickCover: (Uri) -> Unit,
-    onClickShowInfo: () -> Unit
+    onClickShowInfo: () -> Unit,
+    onClickWebView: (() -> Unit)? = null
 ) {
     var hideReadChapters by remember { mutableStateOf(false) }
     val deferred = 6
@@ -476,7 +479,8 @@ private fun DetailContent(
                 downloadItem = uiState.downloadItem,
                 onClickAddToBookShelf = { requestAddBookToBookshelf(uiState.bookInformation.id) },
                 onClickCache = { cacheBook(uiState.bookInformation.id) },
-                onClickShowInfo = onClickShowInfo
+                onClickShowInfo = onClickShowInfo,
+                onClickWebView = onClickWebView
             )
         }
 
@@ -866,13 +870,15 @@ private fun QuickOperationsBlock(
     downloadItem: DownloadItem?,
     onClickAddToBookShelf: () -> Unit,
     onClickCache: () -> Unit,
-    onClickShowInfo: () -> Unit
+    onClickShowInfo: () -> Unit,
+    onClickWebView: (() -> Unit)? = null
 ) {
     val bookmark = painterResource(R.drawable.bookmark_add_24px)
     val filledBookmark = painterResource(R.drawable.filled_bookmark_add_24px)
     val cloud = painterResource(R.drawable.cloud_download_24px)
     val filledCloud = painterResource(R.drawable.filled_cloud_download_24px)
     val info = painterResource(R.drawable.info_24px)
+    val openInNew = painterResource(R.drawable.open_in_new_24px)
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -926,6 +932,15 @@ private fun QuickOperationsBlock(
             onClick = onClickShowInfo,
             modifier = Modifier.weight(1f)
         )
+
+        if (onClickWebView != null) {
+            QuickOperationButton(
+                icon = openInNew,
+                title = stringResource(R.string.action_webview),
+                onClick = onClickWebView,
+                modifier = Modifier.weight(1f)
+            )
+        }
     }
 }
 
