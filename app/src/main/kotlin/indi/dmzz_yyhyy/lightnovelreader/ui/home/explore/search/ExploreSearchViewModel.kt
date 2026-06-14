@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.explore.ExploreRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import io.nightfish.lightnovelreader.api.util.LocalString
 import io.nightfish.lightnovelreader.api.web.search.SearchResult
@@ -81,13 +82,21 @@ class ExploreSearchViewModel @Inject constructor(
 
     fun search(
         keyword: String,
-        navigateToSingleBook: (bookId: String) -> Unit
+        navigateToSingleBook: (bookId: String) -> Unit,
+        openLinovelibWebSearch: (keyword: String) -> Unit
     ) {
         _uiState.isLoading = true
         _uiState.isLoadingComplete = false
         _uiState.errorMessage = ""
         _uiState.searchResult.clear()
         searchJob?.cancel()
+        if (exploreRepository.currentSourceId == LinovelibConstants.SOURCE_ID) {
+            _uiState.isLoading = false
+            _uiState.isLoadingComplete = true
+            openLinovelibWebSearch(keyword)
+            saveSearchHistory(keyword)
+            return
+        }
         val searchType = exploreRepository.searchTypes.firstOrNull { it.type == _uiState.searchType } ?: return
         searchJob = viewModelScope.launch(Dispatchers.IO) {
             val flow = exploreRepository.search(searchType, keyword)
@@ -102,6 +111,11 @@ class ExploreSearchViewModel @Inject constructor(
                     is SearchResult.Error -> {
                         _uiState.isLoadingComplete = true
                         _uiState.errorMessage = it.error.message.toString()
+                        if (it.error.message == LinovelibConstants.SEARCH_BLOCKED_MESSAGE) {
+                            launch(Dispatchers.Main) {
+                                openLinovelibWebSearch(keyword)
+                            }
+                        }
                     }
                     is SearchResult.End -> _uiState.isLoadingComplete = true
                     is SearchResult.Empty -> {
@@ -110,6 +124,10 @@ class ExploreSearchViewModel @Inject constructor(
                 }
             }
         }
+        saveSearchHistory(keyword)
+    }
+
+    private fun saveSearchHistory(keyword: String) {
         viewModelScope.launch(Dispatchers.IO) {
             searchHistoryUserData.update {
                 val newList = it.toMutableList()

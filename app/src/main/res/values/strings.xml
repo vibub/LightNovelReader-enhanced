@@ -606,18 +606,20 @@
     <string name="plugin_app_conflict_message">Conflicts with installed plugin app; app plugin is preferred.</string>
 
     <!-- Linovelib -->
-    <string name="linovelib_settings_title">Linovelib account</string>
-    <string name="linovelib_account_menu">Account and sync actions</string>
-    <string name="linovelib_login_status_saved">Login cookie saved</string>
-    <string name="linovelib_login_status_missing">No login cookie saved</string>
-    <string name="linovelib_cookie_storage_warning">The first version stores only the Linovelib cookie in local user data. Do not save it on shared devices.</string>
-    <string name="linovelib_last_sync_time">Last sync: %1$s</string>
-    <string name="linovelib_last_sync_error">Last error: %1$s</string>
-    <string name="linovelib_save_cookie">Save current cookie</string>
-    <string name="linovelib_clear_cookie">Clear saved cookie</string>
-    <string name="linovelib_sync_now">Sync bookshelf and progress</string>
-    <string name="linovelib_sync_requires_source">Switch to the Linovelib source before syncing so imported books and reading progress are saved in the correct source data.</string>
-    <string name="linovelib_webview_hint">Log in below, pass any site checks, then tap “Save current cookie”. Current page: %1$s</string>
+    <string name="linovelib_settings_title">Linovelib 账号</string>
+    <string name="linovelib_account_menu">账号与同步操作</string>
+    <string name="linovelib_login_status_saved">已保存登录 Cookie</string>
+    <string name="linovelib_login_status_missing">未保存登录 Cookie</string>
+    <string name="linovelib_cookie_storage_warning">当前版本只会把 Linovelib Cookie 临时保存到本地用户数据中，请勿在共享设备上保存。</string>
+    <string name="linovelib_last_sync_time">上次同步：%1$s</string>
+    <string name="linovelib_last_sync_error">上次错误：%1$s</string>
+    <string name="linovelib_save_cookie">保存当前 Cookie</string>
+    <string name="linovelib_clear_cookie">清除已保存 Cookie</string>
+    <string name="linovelib_sync_now">同步书架和阅读进度</string>
+    <string name="linovelib_sync_requires_source">请先切换到 Linovelib 数据源再同步，以确保导入的书籍和阅读进度保存到正确的数据源。</string>
+    <string name="linovelib_webview_hint">请在下方登录并通过站点检查，然后点击“保存当前 Cookie”。当前页面：%1$s</string>
+    <string name="linovelib_web_search_title">Linovelib 网页搜索</string>
+    <string name="linovelib_refresh">刷新</string>
 
     <!-- Notifications -->
     <string name="epub_export_notification_channel_name">EPUB export progress</string>

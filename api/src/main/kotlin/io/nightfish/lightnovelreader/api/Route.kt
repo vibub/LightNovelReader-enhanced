@@ -92,6 +92,11 @@ object Route {
             /** 搜索界面路由 */
             @Serializable
             object Search
+            /** Linovelib 网页搜索兜底路由 */
+            @Serializable
+            data class LinovelibWebSearch(
+                val keyword: String = ""
+            )
             /**
              * 探索展开页界面路由
              *

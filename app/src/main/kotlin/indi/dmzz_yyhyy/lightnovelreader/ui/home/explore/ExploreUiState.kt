@@ -9,9 +9,11 @@ import com.google.android.material.bottomsheet.BottomSheetBehavior.State
 interface ExploreUiState {
     val isOffLine: Boolean
     val isRefreshing: Boolean
+    val sourceId: Int
 }
 
 class MutableExploreUiState : ExploreUiState {
     override var isOffLine: Boolean by mutableStateOf(true)
     override var isRefreshing: Boolean by mutableStateOf(false)
+    override var sourceId: Int by mutableStateOf(0)
 }

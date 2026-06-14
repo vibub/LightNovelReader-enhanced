@@ -134,12 +134,12 @@ class LinovelibJsoup(
         fun isCloudflareBlocked(statusCode: Int, body: String): Boolean {
             if (statusCode == 403 || statusCode == 503) return true
             val text = body.lowercase()
-            return "cloudflare" in text && (
+            return ("cloudflare" in text && (
                 "cf-chl" in text ||
                     "checking your browser" in text ||
                     "just a moment" in text ||
                     "attention required" in text
-                )
+                )) || "请稍候" in body && "正在检查您的浏览器" in body
         }
 
         fun normalizeUrl(url: String): String {

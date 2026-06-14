@@ -24,3 +24,5 @@ local.properties
 .claude/
 .codegraph/
 .idea/studiobot.xml
+
+proxy/build/

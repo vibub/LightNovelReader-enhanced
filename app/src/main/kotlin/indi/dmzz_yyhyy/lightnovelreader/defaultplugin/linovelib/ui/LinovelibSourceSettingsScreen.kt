@@ -68,6 +68,12 @@ fun LinovelibSourceSettingsScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { webView?.reload() }) {
+                        Icon(
+                            painter = painterResource(R.drawable.refresh_24px),
+                            contentDescription = stringResource(R.string.linovelib_refresh)
+                        )
+                    }
                     IconButton(onClick = { menuExpanded = true }) {
                         Icon(
                             painter = painterResource(R.drawable.more_vert_24px),
@@ -100,10 +106,11 @@ fun LinovelibSourceSettingsScreen(
             )
         }
     ) { innerPadding ->
-        LinovelibLoginWebView(
+        LinovelibWebView(
             modifier = Modifier
                 .padding(innerPadding)
                 .fillMaxSize(),
+            initialUrl = LinovelibConstants.loginUrl(),
             onWebViewCreated = { webView = it },
             onUrlChanged = { lastLoadedUrl = it }
         )
@@ -197,12 +204,68 @@ private fun LinovelibAccountMenuContent(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LinovelibWebSearchScreen(
+    keyword: String,
+    onClickBack: () -> Unit,
+    onBookDetected: (String) -> Unit
+) {
+    var webView: WebView? by remember { mutableStateOf(null) }
+    var detectedBookId by remember { mutableStateOf<String?>(null) }
+    val searchUrl = remember { LinovelibConstants.MOBILE_BASE_URL }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            webView?.destroy()
+            webView = null
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.linovelib_web_search_title)) },
+                navigationIcon = {
+                    OutlinedButton(onClick = onClickBack) {
+                        Text(stringResource(R.string.close))
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { webView?.reload() }) {
+                        Icon(
+                            painter = painterResource(R.drawable.refresh_24px),
+                            contentDescription = stringResource(R.string.linovelib_refresh)
+                        )
+                    }
+                }
+            )
+        }
+    ) { innerPadding ->
+        LinovelibWebView(
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize(),
+            initialUrl = searchUrl,
+            onWebViewCreated = { webView = it },
+            onUrlChanged = { url ->
+                val bookId = LinovelibConstants.extractBookIdFromUrl(url)
+                if (bookId != null && detectedBookId != bookId) {
+                    detectedBookId = bookId
+                    onBookDetected(bookId)
+                }
+            }
+        )
+    }
+}
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun LinovelibLoginWebView(
+fun LinovelibWebView(
     modifier: Modifier,
-    onWebViewCreated: (WebView) -> Unit,
-    onUrlChanged: (String) -> Unit
+    initialUrl: String,
+    onWebViewCreated: (WebView) -> Unit = {},
+    onUrlChanged: (String) -> Unit = {}
 ) {
     AndroidView(
         modifier = modifier,
@@ -211,6 +274,11 @@ private fun LinovelibLoginWebView(
             WebView(context).apply {
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
+                settings.loadWithOverviewMode = true
+                settings.useWideViewPort = true
+                settings.userAgentString = settings.userAgentString
+                    .replace("; wv", "")
+                    .replace("Version/4.0 ", "")
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, url: String) {
@@ -219,8 +287,8 @@ private fun LinovelibLoginWebView(
                         onUrlChanged(url)
                     }
                 }
-                loadUrl(LinovelibConstants.loginUrl())
                 onWebViewCreated(this)
+                loadUrl(initialUrl)
             }
         },
         update = {}

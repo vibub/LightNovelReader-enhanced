@@ -5,6 +5,7 @@ object LinovelibConstants {
     const val MOBILE_BASE_URL = "https://m.bilinovel.com"
     const val API_BASE_URL = "https://api.linovelib.com"
     const val SOURCE_NAME = "Linovelib"
+    const val SEARCH_BLOCKED_MESSAGE = "Linovelib 搜索入口被 Cloudflare 拦截。请在网页中搜索并点进小说详情页。"
     val SOURCE_ID: Int = "linovelib".hashCode()
 
     const val COOKIE_PATH = "linovelib.cookie"
@@ -20,7 +21,24 @@ object LinovelibConstants {
     fun chapterUrl(bookId: String, chapterId: String): String =
         "$BASE_URL/novel/${bookId.normalizeBookId()}/${chapterId.normalizeChapterId()}.html"
     fun loginUrl(): String = "$MOBILE_BASE_URL/login.php"
+    fun searchUrl(keyword: String = ""): String = if (keyword.isBlank()) {
+        "$MOBILE_BASE_URL/search.html"
+    } else {
+        "$MOBILE_BASE_URL/search.html?searchkey=$keyword"
+    }
     fun bookshelfApiUrl(): String = "$API_BASE_URL/api/user/bookshelf"
+
+    fun extractBookIdFromUrl(url: String): String? {
+        val host = Regex("^https?://([^/]+)").find(url)?.groups?.get(1)?.value?.lowercase() ?: return null
+        if (host != "m.bilinovel.com" && host != "www.linovelib.com") return null
+        return Regex("/novel/(\\d+)(?:\\.html|/|$)")
+            .find(url)
+            ?.groups
+            ?.get(1)
+            ?.value
+            ?.normalizeBookId()
+            ?.takeIf { it.isNotBlank() }
+    }
 
     fun String.normalizeBookId(): String = trim().substringBefore('.').substringAfterLast('/').filter { it.isDigit() }
 

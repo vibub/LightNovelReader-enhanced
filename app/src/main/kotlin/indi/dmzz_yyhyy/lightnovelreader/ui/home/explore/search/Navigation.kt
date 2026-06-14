@@ -5,6 +5,8 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
+import androidx.navigation.toRoute
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.ui.LinovelibWebSearchScreen
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.detail.navigateToBookDetailDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.dialog.navigateToAddBookToBookshelfDialog
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.ExploreViewModel
@@ -29,7 +31,13 @@ fun NavGraphBuilder.exploreSearchDestination() {
             onClickBack = { navController.popBackStackIfResumed() },
             init = exploreSearchViewModel::init,
             onChangeSearchType = { exploreSearchViewModel.changeSearchType(it) },
-            onSearch = { exploreSearchViewModel.search(it, navController::navigateToBookDetailDestination) },
+            onSearch = {
+                exploreSearchViewModel.search(
+                    keyword = it,
+                    navigateToSingleBook = navController::navigateToBookDetailDestination,
+                    openLinovelibWebSearch = navController::navigateToLinovelibWebSearchDestination
+                )
+            },
             onClickDeleteHistory = { exploreSearchViewModel.deleteHistory(it) },
             onClickClearAllHistory = exploreSearchViewModel::clearAllHistory,
             onClickBook = {
@@ -38,9 +46,25 @@ fun NavGraphBuilder.exploreSearchDestination() {
             updateSuggestions = exploreSearchViewModel::updateSuggestions
         )
     }
+    composable<Route.Main.Explore.LinovelibWebSearch> { entry ->
+        val navController = LocalNavController.current
+        val route = entry.toRoute<Route.Main.Explore.LinovelibWebSearch>()
+        LinovelibWebSearchScreen(
+            keyword = route.keyword,
+            onClickBack = { navController.popBackStackIfResumed() },
+            onBookDetected = { bookId ->
+                navController.navigateToBookDetailDestination(bookId)
+            }
+        )
+    }
 }
 
 fun NavController.navigateToSearchDestination() {
     if (!this.isResumed()) return
     navigate(Route.Main.Explore.Search)
+}
+
+fun NavController.navigateToLinovelibWebSearchDestination(keyword: String) {
+    if (!this.isResumed()) return
+    navigate(Route.Main.Explore.LinovelibWebSearch(keyword))
 }

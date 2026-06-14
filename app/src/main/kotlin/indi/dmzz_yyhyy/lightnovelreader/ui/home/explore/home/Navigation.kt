@@ -6,9 +6,11 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.detail.navigateToBookDetailDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.ExploreViewModel
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.expanded.navigateToExploreExpandDestination
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.search.navigateToLinovelibWebSearchDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.search.navigateToSearchDestination
 import io.nightfish.lightnovelreader.api.Route
 import indi.dmzz_yyhyy.lightnovelreader.utils.isResumed
@@ -29,13 +31,25 @@ fun NavGraphBuilder.exploreHomeDestination() {
                 onClickBook = navController::navigateToBookDetailDestination,
                 init = exploreHomeViewModel::init,
                 changePage = exploreHomeViewModel::changePage,
-                onClickSearch = navController::navigateToSearchDestination,
+                onClickSearch = {
+                    if (exploreViewModel.uiState.sourceId == LinovelibConstants.SOURCE_ID) {
+                        navController.navigateToLinovelibWebSearchDestination("")
+                    } else {
+                        navController.navigateToSearchDestination()
+                    }
+                },
                 refresh = exploreHomeViewModel::refresh
             )
         } else {
             CustomExploreHomeScreen(
                 init = exploreHomeViewModel::init,
-                onClickSearch = navController::navigateToSearchDestination,
+                onClickSearch = {
+                    if (exploreViewModel.uiState.sourceId == LinovelibConstants.SOURCE_ID) {
+                        navController.navigateToLinovelibWebSearchDestination("")
+                    } else {
+                        navController.navigateToSearchDestination()
+                    }
+                },
                 customExplorePageProvider = exploreHomeViewModel.customExplorePageProvider!!
             )
         }

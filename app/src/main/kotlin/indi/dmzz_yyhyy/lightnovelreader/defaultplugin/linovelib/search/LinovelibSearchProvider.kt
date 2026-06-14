@@ -28,26 +28,60 @@ class LinovelibSearchProvider(
             emit(SearchResult.Empty())
             return@flow
         }
-        try {
-            val encodedKeyword = URLEncoder.encode(trimmedKeyword, Charsets.UTF_8.name())
-            val url = "${LinovelibConstants.BASE_URL}/S6/?searchkey=$encodedKeyword"
-            val document = jsoup.getDocument(url, retryTime = 0)
-            val books = websiteDataSource.parseSearchBooks(document)
-            if (books.isEmpty()) {
-                emit(SearchResult.Empty())
-            } else {
-                books.forEach { emit(SearchResult.MultipleBook(it)) }
-                emit(SearchResult.End())
+        val blockedErrors = mutableListOf<LinovelibBlockedException>()
+        val otherErrors = mutableListOf<Throwable>()
+        var hasSuccessfulEmptyResult = false
+        val encodedKeyword = URLEncoder.encode(trimmedKeyword, Charsets.UTF_8.name())
+        SEARCH_URLS.forEach { searchUrl ->
+            try {
+                val document = jsoup.getDocument(
+                    url = searchUrl.url(encodedKeyword),
+                    referer = searchUrl.referer,
+                    retryTime = 0
+                )
+                val books = websiteDataSource.parseSearchBooks(document)
+                if (books.isNotEmpty()) {
+                    books.forEach { emit(SearchResult.MultipleBook(it)) }
+                    emit(SearchResult.End())
+                    return@flow
+                }
+                hasSuccessfulEmptyResult = true
+            } catch (blocked: LinovelibBlockedException) {
+                blockedErrors += blocked
+            } catch (throwable: Throwable) {
+                throwable.printStackTrace()
+                otherErrors += throwable
             }
-        } catch (blocked: LinovelibBlockedException) {
-            emit(SearchResult.Error("Linovelib 搜索被 Cloudflare 拦截，详情、目录和章节阅读仍可通过书籍 ID 访问。"))
-        } catch (throwable: Throwable) {
-            throwable.printStackTrace()
-            emit(SearchResult.Error(throwable))
+        }
+        when {
+            hasSuccessfulEmptyResult -> emit(SearchResult.Empty())
+            otherErrors.isNotEmpty() -> emit(SearchResult.Error(otherErrors.first()))
+            blockedErrors.isNotEmpty() -> emit(SearchResult.Error(LinovelibConstants.SEARCH_BLOCKED_MESSAGE))
+            else -> emit(SearchResult.Empty())
         }
     }.flowOn(Dispatchers.IO)
 
     companion object {
         private const val SEARCH_BY_NAME = "articlename"
+
+        private val SEARCH_URLS = listOf(
+            SearchUrl(
+                referer = LinovelibConstants.MOBILE_BASE_URL,
+                url = { keyword -> "${LinovelibConstants.MOBILE_BASE_URL}/search.html?searchkey=$keyword" }
+            ),
+            SearchUrl(
+                referer = "${LinovelibConstants.MOBILE_BASE_URL}/search.html",
+                url = { keyword -> "${LinovelibConstants.MOBILE_BASE_URL}/search.php?searchkey=$keyword" }
+            ),
+            SearchUrl(
+                referer = LinovelibConstants.BASE_URL,
+                url = { keyword -> "${LinovelibConstants.BASE_URL}/S6/?searchkey=$keyword" }
+            )
+        )
     }
 }
+
+private data class SearchUrl(
+    val referer: String,
+    val url: (String) -> String
+)

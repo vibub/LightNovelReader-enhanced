@@ -12,6 +12,7 @@ class ExploreRepository @Inject constructor(
     private val webBookDataSourceProvider: WebBookDataSourceProvider,
 ) {
     val searchTypes get() = webBookDataSourceProvider.default.searchProvider.searchTypes
+    val currentSourceId get() = webBookDataSourceProvider.default.id
     val explorePageProvider get() = webBookDataSourceProvider.default.explorePageProvider
 
     fun search(searchType: SearchType, keyword: String): Flow<SearchResult> =
