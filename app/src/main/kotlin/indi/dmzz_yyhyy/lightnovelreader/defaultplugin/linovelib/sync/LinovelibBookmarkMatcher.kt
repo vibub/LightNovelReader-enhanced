@@ -11,8 +11,9 @@ internal object LinovelibBookmarkMatcher {
         remoteTitle: String,
         volumes: BookVolumes
     ): ChapterInformation? {
+        val directRemoteChapter = remoteChapterId.toDirectRemoteChapter(remoteTitle)
         val candidates = volumes.toChapterCandidates()
-        if (candidates.isEmpty()) return null
+        if (candidates.isEmpty()) return directRemoteChapter
 
         val remoteIds = chapterIdCandidates(remoteChapterId)
         if (remoteIds.isNotEmpty()) {
@@ -22,7 +23,7 @@ internal object LinovelibBookmarkMatcher {
         }
 
         val remoteKey = remoteTitle.toTitleKey()
-        if (remoteKey.compact.isBlank()) return null
+        if (remoteKey.compact.isBlank()) return directRemoteChapter
 
         uniqueChapter(candidates.filter { it.titleKey.sameDirectTitle(remoteKey) })?.let { return it }
 
@@ -40,7 +41,7 @@ internal object LinovelibBookmarkMatcher {
             uniqueChapter(candidates.filter { it.titleKey.shortKind == kind })?.let { return it }
         }
 
-        return uniqueChapter(candidates.filter { it.titleKey.boundedContains(remoteKey) })
+        return uniqueChapter(candidates.filter { it.titleKey.boundedContains(remoteKey) }) ?: directRemoteChapter
     }
 
     fun matchesTitle(remoteTitle: String, localTitle: String): Boolean {
@@ -156,6 +157,15 @@ internal object LinovelibBookmarkMatcher {
         Afterword,
         Interlude,
         Extra
+    }
+
+    private fun String.toDirectRemoteChapter(remoteTitle: String): ChapterInformation? {
+        val id = trim()
+            .takeIf { DIRECT_CHAPTER_ID_REGEX.matches(it) }
+            ?.substringBefore('_')
+            ?.takeIf { it.isNotBlank() && it != "0" }
+            ?: return null
+        return ChapterInformation(id, remoteTitle)
     }
 
     private fun String.addChapterIdVariantsTo(target: MutableSet<String>) {
@@ -299,4 +309,5 @@ internal object LinovelibBookmarkMatcher {
 
     private val GENERIC_COMPACT_TITLES = setOf("章", "话", "話", "卷", "特典", "bonus", "extra", "ss")
     private val GENERIC_VOLUME_TITLES = setOf("正文", "目录", "目錄", "章节", "章節")
+    private val DIRECT_CHAPTER_ID_REGEX = Regex("\\d+(?:_\\d+)?")
 }

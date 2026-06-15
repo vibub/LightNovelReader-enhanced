@@ -81,6 +81,13 @@ class LinovelibAccountDataSource(
         val href: String = ""
     )
 
+    private data class ReadBookcaseCommand(
+        val aid: String,
+        val chapterId: String,
+        val bid: String,
+        val hasProgress: Boolean
+    )
+
     companion object {
         private const val HTML_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         private const val MAX_BOOKSHELF_PAGES = 10
@@ -89,6 +96,10 @@ class LinovelibAccountDataSource(
         private val BOOKMARK_PREFIX_REGEX = Regex("^(?:书签章节|书签|阅读至|读到|看到|继续阅读|上次阅读|最近阅读)[:：\\s]*")
         private val AID_QUERY_REGEX = Regex("[?&]aid=(\\d+)")
         private val CID_QUERY_REGEX = Regex("[?&]cid=(\\d+(?:_\\d+)?)")
+        private val READ_BOOKCASE_REGEX = Regex(
+            "(?:javascript:\\s*)?read_bookcase\\(\\s*(\\d+)\\s*,\\s*(\\d+(?:_\\d+)?)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*\\)\\s*;?",
+            RegexOption.IGNORE_CASE
+        )
         private val EXPECTED_GROUP_COUNT_REGEX = Regex("本组有\\s*(\\d+)\\s*本")
 
         internal fun parseBooksFromHtml(raw: String): List<LinovelibRemoteBook> = parseBookshelfPage(raw).books
@@ -158,12 +169,20 @@ class LinovelibAccountDataSource(
         private fun Element.extractBookcaseBookmark(bookId: String): ParsedBookmark {
             val goon = selectFirst("a.mybook-to-goon") ?: return ParsedBookmark()
             val href = goon.absOrAttr("href").takeIf { it.isNotBlank() }.orEmpty()
+            val title = goon.extractBookmarkTitle()
+            href.extractReadBookcaseCommand()?.let { command ->
+                if (command.aid != bookId || !command.hasProgress || command.chapterId == "0") {
+                    return ParsedBookmark(href = href)
+                }
+                return ParsedBookmark(
+                    chapterId = command.chapterId,
+                    title = title.takeIf { it.looksLikeBookmarkTitle() }.orEmpty(),
+                    href = href
+                )
+            }
+
             val chapterId = href.extractCid()
                 ?: CHAPTER_ID_REGEX.find(href)?.groups?.get(1)?.value?.toBaseChapterId()
-                ?: ""
-            val title = goon.selectFirst(".book-meta p.ell")?.text()?.cleanBookmarkTitle()
-                ?: goon.selectFirst("p.ell")?.text()?.cleanBookmarkTitle()
-                ?: goon.selectFirst(".ell")?.text()?.cleanBookmarkTitle()
                 ?: ""
             return ParsedBookmark(
                 chapterId = chapterId,
@@ -171,6 +190,12 @@ class LinovelibAccountDataSource(
                 href = href
             )
         }
+
+        private fun Element.extractBookmarkTitle(): String =
+            selectFirst(".book-meta p.ell")?.text()?.cleanBookmarkTitle()
+                ?: selectFirst("p.ell")?.text()?.cleanBookmarkTitle()
+                ?: selectFirst(".ell")?.text()?.cleanBookmarkTitle()
+                ?: ""
 
         private fun Document.extractExpectedGroupCount(): Int? =
             EXPECTED_GROUP_COUNT_REGEX.find(text())?.groups?.get(1)?.value?.toIntOrNull()
@@ -205,6 +230,16 @@ class LinovelibAccountDataSource(
 
         private fun String.extractCid(): String? =
             CID_QUERY_REGEX.find(this)?.groups?.get(1)?.value?.takeIf { it.isNotBlank() }?.toBaseChapterId()
+
+        private fun String.extractReadBookcaseCommand(): ReadBookcaseCommand? {
+            val match = READ_BOOKCASE_REGEX.find(trim().replace("&amp;", "&")) ?: return null
+            return ReadBookcaseCommand(
+                aid = match.groupValues[1],
+                chapterId = match.groupValues[2].toBaseChapterId(),
+                bid = match.groupValues[3],
+                hasProgress = match.groupValues[4] != "0"
+            )
+        }
 
         private fun String.toBaseChapterId(): String = substringBefore('_')
 

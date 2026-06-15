@@ -25,6 +25,68 @@ class LinovelibBookmarkMatcherTest {
     }
 
     @Test
+    fun resolveUsesDirectRemoteChapterIdWhenCatalogOmitsChapter() {
+        val volumes = bookVolumes(
+            volume("第一卷", chapter("129584", "插图")),
+            volume("第八卷", chapter("257544", "序章"), chapter("259145", "后记")),
+            volume("第九卷", chapter("288509", "插图"))
+        )
+
+        val result = LinovelibBookmarkMatcher.resolve(
+            remoteChapterId = "257543",
+            remoteTitle = "插图",
+            volumes = volumes
+        )
+
+        assertEquals("257543", result?.id)
+        assertEquals("插图", result?.title)
+    }
+
+    @Test
+    fun resolvePrefersUniqueCatalogTitleOverDirectRemoteChapterIdFallback() {
+        val volumes = bookVolumes(
+            volume("第一卷", chapter("12345", "第一章"))
+        )
+
+        val result = LinovelibBookmarkMatcher.resolve(
+            remoteChapterId = "999999",
+            remoteTitle = "第一章",
+            volumes = volumes
+        )
+
+        assertEquals("12345", result?.id)
+        assertEquals("第一章", result?.title)
+    }
+
+    @Test
+    fun resolveUsesDirectRemoteChapterIdWhenCatalogIsEmpty() {
+        val result = LinovelibBookmarkMatcher.resolve(
+            remoteChapterId = "257543",
+            remoteTitle = "插图",
+            volumes = BookVolumes("2734", emptyList())
+        )
+
+        assertEquals("257543", result?.id)
+        assertEquals("插图", result?.title)
+    }
+
+    @Test
+    fun resolveDoesNotUseUnparsedReadBookcaseHrefAsDirectChapterId() {
+        val volumes = bookVolumes(
+            volume("第一卷", chapter("129584", "插图")),
+            volume("第二卷", chapter("137798", "插图"))
+        )
+
+        val result = LinovelibBookmarkMatcher.resolve(
+            remoteChapterId = "javascript:read_bookcase(2734, 257543, 8507052, 1);",
+            remoteTitle = "插图",
+            volumes = volumes
+        )
+
+        assertNull(result)
+    }
+
+    @Test
     fun resolveNormalizesFullWidthNumbersAndPunctuation() {
         val volumes = bookVolumes(
             volume("第一卷", chapter("1", "第1章 开始"))

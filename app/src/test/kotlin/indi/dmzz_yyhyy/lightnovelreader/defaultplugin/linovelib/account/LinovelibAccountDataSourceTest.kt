@@ -82,6 +82,123 @@ class LinovelibAccountDataSourceTest {
     }
 
     @Test
+    fun parseBooksFromHtmlExtractsBookmarkChapterIdFromReadBookcaseCommand() {
+        val book = LinovelibAccountDataSource.parseBooksFromHtml(
+            bookshelfHtml(
+                items = listOf(
+                    bookItem(
+                        bid = "8369098",
+                        aid = "8",
+                        title = "欢迎来到实力至上主义的教室",
+                        bookmark = "插图",
+                        latestCid = "325518",
+                        latestTitle = "高圆寺六助＆王美雨特典 看不见的线",
+                        goonHref = "javascript:read_bookcase(8, 287057, 8369098, 1);"
+                    )
+                )
+            )
+        ).single()
+
+        assertEquals("8", book.bookId)
+        assertEquals("287057", book.bookmarkChapterId)
+        assertEquals("插图", book.bookmarkChapterTitle)
+        assertEquals("javascript:read_bookcase(8, 287057, 8369098, 1);", book.bookmarkHref)
+    }
+
+    @Test
+    fun parseBooksFromHtmlExtractsBookmarkChapterIdFromReadBookcaseCommandWithHiddenCatalogIllustration() {
+        val book = LinovelibAccountDataSource.parseBooksFromHtml(
+            bookshelfHtml(
+                items = listOf(
+                    bookItem(
+                        bid = "8507052",
+                        aid = "2734",
+                        title = "转生公主与天才千金的魔法革命",
+                        bookmark = "插图",
+                        latestCid = "307029",
+                        latestTitle = "后记",
+                        goonHref = "javascript:read_bookcase(2734, 257543, 8507052, 1);"
+                    )
+                )
+            )
+        ).single()
+
+        assertEquals("2734", book.bookId)
+        assertEquals("257543", book.bookmarkChapterId)
+        assertEquals("插图", book.bookmarkChapterTitle)
+        assertEquals("javascript:read_bookcase(2734, 257543, 8507052, 1);", book.bookmarkHref)
+    }
+
+    @Test
+    fun parseBooksFromHtmlIgnoresReadBookcaseWithoutProgress() {
+        val book = LinovelibAccountDataSource.parseBooksFromHtml(
+            bookshelfHtml(
+                items = listOf(
+                    bookItem(
+                        bid = "11843145",
+                        aid = "3095",
+                        title = "败北女角太多了！",
+                        bookmark = "不应同步的标题",
+                        latestCid = "319760",
+                        latestTitle = "Bookwalker电子书特典 敬请投下神圣的一票",
+                        goonHref = "javascript:read_bookcase(3095, 319760, 11843145, 0);"
+                    )
+                )
+            )
+        ).single()
+
+        assertEquals("", book.bookmarkChapterId)
+        assertEquals("", book.bookmarkChapterTitle)
+        assertEquals("javascript:read_bookcase(3095, 319760, 11843145, 0);", book.bookmarkHref)
+    }
+
+    @Test
+    fun parseBooksFromHtmlIgnoresReadBookcaseWithoutChapterId() {
+        val book = LinovelibAccountDataSource.parseBooksFromHtml(
+            bookshelfHtml(
+                items = listOf(
+                    bookItem(
+                        bid = "11843145",
+                        aid = "3095",
+                        title = "败北女角太多了！",
+                        bookmark = "不应同步的标题",
+                        latestCid = "319760",
+                        latestTitle = "Bookwalker电子书特典 敬请投下神圣的一票",
+                        goonHref = "javascript:read_bookcase(3095, 0, 11843145, 1);"
+                    )
+                )
+            )
+        ).single()
+
+        assertEquals("", book.bookmarkChapterId)
+        assertEquals("", book.bookmarkChapterTitle)
+        assertEquals("javascript:read_bookcase(3095, 0, 11843145, 1);", book.bookmarkHref)
+    }
+
+    @Test
+    fun parseBooksFromHtmlIgnoresReadBookcaseWithMismatchedAid() {
+        val book = LinovelibAccountDataSource.parseBooksFromHtml(
+            bookshelfHtml(
+                items = listOf(
+                    bookItem(
+                        bid = "8369098",
+                        aid = "8",
+                        title = "欢迎来到实力至上主义的教室",
+                        bookmark = "插图",
+                        latestCid = "325518",
+                        latestTitle = "高圆寺六助＆王美雨特典 看不见的线",
+                        goonHref = "javascript:read_bookcase(9999, 287057, 8369098, 1);"
+                    )
+                )
+            )
+        ).single()
+
+        assertEquals("", book.bookmarkChapterId)
+        assertEquals("", book.bookmarkChapterTitle)
+        assertEquals("javascript:read_bookcase(9999, 287057, 8369098, 1);", book.bookmarkHref)
+    }
+
+    @Test
     fun parseBooksFromHtmlDoesNotUseLatestUpdateAsBookmark() {
         val book = LinovelibAccountDataSource.parseBooksFromHtml(
             bookshelfHtml(
@@ -162,9 +279,11 @@ class LinovelibAccountDataSourceTest {
         title: String,
         bookmark: String,
         latestCid: String,
-        latestTitle: String
-    ): String =
-        """
+        latestTitle: String,
+        goonHref: String? = null
+    ): String {
+        val goonHrefAttribute = goonHref?.let { " href=\"$it\"" }.orEmpty()
+        return """
             <li class="book-li">
               <div class="book-layout">
                 <div class="rel">
@@ -175,7 +294,7 @@ class LinovelibAccountDataSourceTest {
                     <h4 class="book-title">$title</h4>
                   </a>
                 </div>
-                <a class="mybook-to-goon">
+                <a class="mybook-to-goon"$goonHrefAttribute>
                   <div class="book-meta"><p class="ell">$bookmark</p></div>
                 </a>
                 <div class="rel">
@@ -186,6 +305,7 @@ class LinovelibAccountDataSourceTest {
               </div>
             </li>
         """.trimIndent()
+    }
 
     private fun searchPopupHtml(): String =
         """
