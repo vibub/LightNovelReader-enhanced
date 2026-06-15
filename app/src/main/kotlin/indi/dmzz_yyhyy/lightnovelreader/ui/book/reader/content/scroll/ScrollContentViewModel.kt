@@ -124,6 +124,7 @@ class ScrollContentViewModel(
             uiState.readingContentId = visible.content.id
         }
         uiState.readingProgress = visible.progress
+        uiState.restoreProgress = visible.progress
         updateReadingProgress(
             ReadingProgressSnapshot(
                 bookId = uiState.bookId,
@@ -134,7 +135,9 @@ class ScrollContentViewModel(
         )
     }
 
-    private fun completeProgressRestore() {
+    private fun completeProgressRestore(restoredVersion: Int) {
+        if (uiState.restoreVersion != restoredVersion) return
+        uiState.consumedRestoreVersion = restoredVersion
         canPersistProgress = true
     }
 
