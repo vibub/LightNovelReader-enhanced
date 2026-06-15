@@ -31,7 +31,7 @@ class FlipPageContentViewModel(
     override val uiState: MutableFlipPageContentUiState = MutableFlipPageContentUiState(
         loadLastChapter = ::loadLastChapter,
         loadNextChapter = ::loadNextChapter,
-        changeChapter = ::changeChapter,
+        changeChapter = { changeChapter(it) },
         updatePageState = ::updatePagerState
     )
 
@@ -92,18 +92,20 @@ class FlipPageContentViewModel(
     override fun loadNextChapter() {
         if (!uiState.readingChapterContent.hasNextChapter()) return
         changeChapter(
-            id = uiState.readingChapterContent.nextChapter
+            id = uiState.readingChapterContent.nextChapter,
+            restoreProgress = true
         )
     }
 
     override fun loadLastChapter() {
         if (!uiState.readingChapterContent.hasPrevChapter()) return
         changeChapter(
-            id = uiState.readingChapterContent.lastChapter
+            id = uiState.readingChapterContent.lastChapter,
+            restoreProgress = true
         )
     }
 
-    override fun changeChapter(id: String) {
+    override fun changeChapter(id: String, restoreProgress: Boolean) {
         if (id.isBlank()) {
             Log.e("FlipPageContentViewModel", "a id less than 0 was transferred")
             return
@@ -141,8 +143,10 @@ class FlipPageContentViewModel(
             }
         }
         restoreProgressJob = coroutineScope.launch(Dispatchers.IO) {
-            val progress = bookRepository.getUserReadingData(uiState.bookId)
-                .currentChapterReadingProgressMap[targetChapterId] ?: 0f
+            val progress = if (restoreProgress) {
+                bookRepository.getUserReadingData(uiState.bookId)
+                    .currentChapterReadingProgressMap[targetChapterId] ?: 0f
+            } else 0f
             if (requestedChapterId == targetChapterId) {
                 pendingRestoreProgress = progress
                 tryRestorePagerPosition()

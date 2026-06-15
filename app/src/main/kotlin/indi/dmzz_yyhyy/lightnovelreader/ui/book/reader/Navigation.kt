@@ -58,7 +58,7 @@ fun NavGraphBuilder.bookReaderDestination() {
             accumulateReadTime = viewModel::accumulateReadingTime,
             onClickPrevChapter = viewModel::prevChapter,
             onClickNextChapter = viewModel::nextChapter,
-            onChangeChapter = viewModel::changeChapter,
+            onSelectChapterFromReaderCatalog = viewModel::selectChapterFromReaderCatalog,
             onClickThemeSettings = navController::navigateToSettingsThemeDestination,
             onClickBookmark = {
                 val chapterId = viewModel.uiState.contentUiState.readingChapterContent.id

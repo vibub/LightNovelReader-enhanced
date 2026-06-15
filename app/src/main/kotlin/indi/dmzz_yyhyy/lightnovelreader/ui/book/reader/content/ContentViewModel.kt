@@ -8,7 +8,7 @@ interface ContentViewModel {
     fun changeBookId(id: String)
     fun loadNextChapter()
     fun loadLastChapter()
-    fun changeChapter(id: String)
+    fun changeChapter(id: String, restoreProgress: Boolean = true)
 
     companion object {
         class EmptyContentViewModel: ContentViewModel {
@@ -31,7 +31,7 @@ interface ContentViewModel {
             override fun loadLastChapter() {
             }
 
-            override fun changeChapter(id: String) {
+            override fun changeChapter(id: String, restoreProgress: Boolean) {
             }
 
         }

@@ -95,10 +95,10 @@ import kotlinx.coroutines.delay
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.seconds
 import java.time.LocalTime
 import java.util.Locale
 
-@Suppress("AssignedValueIsNeverRead")
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter", "LocalContextGetResourceValueCall")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -110,7 +110,7 @@ fun ReaderScreen(
     updateTotalReadingTime: (bookId: String, Int) -> Unit,
     onClickPrevChapter: () -> Unit,
     onClickNextChapter: () -> Unit,
-    onChangeChapter: (chapterId: String) -> Unit,
+    onSelectChapterFromReaderCatalog: (chapterId: String) -> Unit,
     onClickThemeSettings: () -> Unit,
     onClickBookmark: () -> Unit,
     onClickWebView: (() -> Unit)? = null
@@ -133,7 +133,7 @@ fun ReaderScreen(
 
     val claim = LocalClaimSnackbarHost.current
 
-    DisposableEffect(Unit) {
+    DisposableEffect(claim) {
         claim(true)
         onDispose { claim(false) }
     }
@@ -298,7 +298,7 @@ fun ReaderScreen(
                     readingScreenUiState.bookVolumes.volumes.firstOrNull { volume -> volume.chapters.any { it.id == readingScreenUiState.contentUiState.readingChapterContent.id } }?.volumeId
                         ?: ""
             },
-            onClickChapter = onChangeChapter,
+            onClickChapter = onSelectChapterFromReaderCatalog,
             onChangeSelectedVolumeId = {
                 selectedVolumeId = it
             }
@@ -399,14 +399,14 @@ fun Content(
                 updateTotalReadingTime(readingScreenUiState.bookId, totalReadingTime)
                 totalReadingTime = 0
             }
-            delay(1000)
+            delay(1.seconds)
         }
     }
 
     LaunchedEffect(isRunning) {
         while (isRunning) {
             accumulateReadingTime(readingScreenUiState.bookId, 1)
-            delay(1000)
+            delay(1.seconds)
         }
     }
 

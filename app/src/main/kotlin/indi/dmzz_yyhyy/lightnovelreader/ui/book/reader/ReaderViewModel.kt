@@ -99,7 +99,7 @@ class ReaderViewModel @Inject constructor(
                         contentComponentRepository = contentComponentRepository
                     )
                     contentViewModel.changeBookId(bookId)
-                    contentViewModel.changeChapter(chapterId)
+                    contentViewModel.changeChapter(chapterId, restoreProgress = true)
                     _uiState.contentUiState = contentViewModel.uiState
                 }
                 else if (!it && contentViewModel !is ScrollContentViewModel) {
@@ -111,7 +111,7 @@ class ReaderViewModel @Inject constructor(
                         contentComponentRepository = contentComponentRepository
                     )
                     contentViewModel.changeBookId(bookId)
-                    contentViewModel.changeChapter(chapterId)
+                    contentViewModel.changeChapter(chapterId, restoreProgress = true)
                     _uiState.contentUiState = contentViewModel.uiState
                 }
             }
@@ -122,9 +122,13 @@ class ReaderViewModel @Inject constructor(
 
     fun nextChapter() = contentViewModel.loadNextChapter()
 
-    fun changeChapter(chapterId: String) {
+    fun changeChapter(chapterId: String, restoreProgress: Boolean = true) {
         this.chapterId = chapterId
-        contentViewModel.changeChapter(chapterId)
+        contentViewModel.changeChapter(chapterId, restoreProgress)
+    }
+
+    fun selectChapterFromReaderCatalog(chapterId: String) {
+        changeChapter(chapterId, restoreProgress = false)
     }
 
     fun bookmarkCurrentChapter(): Boolean {
