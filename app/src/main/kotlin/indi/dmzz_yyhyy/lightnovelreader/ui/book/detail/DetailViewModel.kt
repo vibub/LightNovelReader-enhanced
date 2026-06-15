@@ -112,6 +112,22 @@ class DetailViewModel @Inject constructor(
         bookRepository.progressBookTagClick(tag, navController!!)
     }
 
+    fun matchLinovelibBookmark(bookId: String, chapterId: String): Boolean {
+        val chapter = _uiState.bookVolumes.volumes
+            .asSequence()
+            .flatMap { it.chapters.asSequence() }
+            .firstOrNull { it.id == chapterId }
+            ?: return false
+        viewModelScope.launch(Dispatchers.IO) {
+            linovelibBookmarkRepository.matchRemoteBookmarkManually(
+                bookId = bookId,
+                chapterId = chapter.id,
+                chapterTitle = chapter.title
+            )
+        }
+        return true
+    }
+
 
     fun exportToEpub(uri: Uri, bookId: String, title: String): Flow<WorkInfo?> {
         val workRequest = OneTimeWorkRequestBuilder<ExportBookToEPUBWork>()

@@ -11,7 +11,6 @@ import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book.LinovelibWe
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibJsoup
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.BookVolumes
-import io.nightfish.lightnovelreader.api.book.ChapterInformation
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfSortType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -19,10 +18,11 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.time.Duration.Companion.milliseconds
 
 @Singleton
 class LinovelibSyncRepository @Inject constructor(
-    private val userDataRepository: UserDataRepository,
+    userDataRepository: UserDataRepository,
     private val bookshelfRepository: BookshelfRepository,
     private val localBookDataSource: LocalBookDataSource,
     private val webBookDataSourceProvider: WebBookDataSourceProvider,
@@ -36,12 +36,12 @@ class LinovelibSyncRepository @Inject constructor(
     suspend fun isRemoteBookmarkAt(bookId: String, chapterId: String, chapterTitle: String): Boolean = withContext(Dispatchers.IO) {
         val remoteBook = accountDataSource.getRemoteBookshelf().firstOrNull { it.bookId == bookId }
             ?: return@withContext false
-        val remoteIds = remoteBook.bookmarkChapterId.chapterIdCandidates()
-        val localIds = chapterId.chapterIdCandidates()
+        val remoteIds = LinovelibBookmarkMatcher.chapterIdCandidates(remoteBook.bookmarkChapterId)
+        val localIds = LinovelibBookmarkMatcher.chapterIdCandidates(chapterId)
         if (remoteIds.isNotEmpty() && localIds.isNotEmpty() && remoteIds.any { it in localIds }) {
             return@withContext true
         }
-        chapterTitle.isNotBlank() && remoteBook.bookmarkChapterTitle.matchesBookmarkTitle(chapterTitle)
+        chapterTitle.isNotBlank() && LinovelibBookmarkMatcher.matchesTitle(remoteBook.bookmarkChapterTitle, chapterTitle)
     }
 
     suspend fun syncRemoteToLocal(): LinovelibSyncResult = withContext(Dispatchers.IO) {
@@ -63,6 +63,7 @@ class LinovelibSyncRepository @Inject constructor(
             var bookmarksUpdated = 0
             var unresolvedBookmarks = 0
             var remoteBookmarks = 0
+            var volumeFallbacks = 0
             val failedBookIds = mutableListOf<String>()
             remoteBooks.forEach { remoteBook ->
                 runCatching {
@@ -73,8 +74,9 @@ class LinovelibSyncRepository @Inject constructor(
 
                     if (remoteBook.hasBookmark()) {
                         remoteBookmarks++
-                        val volumes = getBookVolumesForSync(remoteBook.bookId)
-                        val bookmark = resolveBookmark(remoteBook, volumes)
+                        val volumesForSync = getBookVolumesForSync(remoteBook.bookId)
+                        if (volumesForSync.usedLocalFallback) volumeFallbacks++
+                        val bookmark = resolveBookmark(remoteBook, volumesForSync.volumes)
                         bookmarkRepository.upsertRemoteBookmark(
                             bookId = remoteBook.bookId,
                             chapterId = bookmark?.id.orEmpty(),
@@ -95,7 +97,8 @@ class LinovelibSyncRepository @Inject constructor(
                 remoteBookmarks = remoteBookmarks,
                 bookmarksUpdated = bookmarksUpdated,
                 unresolvedBookmarks = unresolvedBookmarks,
-                failedBookIds = failedBookIds
+                failedBookIds = failedBookIds,
+                volumeFallbacks = volumeFallbacks
             )
             accountStore.markSyncSuccess(now, summary)
             LinovelibSyncResult(
@@ -123,22 +126,28 @@ class LinovelibSyncRepository @Inject constructor(
         return remoteBook.toMinimalBookInformation()
     }
 
-    private suspend fun getBookVolumesForSync(bookId: String): BookVolumes {
-        localBookDataSource.getBookVolumes(bookId)
-            ?.takeIf { !it.isEmpty() }
-            ?.let { return it }
-        delay(SYNC_REQUEST_DELAY_MILLIS)
+    private suspend fun getBookVolumesForSync(bookId: String): BookVolumesForSync {
+        delay(SYNC_REQUEST_DELAY_MILLIS.milliseconds)
         val remoteVolumes = websiteDataSource.getBookVolumes(bookId)
         if (!remoteVolumes.isEmpty()) {
             localBookDataSource.updateBookVolumes(remoteVolumes)
+            return BookVolumesForSync(remoteVolumes, usedLocalFallback = false)
         }
-        return remoteVolumes
+        val localVolumes = localBookDataSource.getBookVolumes(bookId)
+            ?.takeIf { !it.isEmpty() }
+            ?: BookVolumes.empty(bookId)
+        return BookVolumesForSync(localVolumes, usedLocalFallback = !localVolumes.isEmpty())
     }
 
     private fun LinovelibAccountDataSource.LinovelibRemoteBook.toMinimalBookInformation(): BookInformation =
         BookInformation.empty(bookId).toMutable().apply {
             title = this@toMinimalBookInformation.title.ifBlank { "Linovelib $bookId" }
         }
+
+    private data class BookVolumesForSync(
+        val volumes: BookVolumes,
+        val usedLocalFallback: Boolean
+    )
 
     private fun ensureSyncBookshelf() {
         if (bookshelfRepository.getBookshelf(LinovelibConstants.SYNC_BOOKSHELF_ID) != null) return
@@ -154,25 +163,11 @@ class LinovelibSyncRepository @Inject constructor(
     private fun resolveBookmark(
         remoteBook: LinovelibAccountDataSource.LinovelibRemoteBook,
         volumes: BookVolumes
-    ): ChapterInformation? {
-        val chapters = volumes.volumes.flatMap { it.chapters }
-        if (chapters.isEmpty()) return null
-        val remoteIds = remoteBook.bookmarkChapterId.chapterIdCandidates()
-        if (remoteIds.isNotEmpty()) {
-            chapters.firstOrNull { chapter ->
-                val localIds = chapter.id.chapterIdCandidates()
-                localIds.any { it in remoteIds }
-            }?.let { return it }
-        }
-        val remoteTitle = remoteBook.bookmarkChapterTitle.normalizeBookmarkTitle()
-        if (remoteTitle.isBlank()) return null
-        chapters.singleOrNull { it.title.normalizeBookmarkTitle() == remoteTitle }?.let { return it }
-        val remoteCompactTitle = remoteTitle.compactBookmarkTitle()
-        chapters.singleOrNull { it.title.compactBookmarkTitle() == remoteCompactTitle }?.let { return it }
-        return chapters.singleOrNull { chapter ->
-            remoteTitle.boundedContainsBookmarkTitle(chapter.title.normalizeBookmarkTitle())
-        }
-    }
+    ) = LinovelibBookmarkMatcher.resolve(
+        remoteChapterId = remoteBook.bookmarkChapterId.ifBlank { remoteBook.bookmarkHref },
+        remoteTitle = remoteBook.bookmarkChapterTitle,
+        volumes = volumes
+    )
 
     private fun LinovelibAccountDataSource.LinovelibRemoteBook.hasBookmark(): Boolean =
         bookmarkChapterId.isNotBlank() || bookmarkChapterTitle.isNotBlank()
@@ -183,7 +178,8 @@ class LinovelibSyncRepository @Inject constructor(
         remoteBookmarks: Int,
         bookmarksUpdated: Int,
         unresolvedBookmarks: Int,
-        failedBookIds: List<String>
+        failedBookIds: List<String>,
+        volumeFallbacks: Int
     ): String = buildString {
         append("同步完成：远端书架 ")
         append(remoteBookshelf.books.size)
@@ -193,58 +189,12 @@ class LinovelibSyncRepository @Inject constructor(
         append("，章节书签 ").append(bookmarksUpdated).append(" 本")
         append("，待解析 ").append(unresolvedBookmarks).append(" 本")
         append("，失败 ").append(failedBookIds.size).append(" 本")
+        if (volumeFallbacks > 0) {
+            append("，目录回退 ").append(volumeFallbacks).append(" 本")
+        }
         if (remoteBookshelf.pagesFetched > 1) {
             append("，读取 ").append(remoteBookshelf.pagesFetched).append(" 页")
         }
-    }
-
-    private fun String.chapterIdCandidates(): Set<String> {
-        val id = trim()
-            .substringBefore('?')
-            .substringBefore('#')
-            .substringBefore(".html")
-            .substringAfterLast('/')
-            .removePrefix("cid(")
-            .removeSuffix(")")
-            .filter { it.isDigit() || it == '_' }
-        if (id.isBlank()) return emptySet()
-        return buildSet {
-            add(id)
-            id.substringBefore('_').takeIf { it.isNotBlank() }?.let(::add)
-        }
-    }
-
-    private fun String.normalizeBookmarkTitle(): String =
-        replace('　', ' ')
-            .replace('：', ':')
-            .replace(Regex("^(?:书签章节|书签|阅读至|读到|看到|继续阅读|上次阅读|最近阅读)[:\\s]*"), "")
-            .replace(Regex("\\s+"), " ")
-            .trim(' ', ':', '-', '—')
-
-    private fun String.compactBookmarkTitle(): String =
-        normalizeBookmarkTitle()
-            .lowercase()
-            .replace(Regex("[\\s:：,，。.!！?？《》〈〉「」『』（）()\\[\\]【】·・~～_\\-—]+"), "")
-            .trim()
-
-    private fun String.matchesBookmarkTitle(other: String): Boolean {
-        val self = normalizeBookmarkTitle()
-        val target = other.normalizeBookmarkTitle()
-        if (self.isBlank() || target.isBlank()) return false
-        return self == target ||
-            self.compactBookmarkTitle() == target.compactBookmarkTitle() ||
-            self.boundedContainsBookmarkTitle(target)
-    }
-
-    private fun String.boundedContainsBookmarkTitle(other: String): Boolean {
-        val self = compactBookmarkTitle()
-        val target = other.compactBookmarkTitle()
-        if (self.isBlank() || target.isBlank()) return false
-        if (self == target) return true
-        val shorter = minOf(self.length, target.length)
-        if (shorter < 4) return false
-        if (self.endsWith(target) || target.endsWith(self)) return true
-        return shorter >= 6 && (self.contains(target) || target.contains(self))
     }
 
     private companion object {

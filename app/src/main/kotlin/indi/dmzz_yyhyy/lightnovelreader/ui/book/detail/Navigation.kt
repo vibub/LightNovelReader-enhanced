@@ -140,6 +140,17 @@ fun NavGraphBuilder.bookDetailDestination() {
             onClickMarkAsRead = { navController.navigateToMarkAllChaptersAsReadDialog(viewModel.uiState.bookInformation.id) },
             onClickWebView = {
                 navController.navigateToLinovelibWebBookDestination(bookId)
+            },
+            onMatchLinovelibBookmark = { chapterId ->
+                val matched = viewModel.matchLinovelibBookmark(bookId, chapterId)
+                showSnackbar(
+                    coroutineScope = coroutineScope,
+                    hostState = snackbarHostState,
+                    message = context.getString(
+                        if (matched) R.string.linovelib_bookmark_match_success
+                        else R.string.linovelib_bookmark_match_empty_catalog
+                    )
+                ) { }
             }
         )
     }

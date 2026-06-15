@@ -42,18 +42,32 @@ class LinovelibBookmarkRepository @Inject constructor(
         resolved: Boolean
     ) {
         val now = LocalDateTime.now()
-        val local = bookmarkDao.get(bookId)
-        if (local?.syncState == LinovelibBookmarkSyncState.Pending.value && local.updatedAt > (local.remoteUpdatedAt ?: LocalDateTime.MIN)) {
-            return
-        }
         bookmarkDao.upsert(
             LinovelibChapterBookmarkEntity(
                 bookId = bookId,
                 chapterId = chapterId,
                 chapterTitle = chapterTitle,
                 updatedAt = now,
-                remoteUpdatedAt = if (resolved) now else local?.remoteUpdatedAt,
+                remoteUpdatedAt = now,
                 syncState = if (resolved) LinovelibBookmarkSyncState.Synced.value else LinovelibBookmarkSyncState.Unresolved.value
+            )
+        )
+    }
+
+    fun matchRemoteBookmarkManually(
+        bookId: String,
+        chapterId: String,
+        chapterTitle: String
+    ) {
+        val now = LocalDateTime.now()
+        val local = bookmarkDao.get(bookId) ?: return
+        bookmarkDao.upsert(
+            local.copy(
+                chapterId = chapterId,
+                chapterTitle = chapterTitle,
+                updatedAt = now,
+                remoteUpdatedAt = local.remoteUpdatedAt ?: now,
+                syncState = LinovelibBookmarkSyncState.Synced.value
             )
         )
     }

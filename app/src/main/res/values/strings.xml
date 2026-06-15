@@ -625,6 +625,12 @@
     <string name="linovelib_bookmark_current_chapter">标记当前章节书签</string>
     <string name="linovelib_saved_bookmark">Bilinovel 章节书签</string>
     <string name="linovelib_bookmark_unresolved">已保存远端书签标题，暂未匹配到本地章节</string>
+    <string name="linovelib_bookmark_manual_match">手动匹配章节</string>
+    <string name="linovelib_bookmark_manual_match_hint">点击选择本地章节进行匹配</string>
+    <string name="linovelib_bookmark_match_title">匹配 Bilinovel 章节书签</string>
+    <string name="linovelib_bookmark_match_remote_title">远端书签：%1$s</string>
+    <string name="linovelib_bookmark_match_empty_catalog">目录加载后可手动匹配</string>
+    <string name="linovelib_bookmark_match_success">已匹配 Bilinovel 章节书签</string>
     <string name="linovelib_parser_warning_title">Linovelib 段落顺序可能异常</string>
     <string name="action_webview">网页</string>
 
