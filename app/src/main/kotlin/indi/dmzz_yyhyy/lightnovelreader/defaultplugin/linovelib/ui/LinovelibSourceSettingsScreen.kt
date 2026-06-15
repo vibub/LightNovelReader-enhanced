@@ -1,6 +1,8 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.ui
 
 import android.annotation.SuppressLint
+import android.os.Build
+import android.view.View
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -29,6 +31,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -37,6 +40,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
+
+private class WebViewHolder {
+    var webView: WebView? = null
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,14 +54,18 @@ fun LinovelibSourceSettingsScreen(
     onClearCookie: () -> Unit,
     onSyncNow: () -> Unit
 ) {
-    var webView: WebView? by remember { mutableStateOf(null) }
+    val webViewHolder = remember { WebViewHolder() }
     var lastLoadedUrl by remember { mutableStateOf(LinovelibConstants.loginUrl()) }
     var menuExpanded by remember { mutableStateOf(false) }
+    var pendingSyncBookcase by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         onDispose {
-            webView?.destroy()
-            webView = null
+            webViewHolder.webView?.run {
+                stopLoading()
+                destroy()
+            }
+            webViewHolder.webView = null
         }
     }
 
@@ -68,7 +79,7 @@ fun LinovelibSourceSettingsScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { webView?.reload() }) {
+                    IconButton(onClick = { webViewHolder.webView?.reload() }) {
                         Icon(
                             painter = painterResource(R.drawable.refresh_24px),
                             contentDescription = stringResource(R.string.linovelib_refresh)
@@ -95,10 +106,13 @@ fun LinovelibSourceSettingsScreen(
                                 onClearCookie()
                             },
                             onSyncBookcase = {
-                                if (!lastLoadedUrl.contains("bookcase.php")) {
-                                    webView?.loadUrl(LinovelibConstants.bookcaseUrl())
+                                CookieManager.getInstance().flush()
+                                if (lastLoadedUrl.contains("bookcase.php")) {
+                                    onSyncNow()
+                                } else {
+                                    pendingSyncBookcase = true
+                                    webViewHolder.webView?.loadUrl(LinovelibConstants.bookcaseUrl())
                                 }
-                                onSyncNow()
                             }
                         )
                     }
@@ -111,8 +125,15 @@ fun LinovelibSourceSettingsScreen(
                 .padding(innerPadding)
                 .fillMaxSize(),
             initialUrl = LinovelibConstants.loginUrl(),
-            onWebViewCreated = { webView = it },
-            onUrlChanged = { lastLoadedUrl = it }
+            mode = LinovelibWebViewMode.Login,
+            onWebViewCreated = { webViewHolder.webView = it },
+            onUrlChanged = { lastLoadedUrl = it },
+            onPageFinished = { _, url ->
+                if (pendingSyncBookcase && url.contains("bookcase.php")) {
+                    pendingSyncBookcase = false
+                    onSyncNow()
+                }
+            }
         )
     }
 }
@@ -259,16 +280,98 @@ fun LinovelibWebSearchScreen(
     }
 }
 
+private const val LOGIN_INPUT_CARET_FIX_SCRIPT = """
+(function() {
+  if (window.__lnrLoginCaretFixInstalled) return 'already_installed';
+  window.__lnrLoginCaretFixInstalled = true;
+  var composing = false;
+  var lastValues = new WeakMap();
+  var allowedTypes = ['', 'text', 'password', 'email', 'search', 'tel', 'url'];
+  function isLoginInput(el) {
+    if (!el || el.tagName !== 'INPUT') return false;
+    var type = (el.getAttribute('type') || '').toLowerCase();
+    return allowedTypes.indexOf(type) >= 0;
+  }
+  function applyDirection(el) {
+    if (!isLoginInput(el)) return;
+    try {
+      el.style.direction = 'ltr';
+      el.style.textAlign = 'left';
+      el.setAttribute('dir', 'ltr');
+    } catch (e) {}
+  }
+  function moveToEndIfReset(el) {
+    if (composing || !isLoginInput(el) || document.activeElement !== el) return;
+    try {
+      var end = el.value ? el.value.length : 0;
+      if (end > 0 && (el.selectionStart === 0 || el.selectionEnd === 0 || el.selectionStart == null)) {
+        el.setSelectionRange(end, end);
+      }
+    } catch (e) {}
+  }
+  function scheduleMove(el) {
+    if (!isLoginInput(el)) return;
+    applyDirection(el);
+    if (window.requestAnimationFrame) {
+      window.requestAnimationFrame(function() { moveToEndIfReset(el); });
+    }
+    window.setTimeout(function() { moveToEndIfReset(el); }, 0);
+    window.setTimeout(function() { moveToEndIfReset(el); }, 80);
+  }
+  function scan(root) {
+    if (!root || !root.querySelectorAll) return;
+    Array.prototype.forEach.call(root.querySelectorAll('input'), applyDirection);
+  }
+  document.addEventListener('focusin', function(e) { applyDirection(e.target); }, true);
+  document.addEventListener('keydown', function(e) {
+    if (lastValues.has(e.target)) moveToEndIfReset(e.target);
+  }, true);
+  document.addEventListener('input', function(e) {
+    if (!isLoginInput(e.target)) return;
+    lastValues.set(e.target, e.target.value || '');
+    scheduleMove(e.target);
+  }, true);
+  document.addEventListener('keyup', function(e) { scheduleMove(e.target); }, true);
+  document.addEventListener('compositionstart', function() { composing = true; }, true);
+  document.addEventListener('compositionend', function(e) {
+    composing = false;
+    scheduleMove(e.target);
+  }, true);
+  scan(document);
+  if (window.MutationObserver && document.documentElement) {
+    new MutationObserver(function(mutations) {
+      mutations.forEach(function(mutation) {
+        Array.prototype.forEach.call(mutation.addedNodes, function(node) {
+          if (isLoginInput(node)) applyDirection(node);
+          scan(node);
+        });
+      });
+    }).observe(document.documentElement, { childList: true, subtree: true });
+  }
+  return 'installed';
+})();
+"""
+
+enum class LinovelibWebViewMode {
+    Browsing,
+    Login
+}
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun LinovelibWebView(
     modifier: Modifier,
     initialUrl: String,
     initialCookies: String = "",
+    mode: LinovelibWebViewMode = LinovelibWebViewMode.Browsing,
     onWebViewCreated: (WebView) -> Unit = {},
     onUrlChanged: (String) -> Unit = {},
     onPageFinished: (WebView, String) -> Unit = { _, _ -> }
 ) {
+    val currentOnWebViewCreated by rememberUpdatedState(onWebViewCreated)
+    val currentOnUrlChanged by rememberUpdatedState(onUrlChanged)
+    val currentOnPageFinished by rememberUpdatedState(onPageFinished)
+
     AndroidView(
         modifier = modifier,
         factory = { context ->
@@ -279,21 +382,37 @@ fun LinovelibWebView(
             WebView(context).apply {
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
-                settings.loadWithOverviewMode = true
-                settings.useWideViewPort = true
-                settings.userAgentString = settings.userAgentString
-                    .replace("; wv", "")
-                    .replace("Version/4.0 ", "")
+                if (mode == LinovelibWebViewMode.Browsing) {
+                    settings.loadWithOverviewMode = true
+                    settings.useWideViewPort = true
+                    settings.userAgentString = settings.userAgentString
+                        .replace("; wv", "")
+                        .replace("Version/4.0 ", "")
+                } else {
+                    settings.loadWithOverviewMode = false
+                    settings.useWideViewPort = false
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        importantForContentCapture = View.IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS
+                    }
+                }
+                isFocusable = true
+                isFocusableInTouchMode = true
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, url: String) {
                         super.onPageFinished(view, url)
                         CookieManager.getInstance().flush()
-                        onUrlChanged(url)
-                        onPageFinished(view, url)
+                        if (mode == LinovelibWebViewMode.Login) {
+                            view.evaluateJavascript(LOGIN_INPUT_CARET_FIX_SCRIPT, null)
+                        }
+                        currentOnUrlChanged(url)
+                        currentOnPageFinished(view, url)
                     }
                 }
-                onWebViewCreated(this)
+                currentOnWebViewCreated(this)
                 loadUrl(initialUrl)
             }
         },

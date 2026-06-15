@@ -30,6 +30,7 @@ class LinovelibJsoup(
     private val accountStore: LinovelibAccountStore? = null
 ) {
     private val semaphore = Semaphore(3)
+    private val userAgent = UserAgentGenerator.generate()
 
     suspend fun getDocument(
         url: String,
@@ -60,7 +61,7 @@ class LinovelibJsoup(
         referer: String = LinovelibConstants.BASE_URL,
         useCookie: Boolean = true
     ): Map<String, String> = buildMap {
-        put("User-Agent", UserAgentGenerator.generate())
+        put("User-Agent", userAgent)
         put("Accept", "image/webp,image/jpeg,image/png,image/gif,image/*,*/*;q=0.8")
         put("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
         put("Referer", referer)
@@ -113,9 +114,10 @@ class LinovelibJsoup(
                     throw e
                 }
                 if (attempt < retryTime) {
-                    Log.w(TAG, "request failed, retrying: $url", lastError)
-                    delay(delayMillis)
-                    delayMillis *= 2
+                    val retryDelay = retryDelayMillis(lastError, delayMillis)
+                    Log.w(TAG, "request failed, retrying in ${retryDelay}ms: $url", lastError)
+                    delay(retryDelay)
+                    delayMillis = (retryDelay * 2).coerceAtMost(MAX_RETRY_DELAY_MILLIS)
                 }
             }
             throw lastError ?: IOException("Linovelib request failed: $url")
@@ -124,12 +126,23 @@ class LinovelibJsoup(
 
     private fun shouldRetry(error: Throwable?): Boolean = when (error) {
         is LinovelibBlockedException -> false
-        is LinovelibHttpException -> error.statusCode >= 500
+        is LinovelibHttpException -> error.statusCode == 429 || error.statusCode >= 500
         else -> true
+    }
+
+    private fun retryDelayMillis(error: Throwable?, currentDelayMillis: Long): Long = when (error) {
+        is LinovelibHttpException -> if (error.statusCode == 429) {
+            maxOf(currentDelayMillis, RATE_LIMIT_RETRY_DELAY_MILLIS)
+        } else {
+            currentDelayMillis
+        }
+        else -> currentDelayMillis
     }
 
     companion object {
         private const val TAG = "LinovelibJsoup"
+        private const val RATE_LIMIT_RETRY_DELAY_MILLIS = 5_000L
+        private const val MAX_RETRY_DELAY_MILLIS = 30_000L
 
         fun isCloudflareBlocked(statusCode: Int, body: String): Boolean {
             if (statusCode == 403 || statusCode == 503) return true

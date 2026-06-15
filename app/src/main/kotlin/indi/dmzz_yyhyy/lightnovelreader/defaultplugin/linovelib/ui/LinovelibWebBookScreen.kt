@@ -126,12 +126,23 @@ fun LinovelibWebBookScreen(
 
 private const val AUTO_BOOKMARK_SCRIPT = """
 (function() {
-  const nodes = Array.from(document.querySelectorAll('a,button,[onclick],[role="button"],.star,.bookmark,.bookshelf'));
-  const target = nodes.find(function(el) {
-    const text = [el.innerText, el.title, el.getAttribute('aria-label'), el.className, el.getAttribute('href'), el.getAttribute('onclick')]
+  const nodes = Array.from(document.querySelectorAll('a,button,[onclick],[role="button"],.star,.bookmark,[class*="bookmark"],[title*="书签"],[aria-label*="书签"]'));
+  function textOf(el) {
+    return [el.innerText, el.title, el.getAttribute('aria-label'), el.className, el.getAttribute('href'), el.getAttribute('onclick')]
       .filter(Boolean).join(' ');
-    return /书签|标记|收藏|bookmark|star/i.test(text) && !/取消|删除|移除|remove|delete/i.test(text);
+  }
+  function rejected(text) {
+    return /取消|删除|移除|remove|delete|加入书架|收藏本书|书架|bookcase|bookshelf/i.test(text);
+  }
+  const explicit = nodes.find(function(el) {
+    const text = textOf(el);
+    return /书签|标记本章|bookmark/i.test(text) && !rejected(text);
   });
+  const star = nodes.find(function(el) {
+    const text = textOf(el);
+    return /star|icon-star/i.test(text) && !rejected(text);
+  });
+  const target = explicit || star;
   if (!target) return 'not_found';
   target.click();
   return 'clicked';
