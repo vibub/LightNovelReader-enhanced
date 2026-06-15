@@ -1,7 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.home.reading.home
 
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -16,6 +15,7 @@ import io.nightfish.lightnovelreader.api.book.UserReadingData
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -45,6 +45,7 @@ class ReadingHomeViewModel @Inject constructor(
     val recentReadingUserReadingDataMap: Map<String, UserReadingData> = _recentReadingUserReadingDataMap
 
     private val loadingIds = mutableSetOf<String>()
+    private val userReadingDataJobs = mutableMapOf<String, Job>()
 
     private val _bookVolumesMap = mutableStateMapOf<String, BookVolumes>()
     val bookVolumesMap: Map<String, BookVolumes> = _bookVolumesMap
@@ -77,10 +78,31 @@ class ReadingHomeViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             readingBooksUserData.getFlowWithDefault(emptyList()).collect {
-                recentReadingBookIds = it
+                val ids = it
                     .reversed()
                     .filter(String::isNotBlank)
+                recentReadingBookIds = ids
+                cleanupReadingDataObservers(ids.toSet())
             }
+        }
+    }
+
+    private fun observeUserReadingData(bookId: String) {
+        if (userReadingDataJobs[bookId]?.isActive == true) return
+        userReadingDataJobs[bookId] = viewModelScope.launch {
+            bookRepository.getUserReadingDataFlow(bookId).collect { userReadingData ->
+                _recentReadingUserReadingDataMap[bookId] = userReadingData
+            }
+        }
+    }
+
+    private fun cleanupReadingDataObservers(activeBookIds: Set<String>) {
+        val removedIds = userReadingDataJobs.keys - activeBookIds
+        removedIds.forEach { bookId ->
+            userReadingDataJobs.remove(bookId)?.cancel()
+            _recentReadingUserReadingDataMap.remove(bookId)
+            _bookVolumesMap.remove(bookId)
+            _recentReadingBookInformationMap.remove(bookId)
         }
     }
 
@@ -93,11 +115,13 @@ class ReadingHomeViewModel @Inject constructor(
 
             withContext(Dispatchers.Main) {
                 recentReadingBookIds = ids
+                cleanupReadingDataObservers(ids.toSet())
             }
         }
     }
 
     fun loadBookInfo(id: String) {
+        observeUserReadingData(id)
         val hasInfo = _recentReadingBookInformationMap[id] != null
 
         val canLoad = synchronized(loadingIds) {
@@ -116,14 +140,10 @@ class ReadingHomeViewModel @Inject constructor(
                     if (!hasInfo) bookRepository.getStateBookInformation(id, viewModelScope)
                     else bookRepository.getStateBookInformation(id, viewModelScope, WebDataSourcePriority.Low)
 
-                val userData: UserReadingData =
-                    bookRepository.getStateUserReadingData(id, viewModelScope)
-
                 withContext(Dispatchers.Main) {
                     if (info != null) {
                         _recentReadingBookInformationMap[id] = info
                     }
-                    _recentReadingUserReadingDataMap[id] = userData
                 }
             } finally {
                 synchronized(loadingIds) {

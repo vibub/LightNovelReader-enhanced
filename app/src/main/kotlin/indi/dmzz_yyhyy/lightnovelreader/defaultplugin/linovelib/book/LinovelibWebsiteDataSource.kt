@@ -105,6 +105,7 @@ class LinovelibWebsiteDataSource(
         val builder = ContentBuilder()
         val parserWarnings = mutableListOf<String>()
         val seenPageSignatures = mutableSetOf<String>()
+        val chapterParts = mutableListOf<LinovelibChapterContentParser.Part>()
         var title = ""
         var page = 1
         var shouldTryNext = true
@@ -123,19 +124,22 @@ class LinovelibWebsiteDataSource(
             val content = document.selectFirst("#TextContent") ?: document.selectFirst("#textcontent")
             ?: document.selectFirst(".chapter-content") ?: document.selectFirst("#content")
             ?: if (page == 1) return@runCatching ChapterContent.empty(normalizedChapterId) else break
-            val signature = content.text().cleanText().take(300)
+            val signature = content.text().cleanText()
+                .ifBlank { content.html().cleanText() }
+                .take(300)
             if (signature.isBlank() || !seenPageSignatures.add(signature)) break
             val parseResult = LinovelibChapterContentParser.parse(content, pageChapterId) { it.imageUrl() }
             parseResult.warning?.let(parserWarnings::add)
-            parseResult.parts.forEach { part ->
-                when (part) {
-                    is LinovelibChapterContentParser.Part.Text -> builder.simpleText(part.text)
-                    is LinovelibChapterContentParser.Part.Image -> part.url.toUri().let(builder::image)
-                }
-            }
+            chapterParts.addAll(parseResult.parts)
             val nextPage = page + 1
             shouldTryNext = document.hasChapterPage(normalizedBookId, normalizedChapterId, nextPage)
             page++
+        }
+        chapterParts.mergeLinovelibPagedTextParts().forEach { part ->
+            when (part) {
+                is LinovelibChapterContentParser.Part.Text -> builder.simpleText(part.text)
+                is LinovelibChapterContentParser.Part.Image -> part.url.toUri().let(builder::image)
+            }
         }
         val content = builder.build().withParserWarnings(parserWarnings)
         val navigation = getChapterNavigation(normalizedBookId, normalizedChapterId)
@@ -360,4 +364,30 @@ class LinovelibWebsiteDataSource(
             "src"
         )
     }
+}
+
+internal fun List<LinovelibChapterContentParser.Part>.mergeLinovelibPagedTextParts(): List<LinovelibChapterContentParser.Part> {
+    val merged = mutableListOf<LinovelibChapterContentParser.Part>()
+    val pendingText = StringBuilder()
+
+    fun flushText() {
+        val text = pendingText.toString()
+        pendingText.clear()
+        if (text.isNotBlank()) merged.add(LinovelibChapterContentParser.Part.Text(text))
+    }
+
+    forEach { part ->
+        when (part) {
+            is LinovelibChapterContentParser.Part.Text -> {
+                if (pendingText.isNotBlank()) pendingText.append("\n\n")
+                pendingText.append(part.text)
+            }
+            is LinovelibChapterContentParser.Part.Image -> {
+                flushText()
+                merged.add(part)
+            }
+        }
+    }
+    flushText()
+    return merged
 }

@@ -26,6 +26,13 @@ import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import javax.inject.Inject
 
+data class ReadingProgressSnapshot(
+    val bookId: String,
+    val chapterId: String,
+    val chapterTitle: String,
+    val progress: Float
+)
+
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
     private val statsRepository: StatsRepository,
@@ -135,28 +142,36 @@ class ReaderViewModel @Inject constructor(
         return true
     }
 
-    private fun saveReadingProgress(chapterId: String, progress: Float) {
-        if (progress.isNaN() || progress <= 0f || bookId.isBlank()) return
-        val title = _uiState.contentUiState.readingChapterContent.title
+    private fun saveReadingProgress(snapshot: ReadingProgressSnapshot) {
+        if (snapshot.progress.isNaN() || snapshot.progress <= 0f ||
+            snapshot.bookId.isBlank() || snapshot.chapterId.isBlank()
+        ) return
         viewModelScope.launch(Dispatchers.IO) {
             val currentTime = LocalDateTime.now()
 
-            bookRepository.updateUserReadingData(bookId) { userReadingData ->
-                Log.v("ReaderViewModel", "$bookId/$chapterId Saving progress $progress. (${_uiState.contentUiState.readingChapterContent.title})")
+            bookRepository.updateUserReadingData(snapshot.bookId) { userReadingData ->
+                Log.v(
+                    "ReaderViewModel",
+                    "${snapshot.bookId}/${snapshot.chapterId} Saving progress ${snapshot.progress}. (${snapshot.chapterTitle})"
+                )
                 userReadingData.apply {
                     lastReadTime = currentTime
-                    lastReadChapterId = chapterId
-                    lastReadChapterTitle = title
-                    userReadingData.updateChapterReadingProgress(chapterId, progress)
-                    val total = _uiState.bookVolumes.volumes.sumOf { it.chapters.size }
+                    lastReadChapterId = snapshot.chapterId
+                    lastReadChapterTitle = snapshot.chapterTitle
+                    userReadingData.updateChapterReadingProgress(snapshot.chapterId, snapshot.progress)
+                    val total = if (snapshot.bookId == bookId) {
+                        _uiState.bookVolumes.volumes.sumOf { it.chapters.size }
+                    } else {
+                        0
+                    }
                     if (total > 0) {
                         readingProgress = (userReadingData.maxChapterReadingProgressMap.values.sum() / total).coerceIn(0f, 1f)
                     }
                 }
             }
-            val readingData = bookRepository.getUserReadingData(bookId)
+            val readingData = bookRepository.getUserReadingData(snapshot.bookId)
             if (readingData.readingProgress >= 1f) {
-                statsRepository.markBookFinished(bookId)
+                statsRepository.markBookFinished(snapshot.bookId)
             }
         }
     }

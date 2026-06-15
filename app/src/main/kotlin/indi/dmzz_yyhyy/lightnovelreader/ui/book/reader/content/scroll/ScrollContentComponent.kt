@@ -108,18 +108,22 @@ fun ScrollContentTextComponent(
     val reachedStartMsg = stringResource(R.string.reader_reached_start)
     val reachedEndMsg = stringResource(R.string.reader_reached_end)
 
-    LaunchedEffect(listState) {
+    LaunchedEffect(listState, uiState.restoreVersion) {
+        if (uiState.restoreVersion == 0) return@LaunchedEffect
         snapshotFlow { listState.layoutInfo.visibleItemsInfo }
-            .filter { it.isNotEmpty() }
+            .filter { it.any { item -> item.key == uiState.readingContentId } }
             .first()
-        withFrameNanos {  }
+        withFrameNanos { }
         listState.scrollToItem(1)
-        val item = uiState.lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == uiState.readingContentId } ?: return@LaunchedEffect
+        val item = uiState.lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == uiState.readingContentId }
+            ?: return@LaunchedEffect
         snapshotFlow { lazyColumnSize }
             .filter { lazyColumnSize.height > 0 }
             .first()
-        val offset = (item.size * uiState.readingProgress).toInt() - lazyColumnSize.height
+        val offset = (item.size * uiState.restoreProgress).toInt() - lazyColumnSize.height
         listState.scrollToItem(1, offset)
+        withFrameNanos { }
+        uiState.completeProgressRestore()
     }
     LaunchedEffect(listState) {
         var atTop = false

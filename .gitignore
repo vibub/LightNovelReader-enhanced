@@ -28,5 +28,6 @@ local.properties
 proxy/build/
 
 build/
+logcat/
 
 Keystore/
