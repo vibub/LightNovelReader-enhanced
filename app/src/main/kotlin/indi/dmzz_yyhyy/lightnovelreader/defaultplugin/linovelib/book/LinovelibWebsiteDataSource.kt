@@ -48,7 +48,7 @@ class LinovelibWebsiteDataSource(
             ?: ""
         val cover = document.metaContent("pic")
             ?: document.metaContent("og:image")
-            ?: document.firstImageUrl(".book-img img", ".book-cover img", ".book-info img", "img[src*=cover]", "img[data-src*=cover]")
+            ?: document.firstCoverImageUrl()
             ?: ""
         val description = document.metaContent("description")
             ?: document.firstText("#bookIntro", ".book-intro", ".book-desc", ".intro", ".book-dec")
@@ -106,33 +106,40 @@ class LinovelibWebsiteDataSource(
         val parserWarnings = mutableListOf<String>()
         val seenPageSignatures = mutableSetOf<String>()
         val chapterParts = mutableListOf<LinovelibChapterContentParser.Part>()
+        val baseChapterId = normalizedChapterId.substringBefore('_')
         var title = ""
         var page = 1
-        var shouldTryNext = true
-        while (page <= MAX_CHAPTER_PAGE && shouldTryNext) {
-            val pageChapterId = if (page == 1) normalizedChapterId else "${normalizedChapterId}_$page"
-            val document = try {
-                jsoup.getDocument(
-                    LinovelibConstants.chapterUrl(normalizedBookId, pageChapterId),
-                    referer = LinovelibConstants.catalogUrl(normalizedBookId),
-                    retryTime = if (page == 1) 2 else 0
-                )
-            } catch (throwable: Throwable) {
-                if (page == 1) throw throwable else break
+        var pageChapterId = normalizedChapterId
+        var previousPageChapterId = ""
+        while (page <= MAX_CHAPTER_PAGE) {
+            val currentPageChapterId = pageChapterId
+            val document = jsoup.getDocument(
+                LinovelibConstants.chapterUrl(normalizedBookId, currentPageChapterId),
+                referer = LinovelibConstants.catalogUrl(normalizedBookId),
+                retryTime = if (page == 1) 2 else 1
+            )
+            if (page > 1) {
+                val prevPageChapterId = document.linovelibScriptChapterPageId(normalizedBookId, "prevpage")
+                if (prevPageChapterId != null && prevPageChapterId != previousPageChapterId) {
+                    error("Linovelib chapter $normalizedBookId/$normalizedChapterId page $currentPageChapterId has unexpected prevpage $prevPageChapterId")
+                }
             }
             if (title.isBlank()) title = document.firstText("h1", ".chapter-title", ".bookname h1") ?: ""
             val content = document.selectFirst("#TextContent") ?: document.selectFirst("#textcontent")
             ?: document.selectFirst(".chapter-content") ?: document.selectFirst("#content")
-            ?: if (page == 1) return@runCatching ChapterContent.empty(normalizedChapterId) else break
-            val signature = content.text().cleanText()
-                .ifBlank { content.html().cleanText() }
-                .take(300)
-            if (signature.isBlank() || !seenPageSignatures.add(signature)) break
-            val parseResult = LinovelibChapterContentParser.parse(content, pageChapterId) { it.imageUrl() }
+            ?: if (page == 1) return@runCatching ChapterContent.empty(normalizedChapterId) else error("Linovelib chapter $normalizedBookId/$normalizedChapterId page $currentPageChapterId has no content")
+            val signature = content.linovelibChapterPageSignature()
+            if (signature.isBlank() || !seenPageSignatures.add(signature)) {
+                if (page == 1) break
+                error("Linovelib chapter $normalizedBookId/$normalizedChapterId page $currentPageChapterId is empty or duplicated")
+            }
+            val parseResult = LinovelibChapterContentParser.parse(content, currentPageChapterId) { it.imageUrl() }
             parseResult.warning?.let(parserWarnings::add)
             chapterParts.addAll(parseResult.parts)
-            val nextPage = page + 1
-            shouldTryNext = document.hasChapterPage(normalizedBookId, normalizedChapterId, nextPage)
+            val nextPageChapterId = document.nextLinovelibChapterPageId(normalizedBookId, baseChapterId, page + 1) ?: break
+            if (page >= MAX_CHAPTER_PAGE) error("Linovelib chapter $normalizedBookId/$normalizedChapterId exceeds $MAX_CHAPTER_PAGE pages")
+            previousPageChapterId = currentPageChapterId
+            pageChapterId = nextPageChapterId
             page++
         }
         chapterParts.mergeLinovelibPagedTextParts().forEach { part ->
@@ -207,7 +214,7 @@ class LinovelibWebsiteDataSource(
                 if (chapters.isEmpty()) return@mapIndexedNotNull null
                 Volume(
                     volumeId = "${bookId}_$index",
-                    volumeTitle = element.firstText("h2", "h3", ".volume-title", ".title") ?: "第 ${index + 1} 卷",
+                    volumeTitle = element.volumeTitle() ?: "第 ${index + 1} 卷",
                     chapters = chapters
                 )
             }
@@ -248,9 +255,6 @@ class LinovelibWebsiteDataSource(
         return ChapterInformation(id, title)
     }
 
-    private fun Document.hasChapterPage(bookId: String, chapterId: String, page: Int): Boolean =
-        select("a[href]").any { it.attr("href").contains("/novel/$bookId/${chapterId}_$page.html") }
-
     private fun Document.metaContent(name: String): String? =
         selectFirst("meta[name=\"$name\"]")?.attr("content")?.takeIf { it.isNotBlank() }
             ?: selectFirst("meta[property=\"$name\"]")?.attr("content")?.takeIf { it.isNotBlank() }
@@ -259,11 +263,11 @@ class LinovelibWebsiteDataSource(
         selectFirst(selector)?.text()?.cleanText()?.takeIf { it.isNotBlank() }
     }
 
-    private fun Document.firstImageUrl(vararg selectors: String): String? = selectors.firstNotNullOfOrNull { selector ->
+    private fun Document.firstCoverImageUrl(): String? = COVER_IMAGE_SELECTORS.firstNotNullOfOrNull { selector ->
         selectFirst(selector)?.imageUrl()?.takeIf { it.isNotBlank() }
     }
 
-    private fun Element.firstText(vararg selectors: String): String? = selectors.firstNotNullOfOrNull { selector ->
+    private fun Element.volumeTitle(): String? = VOLUME_TITLE_SELECTORS.firstNotNullOfOrNull { selector ->
         selectFirst(selector)?.text()?.cleanText()?.takeIf { it.isNotBlank() }
     }
 
@@ -321,8 +325,6 @@ class LinovelibWebsiteDataSource(
         .replace(Regex("\\n{3,}"), "\n\n")
         .trim()
 
-    private fun String.isNoiseText(): Boolean = contains("最新网址") || contains("请收藏") || contains("本章未完")
-
     private fun String.parseWordCount(): Int {
         val number = Regex("(\\d+(?:\\.\\d+)?)\\s*([万千]?)").find(this) ?: return 0
         val value = number.groups[1]?.value?.toFloatOrNull() ?: return 0
@@ -352,7 +354,15 @@ class LinovelibWebsiteDataSource(
     )
 
     companion object {
-        private const val MAX_CHAPTER_PAGE = 10
+        private const val MAX_CHAPTER_PAGE = 30
+        private val COVER_IMAGE_SELECTORS = listOf(
+            ".book-img img",
+            ".book-cover img",
+            ".book-info img",
+            "img[src*=cover]",
+            "img[data-src*=cover]"
+        )
+        private val VOLUME_TITLE_SELECTORS = listOf("h2", "h3", ".volume-title", ".title")
         private val IMAGE_URL_ATTRS = listOf(
             "data-src",
             "data-original",
@@ -365,6 +375,83 @@ class LinovelibWebsiteDataSource(
         )
     }
 }
+
+private fun Document.linovelibScriptChapterPageId(bookId: String, name: String): String? =
+    extractLinovelibScriptPage(this, name)?.let { extractLinovelibChapterPageId(bookId, it) }
+
+internal fun extractLinovelibScriptPage(document: Document, name: String): String? {
+    val regex = Regex("""\b(?:var\s+)?${Regex.escape(name)}\s*=\s*["']([^"']*)["']""")
+    return document.select("script")
+        .asSequence()
+        .map { script -> script.data().ifBlank { script.html() } }
+        .mapNotNull { script -> regex.find(script)?.groups?.get(1)?.value }
+        .firstOrNull { it.isNotBlank() }
+}
+
+internal fun extractLinovelibChapterPageId(bookId: String, url: String): String? {
+    val normalizedUrl = url.trim()
+        .replace("\\/", "/")
+        .replace("&amp;", "&")
+        .substringBefore('#')
+        .substringBefore('?')
+        .replace('\\', '/')
+    if (normalizedUrl.isBlank() || normalizedUrl.startsWith("javascript:", ignoreCase = true)) return null
+
+    val fullPathMatch = Regex("""(?:^|/)novel/(\d+)/(\d+(?:_\d+)?)\.html$""").find(normalizedUrl)
+    if (fullPathMatch != null) {
+        val matchedBookId = fullPathMatch.groups[1]?.value ?: return null
+        val pageId = fullPathMatch.groups[2]?.value ?: return null
+        return pageId.takeIf { matchedBookId == bookId }
+    }
+    if ("/novel/" in normalizedUrl || normalizedUrl.startsWith("novel/")) return null
+
+    val fileName = normalizedUrl.substringAfterLast('/')
+    return Regex("""\d+(?:_\d+)?\.html""")
+        .matchEntire(fileName)
+        ?.value
+        ?.removeSuffix(".html")
+}
+
+internal fun isLinovelibPagedChapterId(baseChapterId: String, pageId: String): Boolean {
+    val pagePrefix = "${baseChapterId}_"
+    val pageSuffix = pageId.removePrefix(pagePrefix)
+    return pageId.startsWith(pagePrefix) && pageSuffix.isNotEmpty() && pageSuffix.all { it.isDigit() }
+}
+
+internal fun Document.nextLinovelibChapterPageId(
+    bookId: String,
+    baseChapterId: String,
+    expectedPage: Int
+): String? {
+    val expectedPageId = linovelibChapterPageId(baseChapterId, expectedPage)
+    val scriptedNextPage = extractLinovelibScriptPage(this, "nextpage")
+    if (!scriptedNextPage.isNullOrBlank()) {
+        val scriptedPageId = extractLinovelibChapterPageId(bookId, scriptedNextPage)
+        if (scriptedPageId != null) {
+            return scriptedPageId.takeIf { it == expectedPageId && isLinovelibPagedChapterId(baseChapterId, it) }
+        }
+    }
+    return select("a[href]")
+        .asSequence()
+        .flatMap { element -> sequenceOf(element.attr("href"), element.absUrl("href")) }
+        .mapNotNull { href -> extractLinovelibChapterPageId(bookId, href) }
+        .firstOrNull { it == expectedPageId && isLinovelibPagedChapterId(baseChapterId, it) }
+}
+
+internal fun Element.linovelibChapterPageSignature(): String {
+    val normalizedText = text().cleanLinovelibPageText()
+        .ifBlank { html().cleanLinovelibPageText() }
+    if (normalizedText.isBlank()) return ""
+    return "${normalizedText.length}:${normalizedText.take(300)}:${normalizedText.takeLast(300)}"
+}
+
+private fun linovelibChapterPageId(baseChapterId: String, page: Int): String =
+    if (page <= 1) baseChapterId else "${baseChapterId}_$page"
+
+private fun String.cleanLinovelibPageText(): String = replace(' ', ' ')
+    .replace(Regex("[ \\t\\x0B\\f\\r]+"), " ")
+    .replace(Regex("\\n{3,}"), "\n\n")
+    .trim()
 
 internal fun List<LinovelibChapterContentParser.Part>.mergeLinovelibPagedTextParts(): List<LinovelibChapterContentParser.Part> {
     val merged = mutableListOf<LinovelibChapterContentParser.Part>()

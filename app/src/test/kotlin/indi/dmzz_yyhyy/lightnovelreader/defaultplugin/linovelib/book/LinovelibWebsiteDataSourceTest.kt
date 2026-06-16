@@ -1,9 +1,115 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book
 
+import org.jsoup.Jsoup
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class LinovelibWebsiteDataSourceTest {
+    @Test
+    fun nextLinovelibChapterPageIdUsesScriptNextPageForSameChapterPage() {
+        val document = Jsoup.parse(
+            """
+            <html><body>
+            <script>var prevpage="/novel/8/1843_3.html";var nextpage="/novel/8/1843_5.html";</script>
+            </body></html>
+            """.trimIndent(),
+            "https://www.linovelib.com/novel/8/1843_4.html"
+        )
+
+        assertEquals("1843_5", document.nextLinovelibChapterPageId("8", "1843", 5))
+    }
+
+    @Test
+    fun nextLinovelibChapterPageIdStopsWhenScriptNextPagePointsToNextChapter() {
+        val document = Jsoup.parse(
+            """
+            <html><body>
+            <script>var prevpage="/novel/8/1843_4.html";var nextpage="/novel/8/1844.html";</script>
+            </body></html>
+            """.trimIndent(),
+            "https://www.linovelib.com/novel/8/1843_5.html"
+        )
+
+        assertNull(document.nextLinovelibChapterPageId("8", "1843", 6))
+    }
+
+    @Test
+    fun extractLinovelibScriptPageMatchesLinovelibSample() {
+        val document = Jsoup.parse(
+            """
+            <script>
+            ${'$'}(document).ready(function(){var prevpage="/novel/8/1843_4.html";var nextpage="/novel/8/1844.html";var bookpage="/novel/8.html";});
+            </script>
+            """.trimIndent(),
+            "https://www.linovelib.com/novel/8/1843_5.html"
+        )
+
+        assertEquals("/novel/8/1843_4.html", extractLinovelibScriptPage(document, "prevpage"))
+        assertEquals("1843_4", extractLinovelibChapterPageId("8", extractLinovelibScriptPage(document, "prevpage")!!))
+        assertEquals("/novel/8/1844.html", extractLinovelibScriptPage(document, "nextpage"))
+        assertNull(document.nextLinovelibChapterPageId("8", "1843", 6))
+    }
+
+    @Test
+    fun nextLinovelibChapterPageIdSupportsEscapedScriptSlashes() {
+        val document = Jsoup.parse(
+            """
+            <html><body>
+            <script>var nextpage="\/novel\/8\/1843_2.html";</script>
+            </body></html>
+            """.trimIndent(),
+            "https://www.linovelib.com/novel/8/1843.html"
+        )
+
+        assertEquals("1843_2", extractLinovelibChapterPageId("8", extractLinovelibScriptPage(document, "nextpage")!!))
+        assertEquals("1843_2", document.nextLinovelibChapterPageId("8", "1843", 2))
+    }
+
+    @Test
+    fun extractLinovelibChapterPageIdSupportsCommonUrlForms() {
+        assertEquals("1843_5", extractLinovelibChapterPageId("8", "https://www.linovelib.com/novel/8/1843_5.html"))
+        assertEquals("1843_5", extractLinovelibChapterPageId("8", "/novel/8/1843_5.html"))
+        assertEquals("1843_5", extractLinovelibChapterPageId("8", "1843_5.html"))
+        assertEquals("1843_5", extractLinovelibChapterPageId("8", "/novel/8/1843_5.html?foo=bar#part"))
+    }
+
+    @Test
+    fun extractLinovelibChapterPageIdRejectsOtherBookAndKeepsRawChapterContract() {
+        assertNull(extractLinovelibChapterPageId("8", "https://www.linovelib.com/novel/9/1843_5.html"))
+        assertEquals("18430_2", extractLinovelibChapterPageId("8", "/novel/8/18430_2.html"))
+        assertEquals("1844", extractLinovelibChapterPageId("8", "/novel/8/1844.html"))
+        assertFalse(isLinovelibPagedChapterId("1843", "18430_2"))
+        assertFalse(isLinovelibPagedChapterId("1843", "1844"))
+    }
+
+    @Test
+    fun nextLinovelibChapterPageIdFallsBackToRelativeAnchor() {
+        val document = Jsoup.parse(
+            """
+            <html><body>
+            <a href="1843_5.html">下一页</a>
+            </body></html>
+            """.trimIndent(),
+            "https://www.linovelib.com/novel/8/1843_4.html"
+        )
+
+        assertEquals("1843_5", document.nextLinovelibChapterPageId("8", "1843", 5))
+    }
+
+    @Test
+    fun linovelibChapterPageSignatureDiffersWhenOnlyTailDiffers() {
+        val samePrefix = "相同前缀".repeat(80)
+        val first = Jsoup.parse("<div id=\"TextContent\">${samePrefix}第一页尾部</div>")
+            .selectFirst("#TextContent")!!
+        val second = Jsoup.parse("<div id=\"TextContent\">${samePrefix}第二页尾部</div>")
+            .selectFirst("#TextContent")!!
+
+        assertNotEquals(first.linovelibChapterPageSignature(), second.linovelibChapterPageSignature())
+    }
+
     @Test
     fun mergeLinovelibPagedTextPartsAddsBlankLineBetweenPagedTextParts() {
         val parts = listOf(
