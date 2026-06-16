@@ -100,6 +100,29 @@ class LinovelibWebsiteDataSourceTest {
     }
 
     @Test
+    fun toLinovelibAdjacentChapterIdKeepsAdjacentChapterBaseId() {
+        assertEquals("1842", "1842".toLinovelibAdjacentChapterId("1843"))
+        assertEquals("1842", "1842_5".toLinovelibAdjacentChapterId("1843"))
+        assertNull("1843".toLinovelibAdjacentChapterId("1843"))
+        assertNull("1843_2".toLinovelibAdjacentChapterId("1843"))
+    }
+
+    @Test
+    fun scriptPrevAndNextCanInferAdjacentChapterIds() {
+        val document = Jsoup.parse(
+            """
+            <script>var prevpage="/novel/8/1842_5.html";var nextpage="/novel/8/1844.html";</script>
+            """.trimIndent(),
+            "https://www.linovelib.com/novel/8/1843.html"
+        )
+
+        val prevPageId = extractLinovelibChapterPageId("8", extractLinovelibScriptPage(document, "prevpage")!!)
+        val nextPageId = extractLinovelibChapterPageId("8", extractLinovelibScriptPage(document, "nextpage")!!)
+        assertEquals("1842", prevPageId?.toLinovelibAdjacentChapterId("1843"))
+        assertEquals("1844", nextPageId?.toLinovelibAdjacentChapterId("1843"))
+    }
+
+    @Test
     fun linovelibChapterPageSignatureDiffersWhenOnlyTailDiffers() {
         val samePrefix = "相同前缀".repeat(80)
         val first = Jsoup.parse("<div id=\"TextContent\">${samePrefix}第一页尾部</div>")

@@ -6,14 +6,15 @@ import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.account.Linoveli
 import indi.dmzz_yyhyy.lightnovelreader.utils.network.UserAgentGenerator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
-import org.jsoup.HttpStatusException
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.io.IOException
 import java.net.SocketTimeoutException
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import kotlin.random.Random
+import kotlin.time.Duration.Companion.milliseconds
 
 class LinovelibBlockedException(
     message: String,
@@ -22,14 +23,14 @@ class LinovelibBlockedException(
 
 class LinovelibHttpException(
     val statusCode: Int,
-    val targetUrl: String,
+    targetUrl: String,
+    val retryAfterMillis: Long? = null,
     cause: Throwable? = null
 ) : IOException("HTTP $statusCode: $targetUrl", cause)
 
 class LinovelibJsoup(
     private val accountStore: LinovelibAccountStore? = null
 ) {
-    private val semaphore = Semaphore(3)
     private val userAgent = UserAgentGenerator.generate()
 
     suspend fun getDocument(
@@ -80,48 +81,55 @@ class LinovelibJsoup(
         useCookie: Boolean,
         retryTime: Int
     ): String = withContext(Dispatchers.IO) {
-        semaphore.withPermit {
-            var lastError: Throwable? = null
-            var delayMillis = 1_500L
-            repeat(retryTime + 1) { attempt ->
-                try {
+        var lastError: Throwable? = null
+        var delayMillis = 1_500L
+        repeat(retryTime + 1) { attempt ->
+            try {
+                val body = LinovelibRateLimiter.run {
                     val response = Jsoup.connect(url)
                         .ignoreContentType(true)
-                        .ignoreHttpErrors(false)
+                        .ignoreHttpErrors(true)
                         .followRedirects(true)
                         .timeout(15_000)
                         .headers(defaultHeaders(referer, useCookie) + ("Accept" to accept))
                         .execute()
                     val body = response.bodyAsBytes().toString(Charsets.UTF_8)
-                    if (isCloudflareBlocked(response.statusCode(), body)) {
+                    val statusCode = response.statusCode()
+                    if (statusCode == 429) {
+                        val retryAfterMillis = parseRetryAfterMillis(response.header("Retry-After"))
+                        LinovelibRateLimiter.coolDown(
+                            reason = "HTTP 429 $url",
+                            delayMillis = retryAfterMillis ?: LinovelibRateLimiter.DEFAULT_RATE_LIMIT_COOLDOWN_MILLIS
+                        )
+                        throw LinovelibHttpException(statusCode, url, retryAfterMillis)
+                    }
+                    if (isCloudflareBlocked(statusCode, body)) {
+                        LinovelibRateLimiter.coolDown(
+                            reason = "Cloudflare blocked $url",
+                            delayMillis = LinovelibRateLimiter.CLOUDFLARE_COOLDOWN_MILLIS
+                        )
                         throw LinovelibBlockedException("Linovelib request was blocked by Cloudflare: $url")
                     }
-                    return@withPermit body
-                } catch (e: HttpStatusException) {
-                    lastError = if (e.statusCode == 403 || e.statusCode == 503) {
-                        LinovelibBlockedException("Linovelib request was blocked: ${e.statusCode} $url", e)
-                    } else {
-                        LinovelibHttpException(e.statusCode, url, e)
-                    }
-                    if (!shouldRetry(lastError)) throw lastError
-                } catch (e: SocketTimeoutException) {
-                    lastError = e
-                } catch (e: IOException) {
-                    lastError = e
-                    if (!shouldRetry(e)) throw e
-                } catch (e: Throwable) {
-                    lastError = e
-                    throw e
+                    if (statusCode !in 200..299) throw LinovelibHttpException(statusCode, url)
+                    body
                 }
-                if (attempt < retryTime) {
-                    val retryDelay = retryDelayMillis(lastError, delayMillis)
-                    Log.w(TAG, "request failed, retrying in ${retryDelay}ms: $url", lastError)
-                    delay(retryDelay)
-                    delayMillis = (retryDelay * 2).coerceAtMost(MAX_RETRY_DELAY_MILLIS)
-                }
+                return@withContext body
+            } catch (e: SocketTimeoutException) {
+                lastError = e
+            } catch (e: IOException) {
+                lastError = e
+                if (!shouldRetry(e)) throw e
+            } catch (e: Throwable) {
+                throw e
             }
-            throw lastError ?: IOException("Linovelib request failed: $url")
+            if (attempt < retryTime) {
+                val retryDelay = retryDelayMillis(lastError, delayMillis)
+                Log.w(TAG, "request failed, retrying in ${retryDelay}ms: $url", lastError)
+                delay(retryDelay.milliseconds)
+                delayMillis = (retryDelay * 2).coerceAtMost(MAX_RETRY_DELAY_MILLIS)
+            }
         }
+        throw lastError ?: IOException("Linovelib request failed: $url")
     }
 
     private fun shouldRetry(error: Throwable?): Boolean = when (error) {
@@ -130,19 +138,25 @@ class LinovelibJsoup(
         else -> true
     }
 
-    private fun retryDelayMillis(error: Throwable?, currentDelayMillis: Long): Long = when (error) {
-        is LinovelibHttpException -> if (error.statusCode == 429) {
-            maxOf(currentDelayMillis, RATE_LIMIT_RETRY_DELAY_MILLIS)
-        } else {
-            currentDelayMillis
+    private fun retryDelayMillis(error: Throwable?, currentDelayMillis: Long): Long {
+        val baseDelay = when (error) {
+            is LinovelibHttpException -> if (error.statusCode == 429) {
+                maxOf(currentDelayMillis, error.retryAfterMillis ?: RATE_LIMIT_RETRY_DELAY_MILLIS)
+            } else {
+                currentDelayMillis
+            }
+            else -> currentDelayMillis
         }
-        else -> currentDelayMillis
+        val cappedBaseDelay = baseDelay.coerceAtMost(MAX_RETRY_DELAY_MILLIS)
+        val jitterBound = (MAX_RETRY_DELAY_MILLIS - cappedBaseDelay).coerceIn(0L, RETRY_JITTER_MILLIS)
+        return cappedBaseDelay + if (jitterBound > 0L) Random.nextLong(jitterBound + 1) else 0L
     }
 
     companion object {
         private const val TAG = "LinovelibJsoup"
         private const val RATE_LIMIT_RETRY_DELAY_MILLIS = 5_000L
         private const val MAX_RETRY_DELAY_MILLIS = 30_000L
+        private const val RETRY_JITTER_MILLIS = 1_000L
 
         fun isCloudflareBlocked(statusCode: Int, body: String): Boolean {
             if (statusCode == 403 || statusCode == 503) return true
@@ -153,6 +167,21 @@ class LinovelibJsoup(
                     "just a moment" in text ||
                     "attention required" in text
                 )) || "请稍候" in body && "正在检查您的浏览器" in body
+        }
+
+        fun parseRetryAfterMillis(value: String?, nowMillis: Long = System.currentTimeMillis()): Long? {
+            val text = value?.trim()?.takeIf { it.isNotBlank() } ?: return null
+            text.toLongOrNull()?.let { seconds ->
+                if (seconds <= 0L) return 0L
+                return if (seconds > Long.MAX_VALUE / 1_000L) Long.MAX_VALUE else seconds * 1_000L
+            }
+            return runCatching {
+                ZonedDateTime.parse(text, DateTimeFormatter.RFC_1123_DATE_TIME)
+                    .toInstant()
+                    .toEpochMilli()
+                    .minus(nowMillis)
+                    .coerceAtLeast(0L)
+            }.getOrNull()
         }
 
         fun normalizeUrl(url: String): String {

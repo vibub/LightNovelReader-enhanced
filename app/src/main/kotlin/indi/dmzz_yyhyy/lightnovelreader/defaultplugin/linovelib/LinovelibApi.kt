@@ -32,7 +32,7 @@ class LinovelibApi(
 
     override val id: Int = LinovelibConstants.SOURCE_ID
     override val cache: Cache = Cache(timeout = 2 * 60 * 60 * 1000)
-    override val permits: Int = 8
+    override val permits: Int = 3
 
     override val offLine: Boolean
         get() = mutableOffline.value

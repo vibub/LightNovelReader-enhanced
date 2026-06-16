@@ -31,6 +31,9 @@ class ScrollContentViewModel(
     private var collectCurrentChapterJob: Job? = null
     private var collectNextChapterJob: Job? = null
     private var requestedChapterId = ""
+    private var prefetchedNextChapterKey = ""
+    private var collectingLastChapterId = ""
+    private var collectingNextChapterId = ""
     private var canPersistProgress = false
 
     override val uiState: MutableScrollContentUiSate = MutableScrollContentUiSate(
@@ -163,11 +166,13 @@ class ScrollContentViewModel(
                     resetContentList()
                     uiState.contentList[2] = chapter1
                     uiState.contentList[1] = chapter0
+                    collectingNextChapterId = currentContent.id
                     collectNextChapterJob = collectChapter(2, currentContent.id)
                     collectCurrentChapterJob = collectChapter(1, currentContent.lastChapter)
                     uiState.readingContentId = currentContent.lastChapter
                     requestedChapterId = uiState.readingContentId
                     uiState.contentList[1]?.takeIf { it.hasPrevChapter() }?.let {
+                        collectingLastChapterId = it.lastChapter
                         collectLastChapterJob = collectChapter(0, it.lastChapter)
                     }
                     return@collect
@@ -181,11 +186,13 @@ class ScrollContentViewModel(
                     resetContentList()
                     uiState.contentList[0] = chapter1
                     uiState.contentList[1] = chapter2
+                    collectingLastChapterId = currentContent.id
                     collectLastChapterJob = collectChapter(0, currentContent.id)
                     collectCurrentChapterJob = collectChapter(1, currentContent.nextChapter)
                     uiState.readingContentId = currentContent.nextChapter
                     requestedChapterId = uiState.readingContentId
                     uiState.contentList[1]?.takeIf { it.hasNextChapter() }?.let {
+                        collectingNextChapterId = it.nextChapter
                         collectNextChapterJob = collectChapter(2, it.nextChapter)
                     }
                 }
@@ -195,6 +202,9 @@ class ScrollContentViewModel(
 
     override fun changeBookId(id: String) {
         uiState.bookId = id
+        prefetchedNextChapterKey = ""
+        collectingLastChapterId = ""
+        collectingNextChapterId = ""
     }
 
     override fun loadNextChapter() {
@@ -218,6 +228,8 @@ class ScrollContentViewModel(
     }
 
     private fun resetContentList() {
+        collectingLastChapterId = ""
+        collectingNextChapterId = ""
         uiState.contentList.clear()
         uiState.contentList.add(null)
         uiState.contentList.add(null)
@@ -226,6 +238,7 @@ class ScrollContentViewModel(
 
     override fun changeChapter(id: String, restoreProgress: Boolean) {
         requestedChapterId = id
+        prefetchedNextChapterKey = ""
         collectLastChapterJob?.cancel()
         collectCurrentChapterJob?.cancel()
         collectNextChapterJob?.cancel()
@@ -265,7 +278,11 @@ class ScrollContentViewModel(
                     }
                 }
                 if (content.hasNextChapter() && requestedChapterId == id) {
-                    bookRepository.getChapterContent(content.nextChapter, uiState.bookId)
+                    val prefetchKey = "${uiState.bookId}/${content.nextChapter}"
+                    if (prefetchedNextChapterKey != prefetchKey) {
+                        prefetchedNextChapterKey = prefetchKey
+                        bookRepository.prefetchChapterContent(content.nextChapter, uiState.bookId)
+                    }
                 }
             }
         }
@@ -293,12 +310,24 @@ class ScrollContentViewModel(
                     }
                 }
                 if (content.hasPrevChapter()) {
+                    if (collectingLastChapterId != content.lastChapter) {
+                        collectLastChapterJob?.cancel()
+                        collectingLastChapterId = content.lastChapter
+                        collectLastChapterJob = collectChapter(0, content.lastChapter)
+                    }
+                } else {
                     collectLastChapterJob?.cancel()
-                    collectLastChapterJob = collectChapter(0, content.lastChapter)
+                    collectingLastChapterId = ""
                 }
                 if (content.hasNextChapter()) {
+                    if (collectingNextChapterId != content.nextChapter) {
+                        collectNextChapterJob?.cancel()
+                        collectingNextChapterId = content.nextChapter
+                        collectNextChapterJob = collectChapter(2, content.nextChapter)
+                    }
+                } else {
                     collectNextChapterJob?.cancel()
-                    collectNextChapterJob = collectChapter(2, content.nextChapter)
+                    collectingNextChapterId = ""
                 }
             }
         }

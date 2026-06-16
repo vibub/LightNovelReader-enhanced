@@ -28,6 +28,7 @@ class FlipPageContentViewModel(
     private var changeChapterJob: Job? = null
     private var restoreProgressJob: Job? = null
     private var requestedChapterId = ""
+    private var prefetchedNextChapterKey = ""
     override val uiState: MutableFlipPageContentUiState = MutableFlipPageContentUiState(
         loadLastChapter = ::loadLastChapter,
         loadNextChapter = ::loadNextChapter,
@@ -87,6 +88,7 @@ class FlipPageContentViewModel(
 
     override fun changeBookId(id: String) {
         uiState.bookId = id
+        prefetchedNextChapterKey = ""
     }
 
     override fun loadNextChapter() {
@@ -112,6 +114,7 @@ class FlipPageContentViewModel(
         }
         val targetChapterId = id
         requestedChapterId = targetChapterId
+        prefetchedNextChapterKey = ""
         changeChapterJob?.cancel()
         restoreProgressJob?.cancel()
         canPersistProgress = false
@@ -135,10 +138,14 @@ class FlipPageContentViewModel(
                     }
                 }
                 if (content.hasNextChapter() && requestedChapterId == targetChapterId) {
-                    bookRepository.getChapterContent(
-                        chapterId = content.nextChapter,
-                        bookId = uiState.bookId,
-                    )
+                    val prefetchKey = "${uiState.bookId}/${content.nextChapter}"
+                    if (prefetchedNextChapterKey != prefetchKey) {
+                        prefetchedNextChapterKey = prefetchKey
+                        bookRepository.prefetchChapterContent(
+                            chapterId = content.nextChapter,
+                            bookId = uiState.bookId,
+                        )
+                    }
                 }
             }
         }

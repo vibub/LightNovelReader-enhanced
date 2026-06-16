@@ -108,6 +108,10 @@ class LinovelibWebsiteDataSource(
         val chapterParts = mutableListOf<LinovelibChapterContentParser.Part>()
         val baseChapterId = normalizedChapterId.substringBefore('_')
         var title = ""
+        var lastChapterId = ""
+        var nextChapterId = ""
+        var foundFirstPrevPageScript = false
+        var foundTerminalNextPageScript = false
         var page = 1
         var pageChapterId = normalizedChapterId
         var previousPageChapterId = ""
@@ -118,11 +122,13 @@ class LinovelibWebsiteDataSource(
                 referer = LinovelibConstants.catalogUrl(normalizedBookId),
                 retryTime = if (page == 1) 2 else 1
             )
-            if (page > 1) {
-                val prevPageChapterId = document.linovelibScriptChapterPageId(normalizedBookId, "prevpage")
-                if (prevPageChapterId != null && prevPageChapterId != previousPageChapterId) {
-                    error("Linovelib chapter $normalizedBookId/$normalizedChapterId page $currentPageChapterId has unexpected prevpage $prevPageChapterId")
-                }
+            val scriptPrevPage = extractLinovelibScriptPage(document, "prevpage")
+            val scriptPrevPageId = scriptPrevPage?.let { extractLinovelibChapterPageId(normalizedBookId, it) }
+            if (page == 1) {
+                foundFirstPrevPageScript = !scriptPrevPage.isNullOrBlank()
+                lastChapterId = scriptPrevPageId?.toLinovelibAdjacentChapterId(baseChapterId).orEmpty()
+            } else if (scriptPrevPageId != null && scriptPrevPageId != previousPageChapterId) {
+                error("Linovelib chapter $normalizedBookId/$normalizedChapterId page $currentPageChapterId has unexpected prevpage $scriptPrevPageId")
             }
             if (title.isBlank()) title = document.firstText("h1", ".chapter-title", ".bookname h1") ?: ""
             val content = document.selectFirst("#TextContent") ?: document.selectFirst("#textcontent")
@@ -136,7 +142,14 @@ class LinovelibWebsiteDataSource(
             val parseResult = LinovelibChapterContentParser.parse(content, currentPageChapterId) { it.imageUrl() }
             parseResult.warning?.let(parserWarnings::add)
             chapterParts.addAll(parseResult.parts)
-            val nextPageChapterId = document.nextLinovelibChapterPageId(normalizedBookId, baseChapterId, page + 1) ?: break
+            val scriptNextPage = extractLinovelibScriptPage(document, "nextpage")
+            val scriptNextPageId = scriptNextPage?.let { extractLinovelibChapterPageId(normalizedBookId, it) }
+            val nextPageChapterId = document.nextLinovelibChapterPageId(normalizedBookId, baseChapterId, page + 1)
+            if (nextPageChapterId == null) {
+                foundTerminalNextPageScript = !scriptNextPage.isNullOrBlank()
+                nextChapterId = scriptNextPageId?.toLinovelibAdjacentChapterId(baseChapterId).orEmpty()
+                break
+            }
             if (page >= MAX_CHAPTER_PAGE) error("Linovelib chapter $normalizedBookId/$normalizedChapterId exceeds $MAX_CHAPTER_PAGE pages")
             previousPageChapterId = currentPageChapterId
             pageChapterId = nextPageChapterId
@@ -149,13 +162,18 @@ class LinovelibWebsiteDataSource(
             }
         }
         val content = builder.build().withParserWarnings(parserWarnings)
-        val navigation = getChapterNavigation(normalizedBookId, normalizedChapterId)
+        val cleanTitle = title.cleanText()
+        val navigation = if (cleanTitle.isBlank() || !foundFirstPrevPageScript || !foundTerminalNextPageScript) {
+            getChapterNavigation(normalizedBookId, normalizedChapterId)
+        } else {
+            ChapterNavigation()
+        }
         MutableChapterContent(
             id = normalizedChapterId,
-            title = title.cleanText().ifBlank { navigation.currentTitle },
+            title = cleanTitle.ifBlank { navigation.currentTitle },
             content = content,
-            lastChapter = navigation.lastChapterId,
-            nextChapter = navigation.nextChapterId
+            lastChapter = lastChapterId.ifBlank { navigation.lastChapterId },
+            nextChapter = nextChapterId.ifBlank { navigation.nextChapterId }
         ).takeIf { !it.isEmpty() } ?: ChapterContent.empty(normalizedChapterId)
     }.getOrElse {
         it.printStackTrace()
@@ -376,9 +394,6 @@ class LinovelibWebsiteDataSource(
     }
 }
 
-private fun Document.linovelibScriptChapterPageId(bookId: String, name: String): String? =
-    extractLinovelibScriptPage(this, name)?.let { extractLinovelibChapterPageId(bookId, it) }
-
 internal fun extractLinovelibScriptPage(document: Document, name: String): String? {
     val regex = Regex("""\b(?:var\s+)?${Regex.escape(name)}\s*=\s*["']([^"']*)["']""")
     return document.select("script")
@@ -416,6 +431,13 @@ internal fun isLinovelibPagedChapterId(baseChapterId: String, pageId: String): B
     val pagePrefix = "${baseChapterId}_"
     val pageSuffix = pageId.removePrefix(pagePrefix)
     return pageId.startsWith(pagePrefix) && pageSuffix.isNotEmpty() && pageSuffix.all { it.isDigit() }
+}
+
+internal fun String.toLinovelibAdjacentChapterId(baseChapterId: String): String? {
+    val adjacentBaseChapterId = substringBefore('_')
+    return adjacentBaseChapterId.takeIf {
+        it.isNotBlank() && it != baseChapterId && it.all { char -> char.isDigit() }
+    }
 }
 
 internal fun Document.nextLinovelibChapterPageId(

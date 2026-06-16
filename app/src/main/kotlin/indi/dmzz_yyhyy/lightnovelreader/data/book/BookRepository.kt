@@ -39,6 +39,9 @@ class BookRepository @Inject constructor(
     private val textProcessingRepository: TextProcessingRepository,
     private val workManager: WorkManager
 ): BookRepositoryApi {
+    private val chapterRefreshLock = Any()
+    private val recentChapterRemoteFetches = mutableMapOf<String, Long>()
+
     fun WebDataSourcePriority.get() =
         when(this) {
             WebDataSourcePriority.High -> webBookDataSourceProvider.highPriority
@@ -138,6 +141,7 @@ class BookRepository @Inject constructor(
                 priority.get().getChapterContent(chapterId, bookId).let {
                     if (it.isEmpty()) return@launch
                     localBookDataSource.updateChapterContent(it)
+                    markChapterRemoteFetched(bookId, chapterId)
                     chapterContent.update(
                         it.toMutable().apply {
                             this.content = textProcessingRepository
@@ -159,9 +163,29 @@ class BookRepository @Inject constructor(
                 val webChapterContent = priority.get().getChapterContent(chapterId, bookId)
                 if (!webChapterContent.isEmpty()) {
                     localBookDataSource.updateChapterContent(webChapterContent)
+                    markChapterRemoteFetched(bookId, chapterId)
                     return@coroutineProcessChapterContent webChapterContent
                 }
                 return@coroutineProcessChapterContent localBookDataSource.getChapterContent(chapterId) ?: MutableChapterContent.empty().apply { id = chapterId }
+            }
+        }
+
+    suspend fun prefetchChapterContent(
+        chapterId: String,
+        bookId: String,
+        priority: WebDataSourcePriority = WebDataSourcePriority.Low
+    ): ChapterContent =
+        withContext(Dispatchers.IO) {
+            textProcessingRepository.coroutineProcessChapterContent(bookId) {
+                val localChapter = localBookDataSource.getChapterContent(chapterId)
+                if (localChapter != null && !localChapter.isEmpty()) return@coroutineProcessChapterContent localChapter
+                val webChapterContent = priority.get().getChapterContent(chapterId, bookId)
+                if (!webChapterContent.isEmpty()) {
+                    localBookDataSource.updateChapterContent(webChapterContent)
+                    markChapterRemoteFetched(bookId, chapterId)
+                    return@coroutineProcessChapterContent webChapterContent
+                }
+                return@coroutineProcessChapterContent MutableChapterContent.empty().apply { id = chapterId }
             }
         }
 
@@ -173,14 +197,15 @@ class BookRepository @Inject constructor(
         val localChapter = localBookDataSource.getChapterContent(chapterId) ?: MutableChapterContent.empty()
                 .apply { id = chapterId }
         emit(localChapter)
+        if (!localChapter.isEmpty() && isChapterRecentlyFetched(bookId, chapterId)) return@flow
         val remoteChapter = priority.get().getChapterContent(
             chapterId = chapterId,
             bookId = bookId
         )
         if (remoteChapter.isEmpty()) return@flow
         localBookDataSource.updateChapterContent(remoteChapter)
+        markChapterRemoteFetched(bookId, chapterId)
         emit(remoteChapter)
-        localBookDataSource.getChapterContent(chapterId)
     }.map { textProcessingRepository.processChapterContent(bookId) { it } }
 
     override fun getStateUserReadingData(bookId: String, coroutineScope: CoroutineScope): UserReadingData {
@@ -204,6 +229,26 @@ class BookRepository @Inject constructor(
     override fun updateUserReadingData(id: String, update: (MutableUserReadingData) -> UserReadingData) {
         localBookDataSource.updateUserReadingData(id, update)
     }
+
+    private fun markChapterRemoteFetched(bookId: String, chapterId: String) {
+        synchronized(chapterRefreshLock) {
+            recentChapterRemoteFetches[chapterRefreshKey(bookId, chapterId)] = System.currentTimeMillis()
+        }
+    }
+
+    private fun isChapterRecentlyFetched(bookId: String, chapterId: String): Boolean {
+        val now = System.currentTimeMillis()
+        synchronized(chapterRefreshLock) {
+            val iterator = recentChapterRemoteFetches.iterator()
+            while (iterator.hasNext()) {
+                if (now - iterator.next().value > CHAPTER_REMOTE_REFRESH_TTL_MILLIS) iterator.remove()
+            }
+            val lastFetchedAt = recentChapterRemoteFetches[chapterRefreshKey(bookId, chapterId)] ?: return false
+            return now - lastFetchedAt <= CHAPTER_REMOTE_REFRESH_TTL_MILLIS
+        }
+    }
+
+    private fun chapterRefreshKey(bookId: String, chapterId: String): String = "$bookId/$chapterId"
 
     fun isCacheBookWorkFlow(workId: UUID) = workManager.getWorkInfoByIdFlow(workId)
 
@@ -239,4 +284,8 @@ class BookRepository @Inject constructor(
 
     override fun progressBookTagClick(tag: String, navController: NavController) =
         webBookDataSourceProvider.default.progressBookTagClick(tag, navController)
+
+    companion object {
+        private const val CHAPTER_REMOTE_REFRESH_TTL_MILLIS = 10 * 60 * 1000L
+    }
 }
