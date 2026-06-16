@@ -155,7 +155,7 @@ class LinovelibWebsiteDataSource(
             pageChapterId = nextPageChapterId
             page++
         }
-        chapterParts.mergeLinovelibPagedTextParts().spaceLinovelibImages().forEach { part ->
+        chapterParts.mergeLinovelibPagedTextParts().forEach { part ->
             when (part) {
                 is LinovelibChapterContentParser.Part.Text -> builder.simpleText(part.text.renderLinovelibSpacing())
                 is LinovelibChapterContentParser.Part.Image -> part.url.toUri().let(builder::image)
@@ -535,30 +535,6 @@ internal fun List<LinovelibChapterContentParser.Part>.mergeLinovelibPagedTextPar
     return merged
 }
 
-internal fun List<LinovelibChapterContentParser.Part>.spaceLinovelibImages(): List<LinovelibChapterContentParser.Part> {
-    val spaced = toMutableList()
-    spaced.forEachIndexed { index, part ->
-        if (part is LinovelibChapterContentParser.Part.Image) {
-            spaced.getOrNull(index - 1)?.let { previous ->
-                if (previous is LinovelibChapterContentParser.Part.Text) {
-                    spaced[index - 1] = LinovelibChapterContentParser.Part.Text(previous.text.ensureEndsWithBlankLine())
-                }
-            }
-            spaced.getOrNull(index + 1)?.let { next ->
-                if (next is LinovelibChapterContentParser.Part.Text) {
-                    spaced[index + 1] = LinovelibChapterContentParser.Part.Text(next.text.ensureStartsWithBlankLine())
-                }
-            }
-        }
-    }
-    return spaced
-}
-
-private fun String.ensureEndsWithBlankLine(): String =
-    if (endsWith(LinovelibChapterContentParser.IMAGE_SEPARATOR)) this else this + LinovelibChapterContentParser.IMAGE_SEPARATOR
-
-private fun String.ensureStartsWithBlankLine(): String =
-    if (startsWith(LinovelibChapterContentParser.IMAGE_SEPARATOR)) this else LinovelibChapterContentParser.IMAGE_SEPARATOR + this
 
 internal fun String.renderLinovelibSpacing(): String =
     replace(LinovelibChapterContentParser.SECTION_SEPARATOR, LINOVELIB_DISPLAY_SECTION_SEPARATOR)

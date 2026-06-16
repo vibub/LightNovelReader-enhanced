@@ -8,9 +8,8 @@ internal object LinovelibChapterContentParser {
     const val WARNING_KEY = "linovelibParserWarning"
     const val WARNING_MESSAGE = "Linovelib 本章段落顺序还原失败，已停止使用网页源码乱序正文。请刷新章节或反馈该章节 ID。"
 
-    const val PARAGRAPH_SEPARATOR = "\n\n"
-    const val SECTION_SEPARATOR = "\n\n\n"
-    const val IMAGE_SEPARATOR = "\n\n"
+    const val PARAGRAPH_SEPARATOR = "\n\n"// 普通段落之间的分隔。
+    const val SECTION_SEPARATOR = "\n\n\n"// 解析层识别到“小节分隔”后使用的内部语义分隔。
 
     sealed interface Part {
         data class Text(val text: String) : Part
