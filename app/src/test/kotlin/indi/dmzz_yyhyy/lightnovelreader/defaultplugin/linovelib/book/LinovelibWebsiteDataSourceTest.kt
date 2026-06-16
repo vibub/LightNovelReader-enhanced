@@ -1,5 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book
 
+import io.nightfish.lightnovelreader.api.content.component.ImageComponentData
 import org.jsoup.Jsoup
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -163,7 +164,7 @@ class LinovelibWebsiteDataSourceTest {
     @Test
     fun renderLinovelibSpacingKeepsSectionGapVisiblyLargerThanParagraphGap() {
         assertEquals("第一段\n\n第二段", "第一段\n\n第二段".renderLinovelibSpacing())
-        assertEquals("第一段\n\n \n\n第二段", "第一段\n\n\n第二段".renderLinovelibSpacing())
+        assertEquals("第一段\n\n \n第二段", "第一段\n\n\n第二段".renderLinovelibSpacing())
     }
 
     @Test
@@ -184,6 +185,61 @@ class LinovelibWebsiteDataSourceTest {
             ),
             parts.mergeLinovelibPagedTextParts()
         )
+    }
+
+    @Test
+    fun linovelibImagePaddingKeepsSpacingOnlyAtConsecutiveImageRunEdges() {
+        val parts = listOf(
+            LinovelibChapterContentParser.Part.Text("插图前"),
+            LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/first.jpg"),
+            LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/second.jpg"),
+            LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/third.jpg"),
+            LinovelibChapterContentParser.Part.Text("插图后")
+        )
+
+        assertEquals(ImageComponentData.DEFAULT_TOP_PADDING_DP, parts.linovelibImageTopPaddingDp(1))
+        assertEquals(0, parts.linovelibImageBottomPaddingDp(1))
+        assertEquals(0, parts.linovelibImageTopPaddingDp(2))
+        assertEquals(0, parts.linovelibImageBottomPaddingDp(2))
+        assertEquals(0, parts.linovelibImageTopPaddingDp(3))
+        assertEquals(ImageComponentData.DEFAULT_BOTTOM_PADDING_DP, parts.linovelibImageBottomPaddingDp(3))
+    }
+
+    @Test
+    fun linovelibImagePaddingKeepsSingleImagesSpacedFromText() {
+        val parts = listOf(
+            LinovelibChapterContentParser.Part.Text("第一段"),
+            LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/first.jpg"),
+            LinovelibChapterContentParser.Part.Text("第二段"),
+            LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/second.jpg"),
+            LinovelibChapterContentParser.Part.Text("第三段")
+        )
+
+        assertEquals(ImageComponentData.DEFAULT_TOP_PADDING_DP, parts.linovelibImageTopPaddingDp(1))
+        assertEquals(ImageComponentData.DEFAULT_BOTTOM_PADDING_DP, parts.linovelibImageBottomPaddingDp(1))
+        assertEquals(ImageComponentData.DEFAULT_TOP_PADDING_DP, parts.linovelibImageTopPaddingDp(3))
+        assertEquals(ImageComponentData.DEFAULT_BOTTOM_PADDING_DP, parts.linovelibImageBottomPaddingDp(3))
+    }
+
+    @Test
+    fun linovelibImagePaddingTreatsImagesSeparatedOnlyBySectionBreakAsConsecutive() {
+        val parts = listOf(
+            LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/first.jpg"),
+            LinovelibChapterContentParser.Part.SectionBreak,
+            LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/second.jpg")
+        ).mergeLinovelibPagedTextParts()
+
+        assertEquals(
+            listOf(
+                LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/first.jpg"),
+                LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/second.jpg")
+            ),
+            parts
+        )
+        assertEquals(0, parts.linovelibImageTopPaddingDp(0))
+        assertEquals(0, parts.linovelibImageBottomPaddingDp(0))
+        assertEquals(0, parts.linovelibImageTopPaddingDp(1))
+        assertEquals(0, parts.linovelibImageBottomPaddingDp(1))
     }
 
     @Test

@@ -15,6 +15,7 @@ import io.nightfish.lightnovelreader.api.book.WordCount
 import io.nightfish.lightnovelreader.api.content.builder.ContentBuilder
 import io.nightfish.lightnovelreader.api.content.builder.image
 import io.nightfish.lightnovelreader.api.content.builder.simpleText
+import io.nightfish.lightnovelreader.api.content.component.ImageComponentData
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -155,10 +156,15 @@ class LinovelibWebsiteDataSource(
             pageChapterId = nextPageChapterId
             page++
         }
-        chapterParts.mergeLinovelibPagedTextParts().forEach { part ->
+        val mergedParts = chapterParts.mergeLinovelibPagedTextParts()
+        mergedParts.forEachIndexed { index, part ->
             when (part) {
                 is LinovelibChapterContentParser.Part.Text -> builder.simpleText(part.text.renderLinovelibSpacing())
-                is LinovelibChapterContentParser.Part.Image -> part.url.toUri().let(builder::image)
+                is LinovelibChapterContentParser.Part.Image -> builder.image(
+                    uri = part.url.toUri(),
+                    topPaddingDp = mergedParts.linovelibImageTopPaddingDp(index),
+                    bottomPaddingDp = mergedParts.linovelibImageBottomPaddingDp(index)
+                )
                 LinovelibChapterContentParser.Part.SectionBreak -> Unit
             }
         }
@@ -535,6 +541,19 @@ internal fun List<LinovelibChapterContentParser.Part>.mergeLinovelibPagedTextPar
     return merged
 }
 
+internal fun List<LinovelibChapterContentParser.Part>.linovelibImageTopPaddingDp(index: Int): Int =
+    if (getOrNull(index - 1) is LinovelibChapterContentParser.Part.Text) {
+        ImageComponentData.DEFAULT_TOP_PADDING_DP
+    } else {
+        0
+    }
+
+internal fun List<LinovelibChapterContentParser.Part>.linovelibImageBottomPaddingDp(index: Int): Int =
+    if (getOrNull(index + 1) is LinovelibChapterContentParser.Part.Text) {
+        ImageComponentData.DEFAULT_BOTTOM_PADDING_DP
+    } else {
+        0
+    }
 
 internal fun String.renderLinovelibSpacing(): String =
     replace(LinovelibChapterContentParser.SECTION_SEPARATOR, LINOVELIB_DISPLAY_SECTION_SEPARATOR)

@@ -86,7 +86,6 @@ fun ZoomableImage(
                     .fillMaxWidth()
                     .heightIn(min = placeholderHeight)
                     .align(Alignment.Center)
-                    .padding(bottom = 8.dp)
             ) {
                 val state by painter.state.collectAsState()
                 when (state) {

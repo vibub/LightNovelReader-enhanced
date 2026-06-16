@@ -27,7 +27,10 @@ class ImageComponent(
             imageUri = data.uri,
             modifier = modifier
                 .fillMaxSize()
-                .padding(vertical = 24.dp),
+                .padding(
+                    top = data.topPaddingDp.dp,
+                    bottom = data.bottomPaddingDp.dp
+                ),
             onViewImage = {
                 navController.navigateToImageViewerDialog(data.uri)
             },

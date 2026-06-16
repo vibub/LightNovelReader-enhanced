@@ -28,7 +28,9 @@ import org.dom4j.Element
 @Serializable
 data class ImageComponentData(
     @Serializable(with = UriSerializer::class)
-    val uri: Uri
+    val uri: Uri,
+    val topPaddingDp: Int = DEFAULT_TOP_PADDING_DP,
+    val bottomPaddingDp: Int = DEFAULT_BOTTOM_PADDING_DP
 ): AbstractContentComponentData() {
     /**
      * [Uri]的Kotlinx序列化器
@@ -88,6 +90,8 @@ data class ImageComponentData(
     companion object {
         /** 图片组件的唯一标识字符串 */
         const val ID = "image"
+        const val DEFAULT_TOP_PADDING_DP = 24
+        const val DEFAULT_BOTTOM_PADDING_DP = 32
         /** 默认JSON序列化器 */
         val jsonSerializer = object: ComponentDataJsonElementSerializer<ImageComponentData> {
             override fun toJsonElement(data: ImageComponentData): JsonElement = Json.encodeToJsonElement(data)
