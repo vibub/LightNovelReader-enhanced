@@ -22,6 +22,8 @@ import org.dom4j.Element
  * 用于在章节内容中嵌入一张图片
  *
  * @param uri 图片的[Uri]
+ * @param topPaddingDp 图片上方间距，单位为 dp
+ * @param bottomPaddingDp 图片下方间距，单位为 dp
  *
  * @since Api 2
  */
@@ -90,7 +92,9 @@ data class ImageComponentData(
     companion object {
         /** 图片组件的唯一标识字符串 */
         const val ID = "image"
+        /** 图片组件默认上方间距，单位为 dp */
         const val DEFAULT_TOP_PADDING_DP = 24
+        /** 图片组件默认下方间距，单位为 dp */
         const val DEFAULT_BOTTOM_PADDING_DP = 32
         /** 默认JSON序列化器 */
         val jsonSerializer = object: ComponentDataJsonElementSerializer<ImageComponentData> {
