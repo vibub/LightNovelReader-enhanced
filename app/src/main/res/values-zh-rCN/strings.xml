@@ -27,6 +27,7 @@
     <string name="invert_selection">反选</string>
     <string name="export">导出</string>
     <string name="undo">撤销</string>
+    <string name="processing">Processing…</string>
     <string name="manual_download">手动下载</string>
     <string name="follow_system">跟随系统</string>
     <string name="exit">退出</string>
@@ -75,6 +76,8 @@
     <string name="book_word_count_limit">字数限制:</string>
     <string name="source_available_title">可用数据源</string>
     <string name="unavailable">不可用</string>
+    <string name="overview">概览</string>
+    <string name="settings">设置</string>
     <!-- Hints -->
     <string name="nothing_here">没有内容</string>
     <string name="nothing_here_desc_reading">阅读一些书本之后，它们将显示在此处\n通过下方导航栏前往『探索』页面以获取新书</string>
@@ -101,6 +104,12 @@
     <string name="plugin_disabled_desc">调整设置需要启用插件</string>
     <string name="confirm_exit">确认退出？</string>
     <string name="hint_unsaved_changes_will_be_lost">如果现在退出，您未保存的更改将会丢失。</string>
+    <string name="local_book_clear_options">清理选项</string>
+    <string name="local_book_clear_index">清除分卷和章节索引</string>
+    <string name="local_book_clear_content">清除章节内容</string>
+    <string name="local_book_clear_reading">清除阅读记录</string>
+    <string name="local_book_clear_confirm_title">确认删除</string>
+    <string name="local_book_clear_confirm_content">继续后将删除所选内容，并释放 %1$s 存储空间。\n之后可重新导入或下载内容。\n此操作无法撤销。</string>
     <!-- Snackbar Hints -->
     <string name="cache_book_started">开始缓存：%1$s</string>
     <string name="cache_book_running">此书本正在缓存中</string>
@@ -211,6 +220,8 @@
     <string name="settings_snap_data_desc">将应用内的用户数据导出为 .lnr 文件</string>
     <string name="settings_import_data">导入数据</string>
     <string name="settings_import_data_desc">从选定的 .lnr 文件导入用户数据</string>
+    <string name="settings_storage_manager">存储空间</string>
+    <string name="settings_storage_manager_desc">查看应用存储空间使用详情</string>
     <string name="settings_select_data_source">数据源</string>
     <string name="settings_select_data_source_desc">切换软件数据源</string>
     <string name="settings_plugins">扩展插件</string>
@@ -221,6 +232,34 @@
     <string name="settings_app_log_level_desc">设置日志过滤等级，重启应用后生效</string>
     <string name="settings_auto_proxy">自动代理</string>
     <string name="settings_auto_proxy_desc">自动从网络上获取代理 IP，<b>但这将导致您所浏览的书本数据可能会被截获</b></string>
+    <string name="book_manager_title">书籍管理器</string>
+    <string name="book_manager_tab_downloads">下载</string>
+    <string name="book_manager_tab_local_books">本地书籍</string>
+    <string name="book_manager_sort_reverse">反向排序</string>
+    <string name="book_manager_selected_count">已选择 %1$d 项</string>
+    <string name="book_manager_empty_title">没有内容</string>
+    <string name="book_manager_empty_description">没有可管理的本地书籍缓存。</string>
+    <string name="book_manager_delete_cache_title">清除书籍缓存</string>
+    <string name="book_manager_delete_cache_content">确定要清除所选书籍的所有已缓存章节内容吗？如有需要，之后可重新获取在线内容。\n此操作无法撤销。</string>
+    <string name="book_manager_no_local_reading_record">没有本地阅读记录</string>
+    <string name="book_manager_clear_orphaned">清除孤立数据</string>
+    <string name="book_manager_clear_orphaned_title">清除孤立数据</string>
+    <string name="book_manager_clear_orphaned_content">移除不再关联到任何本地书籍的章节数据？</string>
+    <string name="book_manager_group_index_only">无已缓存内容的书籍（%1$d）</string>
+    <string name="book_manager_cleared_items">已清除 %1$d 项</string>
+    <string name="storage_manager_title">存储管理器</string>
+    <string name="storage_manager_empty_description">没有可分析的本地缓存。</string>
+    <string name="storage_manager_used">已使用</string>
+    <string name="storage_manager_section_app_title">应用</string>
+    <string name="storage_manager_section_app_description">已安装应用本身占用的空间。</string>
+    <string name="storage_manager_section_database_title">数据库</string>
+    <string name="storage_manager_section_database_description">当前数据库文件占用的磁盘空间，包括用户数据和当前数据源的缓存内容。</string>
+    <string name="storage_manager_section_plugins_title">插件资源</string>
+    <string name="storage_manager_section_plugins_description">已安装插件及其资源文件占用的空间。</string>
+    <string name="storage_manager_section_cache_title">临时缓存</string>
+    <string name="storage_manager_section_cache_description">用于提高加载速度的缓存内容，如图片和临时文件。</string>
+    <string name="storage_manager_section_other_title">其他本地文件</string>
+    <string name="storage_manager_section_other_description">存储在应用数据目录中的其他本地文件。</string>
     <string name="about_settings">关于</string>
     <string name="settings_debug_tools">调试选项</string>
     <string name="settings_debug_tools_desc">供开发使用的调试与诊断功能</string>
@@ -274,6 +313,16 @@
     <string name="detail_introduction">介绍</string>
     <string name="detail_contents">目录</string>
     <string name="detail_title">详情</string>
+    <string name="detail_info_word_count_content">%1$s 字</string>
+    <string name="detail_info_stats_count_content">共 %1$d 卷，%2$d 章</string>
+    <string name="local_book_info_title">书籍缓存详情</string>
+    <string name="local_book_info_book_information">书籍信息</string>
+    <string name="local_book_info_volume_index">分卷索引</string>
+    <string name="local_book_info_chapter_information">章节信息</string>
+    <string name="local_book_info_chapter_content">章节内容</string>
+    <string name="local_book_info_reading_record">阅读记录</string>
+    <string name="local_book_info_total">合计</string>
+    <string name="local_book_clear">清除</string>
     <string name="bookshelf_new_title">新建书架</string>
     <string name="bookshelf_edit_title">编辑书架</string>
     <string name="changelog">新版变化</string>
@@ -611,4 +660,8 @@
     <string name="key_date_order_ymd">年月日</string>
     <string name="key_date_order_dmy">日月年</string>
     <string name="key_date_order_mdy">月日年</string>
+    <!-- Local Book Sort -->
+    <string name="key_local_book_sort_size">按大小排序</string>
+    <string name="key_local_book_sort_last_read">按上次阅读排序</string>
+    <string name="key_local_book_sort_chapter_count">按章节数排序</string>
 </resources>
