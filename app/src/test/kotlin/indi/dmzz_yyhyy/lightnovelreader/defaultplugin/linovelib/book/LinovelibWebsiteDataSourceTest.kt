@@ -147,6 +147,126 @@ class LinovelibWebsiteDataSourceTest {
     }
 
     @Test
+    fun mergeLinovelibPagedTextPartsKeepsSectionBlankLineBetweenPagedTextParts() {
+        val parts = listOf(
+            LinovelibChapterContentParser.Part.Text("上一页末段"),
+            LinovelibChapterContentParser.Part.SectionBreak,
+            LinovelibChapterContentParser.Part.Text("下一页新小节")
+        )
+
+        assertEquals(
+            listOf(LinovelibChapterContentParser.Part.Text("上一页末段\n\n\n下一页新小节")),
+            parts.mergeLinovelibPagedTextParts()
+        )
+    }
+
+    @Test
+    fun renderLinovelibSpacingKeepsSectionGapVisiblyLargerThanParagraphGap() {
+        assertEquals("第一段\n\n \n第二段", "第一段\n\n\n第二段".renderLinovelibSpacing())
+    }
+
+    @Test
+    fun spaceLinovelibImagesAddsBlankLinesAroundImage() {
+        val parts = listOf(
+            LinovelibChapterContentParser.Part.Text("插图前"),
+            LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/image.jpg"),
+            LinovelibChapterContentParser.Part.Text("插图后")
+        )
+
+        assertEquals(
+            listOf(
+                LinovelibChapterContentParser.Part.Text("插图前\n\n"),
+                LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/image.jpg"),
+                LinovelibChapterContentParser.Part.Text("\n\n插图后")
+            ),
+            parts.spaceLinovelibImages()
+        )
+    }
+
+    @Test
+    fun spaceLinovelibImagesKeepsPagedImageBoundarySpacing() {
+        val parts = listOf(
+            LinovelibChapterContentParser.Part.Text("第一页末段"),
+            LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/image.jpg"),
+            LinovelibChapterContentParser.Part.Text("下一页首段")
+        )
+
+        assertEquals(
+            listOf(
+                LinovelibChapterContentParser.Part.Text("第一页末段\n\n"),
+                LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/image.jpg"),
+                LinovelibChapterContentParser.Part.Text("\n\n下一页首段")
+            ),
+            parts.mergeLinovelibPagedTextParts().spaceLinovelibImages()
+        )
+    }
+
+    @Test
+    fun mergeAndSpaceLinovelibImagesDoNotUseSectionSpacingAroundImage() {
+        val parts = listOf(
+            LinovelibChapterContentParser.Part.Text("插图前"),
+            LinovelibChapterContentParser.Part.SectionBreak,
+            LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/image.jpg"),
+            LinovelibChapterContentParser.Part.SectionBreak,
+            LinovelibChapterContentParser.Part.Text("插图后")
+        )
+
+        assertEquals(
+            listOf(
+                LinovelibChapterContentParser.Part.Text("插图前\n\n"),
+                LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/image.jpg"),
+                LinovelibChapterContentParser.Part.Text("\n\n插图后")
+            ),
+            parts.mergeLinovelibPagedTextParts().spaceLinovelibImages()
+        )
+    }
+
+    @Test
+    fun spaceLinovelibImagesDoesNotDuplicateBlankLines() {
+        val parts = listOf(
+            LinovelibChapterContentParser.Part.Text("插图前\n\n"),
+            LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/image.jpg"),
+            LinovelibChapterContentParser.Part.Text("\n\n插图后")
+        )
+
+        assertEquals(parts, parts.spaceLinovelibImages())
+    }
+
+    @Test
+    fun spaceLinovelibImagesDoesNotCreateBlankTextBetweenConsecutiveImages() {
+        val parts = listOf(
+            LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/first.jpg"),
+            LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/second.jpg")
+        )
+
+        assertEquals(parts, parts.spaceLinovelibImages())
+    }
+
+    @Test
+    fun spaceLinovelibImagesDoesNotCreateOuterBlankTextForEdgeImages() {
+        assertEquals(
+            listOf(
+                LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/start.jpg"),
+                LinovelibChapterContentParser.Part.Text("\n\n图片后正文")
+            ),
+            listOf(
+                LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/start.jpg"),
+                LinovelibChapterContentParser.Part.Text("图片后正文")
+            ).spaceLinovelibImages()
+        )
+        assertEquals(
+            listOf(
+                LinovelibChapterContentParser.Part.Text("图片前正文\n\n"),
+                LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/end.jpg")
+            ),
+            listOf(
+                LinovelibChapterContentParser.Part.Text("图片前正文"),
+                LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/end.jpg")
+            ).spaceLinovelibImages()
+        )
+    }
+
+    @Test
     fun mergeLinovelibPagedTextPartsDoesNotMergeTextAcrossImages() {
         val parts = listOf(
             LinovelibChapterContentParser.Part.Text("上一页末段"),

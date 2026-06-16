@@ -155,10 +155,11 @@ class LinovelibWebsiteDataSource(
             pageChapterId = nextPageChapterId
             page++
         }
-        chapterParts.mergeLinovelibPagedTextParts().forEach { part ->
+        chapterParts.mergeLinovelibPagedTextParts().spaceLinovelibImages().forEach { part ->
             when (part) {
-                is LinovelibChapterContentParser.Part.Text -> builder.simpleText(part.text)
+                is LinovelibChapterContentParser.Part.Text -> builder.simpleText(part.text.renderLinovelibSpacing())
                 is LinovelibChapterContentParser.Part.Image -> part.url.toUri().let(builder::image)
+                LinovelibChapterContentParser.Part.SectionBreak -> Unit
             }
         }
         val content = builder.build().withParserWarnings(parserWarnings)
@@ -478,6 +479,7 @@ private fun String.cleanLinovelibPageText(): String = replace(' ', ' ')
 internal fun List<LinovelibChapterContentParser.Part>.mergeLinovelibPagedTextParts(): List<LinovelibChapterContentParser.Part> {
     val merged = mutableListOf<LinovelibChapterContentParser.Part>()
     val pendingText = StringBuilder()
+    var hasPendingSectionBreak = false
 
     fun flushText() {
         val text = pendingText.toString()
@@ -485,18 +487,80 @@ internal fun List<LinovelibChapterContentParser.Part>.mergeLinovelibPagedTextPar
         if (text.isNotBlank()) merged.add(LinovelibChapterContentParser.Part.Text(text))
     }
 
+    fun flushTrailingSectionBreak() {
+        flushText()
+        if (merged.isNotEmpty() && merged.last() != LinovelibChapterContentParser.Part.SectionBreak) {
+            merged.add(LinovelibChapterContentParser.Part.SectionBreak)
+        }
+        hasPendingSectionBreak = false
+    }
+
     forEach { part ->
         when (part) {
             is LinovelibChapterContentParser.Part.Text -> {
-                if (pendingText.isNotBlank()) pendingText.append("\n\n")
+                if (pendingText.isNotBlank()) {
+                    pendingText.append(
+                        if (hasPendingSectionBreak) {
+                            LinovelibChapterContentParser.SECTION_SEPARATOR
+                        } else {
+                            LinovelibChapterContentParser.PARAGRAPH_SEPARATOR
+                        }
+                    )
+                } else if (merged.lastOrNull() == LinovelibChapterContentParser.Part.SectionBreak) {
+                    merged.removeAt(merged.lastIndex)
+                    pendingText.append(LinovelibChapterContentParser.SECTION_SEPARATOR)
+                }
                 pendingText.append(part.text)
+                hasPendingSectionBreak = false
             }
             is LinovelibChapterContentParser.Part.Image -> {
+                hasPendingSectionBreak = false
                 flushText()
                 merged.add(part)
             }
+            LinovelibChapterContentParser.Part.SectionBreak -> {
+                if (pendingText.isNotBlank()) {
+                    hasPendingSectionBreak = true
+                } else if (
+                    merged.isNotEmpty() &&
+                    merged.last() != LinovelibChapterContentParser.Part.SectionBreak &&
+                    merged.last() !is LinovelibChapterContentParser.Part.Image
+                ) {
+                    merged.add(LinovelibChapterContentParser.Part.SectionBreak)
+                }
+            }
         }
     }
-    flushText()
+    if (hasPendingSectionBreak) flushTrailingSectionBreak() else flushText()
     return merged
 }
+
+internal fun List<LinovelibChapterContentParser.Part>.spaceLinovelibImages(): List<LinovelibChapterContentParser.Part> {
+    val spaced = toMutableList()
+    spaced.forEachIndexed { index, part ->
+        if (part is LinovelibChapterContentParser.Part.Image) {
+            spaced.getOrNull(index - 1)?.let { previous ->
+                if (previous is LinovelibChapterContentParser.Part.Text) {
+                    spaced[index - 1] = LinovelibChapterContentParser.Part.Text(previous.text.ensureEndsWithBlankLine())
+                }
+            }
+            spaced.getOrNull(index + 1)?.let { next ->
+                if (next is LinovelibChapterContentParser.Part.Text) {
+                    spaced[index + 1] = LinovelibChapterContentParser.Part.Text(next.text.ensureStartsWithBlankLine())
+                }
+            }
+        }
+    }
+    return spaced
+}
+
+private fun String.ensureEndsWithBlankLine(): String =
+    if (endsWith(LinovelibChapterContentParser.IMAGE_SEPARATOR)) this else this + LinovelibChapterContentParser.IMAGE_SEPARATOR
+
+private fun String.ensureStartsWithBlankLine(): String =
+    if (startsWith(LinovelibChapterContentParser.IMAGE_SEPARATOR)) this else LinovelibChapterContentParser.IMAGE_SEPARATOR + this
+
+internal fun String.renderLinovelibSpacing(): String =
+    replace(LinovelibChapterContentParser.SECTION_SEPARATOR, LINOVELIB_DISPLAY_SECTION_SEPARATOR)
+
+private const val LINOVELIB_DISPLAY_SECTION_SEPARATOR = "\n\n \n"

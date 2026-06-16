@@ -237,6 +237,212 @@ class LinovelibChapterContentParserTest {
     }
 
     @Test
+    fun parseKeepsSectionBlankLineFromConsecutiveBreaks() {
+        val result = parse(
+            """
+                <div id="TextContent">
+                    <p>第一小节<br><br><br>第二小节</p>
+                </div>
+            """.trimIndent()
+        )
+
+        assertEquals(listOf(LinovelibChapterContentParser.Part.Text("第一小节\n\n\n第二小节")), result.parts)
+    }
+
+    @Test
+    fun parseKeepsSectionBlankLineFromBlankBlock() {
+        val result = parse(
+            """
+                <div id="TextContent">
+                    <p>第一小节末段</p>
+                    <p><br></p>
+                    <p>第二小节首段</p>
+                </div>
+            """.trimIndent()
+        )
+
+        assertEquals(listOf(LinovelibChapterContentParser.Part.Text("第一小节末段\n\n\n第二小节首段")), result.parts)
+    }
+
+    @Test
+    fun parseKeepsSectionBlankLineFromTopLevelBreak() {
+        val result = parse(
+            """
+                <div id="TextContent">
+                    <p>对我们来说是高中最后一次的文化祭开始了。</p>
+                    <br>
+                    <p>教室以布幕区隔前后，后面一半是后场。当然，桌椅堆在更后方。</p>
+                </div>
+            """.trimIndent()
+        )
+
+        assertEquals(
+            listOf(
+                LinovelibChapterContentParser.Part.Text(
+                    "对我们来说是高中最后一次的文化祭开始了。\n\n\n教室以布幕区隔前后，后面一半是后场。当然，桌椅堆在更后方。"
+                )
+            ),
+            result.parts
+        )
+    }
+
+    @Test
+    fun parseKeepsInlineBreakInsideParagraph() {
+        val result = parse(
+            """
+                <div id="TextContent">
+                    <p>第一行<br>第二行</p>
+                </div>
+            """.trimIndent()
+        )
+
+        assertEquals(listOf(LinovelibChapterContentParser.Part.Text("第一行\n第二行")), result.parts)
+    }
+
+    @Test
+    fun parseKeepsTopLevelBreakDuringSeededRestore() {
+        val paragraphs = (0 until 123).joinToString("\n") { index ->
+            val text = when (index) {
+                32 -> "对我们来说是高中最后一次的文化祭开始了。"
+                58 -> "教室以布幕区隔前后，后面一半是后场。当然，桌椅堆在更后方。"
+                else -> "段落$index"
+            }
+            if (index == 37) "<p>$text</p>\n<br>" else "<p>$text</p>"
+        }
+        val result = parse(
+            """
+                <div id="TextContent">
+                    $paragraphs
+                </div>
+            """.trimIndent(),
+            chapterId = "245421"
+        )
+
+        assertNull(result.warning)
+        assertTrue(
+            (result.parts.single() as LinovelibChapterContentParser.Part.Text).text.contains(
+                "对我们来说是高中最后一次的文化祭开始了。\n\n\n教室以布幕区隔前后，后面一半是后场。当然，桌椅堆在更后方。"
+            )
+        )
+    }
+
+    @Test
+    fun parseCoalescesConsecutiveBlankBlocksAsSectionBlankLine() {
+        val result = parse(
+            """
+                <div id="TextContent">
+                    <p>第一小节末段</p>
+                    <p><br></p>
+                    <p>&nbsp;</p>
+                    <p>第二小节首段</p>
+                </div>
+            """.trimIndent()
+        )
+
+        assertEquals(listOf(LinovelibChapterContentParser.Part.Text("第一小节末段\n\n\n第二小节首段")), result.parts)
+    }
+
+    @Test
+    fun parseKeepsTrailingSectionBreakForPagedMerge() {
+        val result = parse(
+            """
+                <div id="TextContent">
+                    <p>本页末段</p>
+                    <p><br></p>
+                </div>
+            """.trimIndent()
+        )
+
+        assertEquals(
+            listOf(
+                LinovelibChapterContentParser.Part.Text("本页末段"),
+                LinovelibChapterContentParser.Part.SectionBreak
+            ),
+            result.parts
+        )
+    }
+
+    @Test
+    fun parseDoesNotPromoteImageBeforeBreakToSectionSpacing() {
+        val result = parse(
+            """
+                <div id="TextContent">
+                    <p>插图前小节</p>
+                    <p><br></p>
+                    <img src="/img.jpg">
+                </div>
+            """.trimIndent()
+        )
+
+        assertEquals(
+            listOf(
+                LinovelibChapterContentParser.Part.Text("插图前小节"),
+                LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/img.jpg")
+            ),
+            result.parts
+        )
+    }
+
+    @Test
+    fun parseDoesNotPromoteImageAfterBreakToSectionSpacing() {
+        val result = parse(
+            """
+                <div id="TextContent">
+                    <img src="/img.jpg">
+                    <p><br></p>
+                    <p>插图后小节</p>
+                </div>
+            """.trimIndent()
+        )
+
+        assertEquals(
+            listOf(
+                LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/img.jpg"),
+                LinovelibChapterContentParser.Part.Text("插图后小节")
+            ),
+            result.parts
+        )
+    }
+
+    @Test
+    fun parseRestoresExplicitOrderWithBlankSectionBreak() {
+        val result = parse(
+            """
+                <div id="TextContent">
+                    <p style="order: 2">第二小节首段</p>
+                    <p><br></p>
+                    <p style="order: 1">第一小节末段</p>
+                </div>
+            """.trimIndent()
+        )
+
+        assertNull(result.warning)
+        assertEquals(listOf(LinovelibChapterContentParser.Part.Text("第一小节末段\n\n\n第二小节首段")), result.parts)
+    }
+
+    @Test
+    fun parseKeepsBlankSectionBreakDuringSeededRestore() {
+        val paragraphs = (0..21).joinToString("\n") { index ->
+            if (index == 0) {
+                "<p>段落0</p>\n<p><br></p>"
+            } else {
+                "<p>段落$index</p>"
+            }
+        }
+        val result = parse(
+            """
+                <div id="TextContent">
+                    $paragraphs
+                </div>
+            """.trimIndent(),
+            chapterId = "225115"
+        )
+
+        assertNull(result.warning)
+        assertTrue((result.parts.single() as LinovelibChapterContentParser.Part.Text).text.startsWith("段落0\n\n\n段落1\n\n段落2"))
+    }
+
+    @Test
     fun parseKeepsBlankLinesBetweenRestoredParagraphs() {
         val result = parse(
             """

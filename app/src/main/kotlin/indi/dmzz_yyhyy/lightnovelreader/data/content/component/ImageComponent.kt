@@ -1,9 +1,11 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.content.component
 
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.navigateToImageViewerDialog
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.ZoomableImage
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
@@ -23,7 +25,9 @@ class ImageComponent(
         val navController = LocalNavController.current
         ZoomableImage(
             imageUri = data.uri,
-            modifier = modifier.fillMaxSize(),
+            modifier = modifier
+                .fillMaxSize()
+                .padding(vertical = 16.dp),
             onViewImage = {
                 navController.navigateToImageViewerDialog(data.uri)
             },

@@ -8,9 +8,14 @@ internal object LinovelibChapterContentParser {
     const val WARNING_KEY = "linovelibParserWarning"
     const val WARNING_MESSAGE = "Linovelib 本章段落顺序还原失败，已停止使用网页源码乱序正文。请刷新章节或反馈该章节 ID。"
 
+    const val PARAGRAPH_SEPARATOR = "\n\n"
+    const val SECTION_SEPARATOR = "\n\n\n"
+    const val IMAGE_SEPARATOR = "\n\n"
+
     sealed interface Part {
         data class Text(val text: String) : Part
         data class Image(val url: String) : Part
+        data object SectionBreak : Part
     }
 
     data class ParseResult(
@@ -33,6 +38,11 @@ internal object LinovelibChapterContentParser {
                 if (text.isNotBlank() && !text.isNoiseText()) add(Part.Text(text))
             }
 
+            fun appendSectionBreak() {
+                flushText()
+                if (isNotEmpty() && last() != Part.SectionBreak) add(Part.SectionBreak)
+            }
+
             fun appendNode(node: Node) {
                 when (node) {
                     is TextNode -> pendingText.append(node.text())
@@ -44,17 +54,31 @@ internal object LinovelibChapterContentParser {
                             imageUrl(node).takeIf { it.isNotBlank() }?.let { add(Part.Image(it)) }
                         }
                         else -> {
+                            val pendingStart = pendingText.length
                             node.childNodes().forEach(::appendNode)
                             if (node.isBlockTextElement()) {
-                                pendingText.append('\n')
-                                flushText()
+                                if (node.isBlankBlockTextElement()) {
+                                    pendingText.setLength(pendingStart)
+                                    appendSectionBreak()
+                                } else {
+                                    pendingText.append('\n')
+                                    flushText()
+                                }
                             }
                         }
                     }
                 }
             }
 
-            orderedNodes.nodes.forEach(::appendNode)
+            fun appendTopLevelNode(node: Node) {
+                if (node is Element && node.`is`("br")) {
+                    appendSectionBreak()
+                } else {
+                    appendNode(node)
+                }
+            }
+
+            orderedNodes.nodes.forEach(::appendTopLevelNode)
             flushText()
         }.mergeAdjacentTextParts()
         return ParseResult(parts, orderedNodes.warning)
@@ -97,7 +121,7 @@ internal object LinovelibChapterContentParser {
         val sortableElements = nodes
             .filterIsInstance<Element>()
             .filterNot { it.`is`("script, style, noscript") }
-            .filter { it.isParagraphLikeForOrdering() }
+            .filter { it.isOrderableParagraphLikeForOrdering() }
         if (sortableElements.size < 2) return RestoreResult.NotApplicable
 
         val keyed = sortableElements.map { element -> element to element.explicitOrderKey() }
@@ -116,7 +140,7 @@ internal object LinovelibChapterContentParser {
 
         val queue = ArrayDeque(sortedElements)
         val sortedNodes = nodes.map { node ->
-            if (node is Element && node.isParagraphLikeForOrdering() && !node.`is`("script, style, noscript")) {
+            if (node is Element && node.isOrderableParagraphLikeForOrdering() && !node.`is`("script, style, noscript")) {
                 queue.removeFirst()
             } else {
                 node
@@ -150,29 +174,30 @@ internal object LinovelibChapterContentParser {
         val afterTexts = restored.map { it.cleanOwnTextForCompare() }.sorted()
         if (beforeTexts != afterTexts) return RestoreResult.Failed(WARNING_MESSAGE)
 
-        val directParagraphs = nodes
-            .filterIsInstance<Element>()
-            .filter { it.isNonEmptyParagraph() }
-        val allParagraphsAreDirect = directParagraphs.size == paragraphs.size &&
-            directParagraphs.zip(paragraphs).all { (direct, paragraph) -> direct === paragraph }
-
-        if (!allParagraphsAreDirect) {
-            return RestoreResult.Restored(restored.map { it.clone() })
-        }
-
-        var paragraphIndex = 0
-        val restoredNodes = nodes.map { node ->
-            if (node is Element && node.isNonEmptyParagraph()) {
-                restored[paragraphIndex++]
-            } else {
-                node
-            }
-        }
+        val restoredQueue = ArrayDeque(restored)
+        val restoredNodes = nodes.map { it.cloneWithRestoredSeedParagraphs(restoredQueue) }
+        if (restoredQueue.isNotEmpty()) return RestoreResult.Failed(WARNING_MESSAGE)
         return RestoreResult.Restored(restoredNodes)
     }
 
     private fun Element.seededParagraphs(): List<Element> = select("p")
-        .filter { it.isNonEmptyParagraph() }
+        .filter { it.isSeededParagraphForOrdering() }
+
+    private fun Node.cloneWithRestoredSeedParagraphs(restored: ArrayDeque<Element>): Node = when (this) {
+        is Element -> {
+            if (isSeededParagraphForOrdering()) {
+                if (restored.isEmpty()) clone() else restored.removeFirst().clone()
+            } else {
+                clone().also { cloned ->
+                    cloned.empty()
+                    childNodes().forEach { cloned.appendChild(it.cloneWithRestoredSeedParagraphs(restored)) }
+                }
+            }
+        }
+        else -> clone()
+    }
+
+    private fun Element.isSeededParagraphForOrdering(): Boolean = isNonEmptyParagraph() && !isBlankBlockTextElement()
 
     private fun Element.isNonEmptyParagraph(): Boolean = `is`("p") && html().replace(Regex("\\s+"), "").isNotEmpty()
 
@@ -193,26 +218,47 @@ internal object LinovelibChapterContentParser {
     private fun List<Part>.mergeAdjacentTextParts(): List<Part> {
         val merged = mutableListOf<Part>()
         val pendingText = StringBuilder()
+        var hasPendingSectionBreak = false
 
         fun flushText() {
-            val text = pendingText.toString().cleanText()
+            val text = pendingText.toString()
             pendingText.clear()
             if (text.isNotBlank()) merged.add(Part.Text(text))
+        }
+
+        fun flushTrailingSectionBreak() {
+            flushText()
+            if (merged.isNotEmpty() && merged.last() != Part.SectionBreak) merged.add(Part.SectionBreak)
+            hasPendingSectionBreak = false
         }
 
         forEach { part ->
             when (part) {
                 is Part.Text -> {
-                    if (pendingText.isNotBlank()) pendingText.append("\n\n")
+                    if (pendingText.isNotBlank()) {
+                        pendingText.append(if (hasPendingSectionBreak) SECTION_SEPARATOR else PARAGRAPH_SEPARATOR)
+                    } else if (merged.lastOrNull() == Part.SectionBreak) {
+                        merged.removeAt(merged.lastIndex)
+                        pendingText.append(SECTION_SEPARATOR)
+                    }
                     pendingText.append(part.text)
+                    hasPendingSectionBreak = false
                 }
                 is Part.Image -> {
+                    hasPendingSectionBreak = false
                     flushText()
                     merged.add(part)
                 }
+                Part.SectionBreak -> {
+                    if (pendingText.isNotBlank()) {
+                        hasPendingSectionBreak = true
+                    } else if (merged.isNotEmpty() && merged.last() != Part.SectionBreak && merged.last() !is Part.Image) {
+                        merged.add(Part.SectionBreak)
+                    }
+                }
             }
         }
-        flushText()
+        if (hasPendingSectionBreak) flushTrailingSectionBreak() else flushText()
         return merged
     }
 
@@ -234,13 +280,32 @@ internal object LinovelibChapterContentParser {
 
     private fun Element.isParagraphLikeForOrdering(): Boolean = `is`("p, div, section, article, center, li")
 
+    private fun Element.isOrderableParagraphLikeForOrdering(): Boolean =
+        isParagraphLikeForOrdering() && !isBlankBlockTextElement()
+
     private fun Element.isBlockTextElement(): Boolean = `is`("p, div, section, article, center, li, blockquote")
+
+    private fun Element.isBlankBlockTextElement(): Boolean = isBlockTextElement() &&
+        text().isBlankSpacingText() && childNodes().all { it.isBlankSpacingNode() }
+
+    private fun Node.isBlankSpacingNode(): Boolean = when (this) {
+        is TextNode -> text().isBlankSpacingText()
+        is Element -> when {
+            `is`("script, style, noscript") -> true
+            `is`("br") -> true
+            `is`("img") -> false
+            else -> text().isBlankSpacingText() && childNodes().all { it.isBlankSpacingNode() }
+        }
+        else -> true
+    }
+
+    private fun String.isBlankSpacingText(): Boolean = replace(' ', ' ').isBlank()
 
     private fun Element.cleanOwnTextForCompare(): String = text().cleanText()
 
     private fun String.cleanText(): String = replace(' ', ' ')
         .replace(Regex("[ \\t\\x0B\\f\\r]+"), " ")
-        .replace(Regex("\\n{3,}"), "\n\n")
+        .replace(Regex("\\n{3,}"), SECTION_SEPARATOR)
         .trim()
 
     private fun String.isNoiseText(): Boolean = contains("最新网址") || contains("请收藏") || contains("本章未完")
