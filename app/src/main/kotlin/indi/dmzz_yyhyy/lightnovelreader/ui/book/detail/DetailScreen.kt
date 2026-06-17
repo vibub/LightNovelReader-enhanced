@@ -510,7 +510,7 @@ private fun DetailContent(
             )
         }
 
-        if (visible >= 4 && uiState.bookmarkUiState.chapterTitle.isNotBlank()) item {
+        if (visible >= 4 && uiState.isLinovelibSource && uiState.bookmarkUiState.chapterTitle.isNotBlank()) item {
             LinovelibBookmarkBlock(
                 modifier = Modifier.fadeInOnce("linovelib-bookmark"),
                 bookmarkUiState = uiState.bookmarkUiState,

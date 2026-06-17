@@ -16,6 +16,7 @@ interface DetailUiState {
     val bookVolumes: BookVolumes
     val userReadingData: UserReadingData
     val bookmarkUiState: DetailBookmarkUiState
+    val isLinovelibSource: Boolean
     val isCached: Boolean
     val downloadItem: DownloadItem?
     val isInBookshelf: Boolean
@@ -33,6 +34,7 @@ class MutableDetailUiState: DetailUiState {
     override var bookVolumes: BookVolumes by mutableStateOf(BookVolumes.empty(""))
     override var userReadingData: UserReadingData by mutableStateOf(UserReadingData.empty())
     override var bookmarkUiState: DetailBookmarkUiState by mutableStateOf(DetailBookmarkUiState())
+    override var isLinovelibSource: Boolean by mutableStateOf(false)
     override var isCached: Boolean by mutableStateOf(false)
     override var downloadItem: DownloadItem? by mutableStateOf(null)
     override var isInBookshelf: Boolean by mutableStateOf(false)

@@ -138,8 +138,10 @@ fun NavGraphBuilder.bookDetailDestination() {
             onClickTag = viewModel::onClickTag,
             onClickCover = navController::navigateToImageViewerDialog,
             onClickMarkAsRead = { navController.navigateToMarkAllChaptersAsReadDialog(viewModel.uiState.bookInformation.id) },
-            onClickWebView = {
-                navController.navigateToLinovelibWebBookDestination(bookId)
+            onClickWebView = if (viewModel.uiState.isLinovelibSource) {
+                { navController.navigateToLinovelibWebBookDestination(bookId) }
+            } else {
+                null
             },
             onMatchLinovelibBookmark = { chapterId ->
                 val matched = viewModel.matchLinovelibBookmark(bookId, chapterId)

@@ -70,9 +70,13 @@ fun NavGraphBuilder.bookReaderDestination() {
                     )
                 }
             },
-            onClickWebView = {
-                val chapterId = viewModel.uiState.contentUiState.readingChapterContent.id
-                navController.navigateToLinovelibWebBookDestination(viewModel.bookId, chapterId)
+            onClickWebView = if (viewModel.uiState.isLinovelibSource) {
+                {
+                    val chapterId = viewModel.uiState.contentUiState.readingChapterContent.id
+                    navController.navigateToLinovelibWebBookDestination(viewModel.bookId, chapterId)
+                }
+            } else {
+                null
             }
         )
     }

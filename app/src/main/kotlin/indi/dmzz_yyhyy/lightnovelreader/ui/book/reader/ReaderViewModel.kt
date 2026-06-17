@@ -71,6 +71,7 @@ class ReaderViewModel @Inject constructor(
             }
             bookmarkJob?.cancel()
             val isLinovelib = webBookDataSourceProvider.default.id == LinovelibConstants.SOURCE_ID
+            _uiState.isLinovelibSource = isLinovelib
             _uiState.bookmarkUiState = ReaderBookmarkUiState(isAvailable = isLinovelib)
             if (isLinovelib) {
                 bookmarkJob = viewModelScope.launch(Dispatchers.IO) {

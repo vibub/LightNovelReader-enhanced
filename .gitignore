@@ -22,6 +22,7 @@ local.properties
 /app/snapshot/
 
 .claude/
+CLAUDE.md
 .codegraph/
 .idea/studiobot.xml
 
