@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
+import java.net.URLEncoder
 
 private class WebViewHolder {
     var webView: WebView? = null
@@ -58,6 +59,12 @@ fun LinovelibSourceSettingsScreen(
     var lastLoadedUrl by remember { mutableStateOf(LinovelibConstants.loginUrl()) }
     var menuExpanded by remember { mutableStateOf(false) }
     var pendingSyncBookcase by remember { mutableStateOf(false) }
+    var canGoBack by remember { mutableStateOf(false) }
+    var canGoForward by remember { mutableStateOf(false) }
+    val updateNavigationState: (WebView?) -> Unit = { view ->
+        canGoBack = view?.canGoBack() == true
+        canGoForward = view?.canGoForward() == true
+    }
 
     DisposableEffect(Unit) {
         onDispose {
@@ -74,17 +81,15 @@ fun LinovelibSourceSettingsScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.linovelib_settings_title)) },
                 navigationIcon = {
-                    OutlinedButton(onClick = onClickBack) {
-                        Text(stringResource(R.string.close))
-                    }
+                    LinovelibWebCloseButton(onClickBack)
                 },
                 actions = {
-                    IconButton(onClick = { webViewHolder.webView?.reload() }) {
-                        Icon(
-                            painter = painterResource(R.drawable.refresh_24px),
-                            contentDescription = stringResource(R.string.linovelib_refresh)
-                        )
-                    }
+                    LinovelibWebNavigationActions(
+                        webView = webViewHolder.webView,
+                        canGoBack = canGoBack,
+                        canGoForward = canGoForward,
+                        updateNavigationState = updateNavigationState
+                    )
                     IconButton(onClick = { menuExpanded = true }) {
                         Icon(
                             painter = painterResource(R.drawable.more_vert_24px),
@@ -126,14 +131,71 @@ fun LinovelibSourceSettingsScreen(
                 .fillMaxSize(),
             initialUrl = LinovelibConstants.loginUrl(),
             mode = LinovelibWebViewMode.Login,
-            onWebViewCreated = { webViewHolder.webView = it },
+            onWebViewCreated = {
+                webViewHolder.webView = it
+                updateNavigationState(it)
+            },
             onUrlChanged = { lastLoadedUrl = it },
-            onPageFinished = { _, url ->
+            onPageFinished = { view, url ->
+                updateNavigationState(view)
                 if (pendingSyncBookcase && url.contains("bookcase.php")) {
                     pendingSyncBookcase = false
                     onSyncNow()
                 }
             }
+        )
+    }
+}
+
+@Composable
+fun LinovelibWebCloseButton(onClickBack: () -> Unit) {
+    IconButton(onClick = onClickBack) {
+        Icon(
+            painter = painterResource(R.drawable.close_24px),
+            contentDescription = stringResource(R.string.close)
+        )
+    }
+}
+
+@Composable
+fun LinovelibWebNavigationActions(
+    webView: WebView?,
+    canGoBack: Boolean,
+    canGoForward: Boolean,
+    updateNavigationState: (WebView?) -> Unit
+) {
+    IconButton(
+        enabled = canGoBack,
+        onClick = {
+            webView?.run {
+                goBack()
+                updateNavigationState(this)
+            }
+        }
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.arrow_back_24px),
+            contentDescription = stringResource(R.string.linovelib_web_back)
+        )
+    }
+    IconButton(
+        enabled = canGoForward,
+        onClick = {
+            webView?.run {
+                goForward()
+                updateNavigationState(this)
+            }
+        }
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.arrow_forward_24px),
+            contentDescription = stringResource(R.string.linovelib_web_forward)
+        )
+    }
+    IconButton(onClick = { webView?.reload() }) {
+        Icon(
+            painter = painterResource(R.drawable.refresh_24px),
+            contentDescription = stringResource(R.string.linovelib_refresh)
         )
     }
 }
@@ -234,7 +296,17 @@ fun LinovelibWebSearchScreen(
 ) {
     var webView: WebView? by remember { mutableStateOf(null) }
     var detectedBookId by remember { mutableStateOf<String?>(null) }
-    val searchUrl = remember { LinovelibConstants.MOBILE_BASE_URL }
+    var canGoBack by remember { mutableStateOf(false) }
+    var canGoForward by remember { mutableStateOf(false) }
+    val updateNavigationState: (WebView?) -> Unit = { view ->
+        canGoBack = view?.canGoBack() == true
+        canGoForward = view?.canGoForward() == true
+    }
+    val searchUrl = remember(keyword) {
+        keyword.trim().takeIf { it.isNotBlank() }
+            ?.let { LinovelibConstants.searchUrl(URLEncoder.encode(it, Charsets.UTF_8.name())) }
+            ?: LinovelibConstants.MOBILE_BASE_URL
+    }
 
     DisposableEffect(Unit) {
         onDispose {
@@ -248,17 +320,15 @@ fun LinovelibWebSearchScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.linovelib_web_search_title)) },
                 navigationIcon = {
-                    OutlinedButton(onClick = onClickBack) {
-                        Text(stringResource(R.string.close))
-                    }
+                    LinovelibWebCloseButton(onClickBack)
                 },
                 actions = {
-                    IconButton(onClick = { webView?.reload() }) {
-                        Icon(
-                            painter = painterResource(R.drawable.refresh_24px),
-                            contentDescription = stringResource(R.string.linovelib_refresh)
-                        )
-                    }
+                    LinovelibWebNavigationActions(
+                        webView = webView,
+                        canGoBack = canGoBack,
+                        canGoForward = canGoForward,
+                        updateNavigationState = updateNavigationState
+                    )
                 }
             )
         }
@@ -268,13 +338,19 @@ fun LinovelibWebSearchScreen(
                 .padding(innerPadding)
                 .fillMaxSize(),
             initialUrl = searchUrl,
-            onWebViewCreated = { webView = it },
+            onWebViewCreated = {
+                webView = it
+                updateNavigationState(it)
+            },
             onUrlChanged = { url ->
                 val bookId = LinovelibConstants.extractBookIdFromUrl(url)
                 if (bookId != null && detectedBookId != bookId) {
                     detectedBookId = bookId
                     onBookDetected(bookId)
                 }
+            },
+            onPageFinished = { view, _ ->
+                updateNavigationState(view)
             }
         )
     }
@@ -394,7 +470,7 @@ fun LinovelibWebView(
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
                     }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                         importantForContentCapture = View.IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS
                     }
                 }

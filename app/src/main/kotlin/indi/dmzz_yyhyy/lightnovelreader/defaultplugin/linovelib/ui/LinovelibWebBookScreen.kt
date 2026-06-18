@@ -6,9 +6,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -20,7 +17,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -28,6 +24,7 @@ import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,6 +38,12 @@ fun LinovelibWebBookScreen(
     var webView: WebView? by remember { mutableStateOf(null) }
     var autoBookmarkTriggered by remember(bookId, chapterId, autoBookmark) { mutableStateOf(false) }
     var autoBookmarkMessage by remember { mutableStateOf("") }
+    var canGoBack by remember { mutableStateOf(false) }
+    var canGoForward by remember { mutableStateOf(false) }
+    val updateNavigationState: (WebView?) -> Unit = { view ->
+        canGoBack = view?.canGoBack() == true
+        canGoForward = view?.canGoForward() == true
+    }
     val coroutineScope = rememberCoroutineScope()
 
     val initialUrl = remember(bookId, chapterId) {
@@ -63,17 +66,15 @@ fun LinovelibWebBookScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.linovelib_web_book_title)) },
                 navigationIcon = {
-                    OutlinedButton(onClick = onClickBack) {
-                        Text(stringResource(R.string.close))
-                    }
+                    LinovelibWebCloseButton(onClickBack)
                 },
                 actions = {
-                    IconButton(onClick = { webView?.reload() }) {
-                        Icon(
-                            painter = painterResource(R.drawable.refresh_24px),
-                            contentDescription = stringResource(R.string.linovelib_refresh)
-                        )
-                    }
+                    LinovelibWebNavigationActions(
+                        webView = webView,
+                        canGoBack = canGoBack,
+                        canGoForward = canGoForward,
+                        updateNavigationState = updateNavigationState
+                    )
                 }
             )
         }
@@ -95,8 +96,12 @@ fun LinovelibWebBookScreen(
                 modifier = Modifier.fillMaxSize(),
                 initialUrl = initialUrl,
                 initialCookies = viewModel.getCookie(),
-                onWebViewCreated = { webView = it },
+                onWebViewCreated = {
+                    webView = it
+                    updateNavigationState(it)
+                },
                 onPageFinished = { view, _ ->
+                    updateNavigationState(view)
                     if (!autoBookmark || chapterId.isBlank() || autoBookmarkTriggered) return@LinovelibWebView
                     autoBookmarkTriggered = true
                     autoBookmarkMessage = "正在同步章节书签…"
@@ -104,7 +109,7 @@ fun LinovelibWebBookScreen(
                         view.evaluateJavascript(AUTO_BOOKMARK_SCRIPT) { result ->
                             if (result.contains("clicked")) {
                                 coroutineScope.launch {
-                                    delay(1500L)
+                                    delay(1500.milliseconds)
                                     val synced = viewModel.verifyBookmarkSynced(bookId, chapterId)
                                     autoBookmarkMessage = if (synced) {
                                         "章节书签已同步到 Bilinovel"

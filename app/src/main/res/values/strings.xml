@@ -611,7 +611,7 @@
     <string name="linovelib_login_status_saved">已保存登录 Cookie</string>
     <string name="linovelib_login_status_missing">未保存登录 Cookie</string>
     <string name="linovelib_cookie_storage_warning">当前版本只会把 Linovelib Cookie 临时保存到本地用户数据中，请勿在共享设备上保存。</string>
-    <string name="linovelib_last_sync_time">上次同步：%1$s</string>
+    <string name="linovelib_last_sync_time">上次操作：%1$s</string>
     <string name="linovelib_last_sync_error">上次错误：%1$s</string>
     <string name="linovelib_save_cookie">保存当前 Cookie</string>
     <string name="linovelib_clear_cookie">清除已保存 Cookie</string>
@@ -619,6 +619,8 @@
     <string name="linovelib_sync_requires_source">请先切换到 Linovelib 数据源再同步，以确保导入的书籍和章节书签保存到正确的数据源。</string>
     <string name="linovelib_webview_hint">请在下方登录并通过站点检查，然后点击“保存当前 Cookie”。当前页面：%1$s</string>
     <string name="linovelib_web_search_title">Linovelib 网页搜索</string>
+    <string name="linovelib_web_back">后退</string>
+    <string name="linovelib_web_forward">前进</string>
     <string name="linovelib_refresh">刷新</string>
     <string name="linovelib_sync_bookcase">同步书架和章节书签</string>
     <string name="linovelib_web_book_title">网页浏览</string>

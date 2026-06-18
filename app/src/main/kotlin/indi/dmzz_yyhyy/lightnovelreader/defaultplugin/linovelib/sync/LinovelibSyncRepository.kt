@@ -15,7 +15,7 @@ import io.nightfish.lightnovelreader.api.bookshelf.BookshelfSortType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import java.time.LocalDateTime
+import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration.Companion.milliseconds
@@ -90,7 +90,7 @@ class LinovelibSyncRepository @Inject constructor(
                     failedBookIds += remoteBook.bookId
                 }
             }
-            val now = LocalDateTime.now().toString()
+            val now = Instant.now().toString()
             val summary = buildSyncSummary(
                 remoteBookshelf = remoteBookshelf,
                 addedOrUpdatedBooks = addedOrUpdatedBooks,

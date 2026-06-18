@@ -14,6 +14,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
 import javax.inject.Inject
 
 @HiltViewModel
@@ -37,7 +42,7 @@ class LinovelibSourceSettingsViewModel @Inject constructor(
             ) { hasCookie, lastSyncTime, lastSyncSummary, lastSyncError ->
                 LinovelibSourceSettingsUiState(
                     hasCookie = hasCookie,
-                    lastSyncTime = lastSyncTime,
+                    lastSyncTime = lastSyncTime.formatLastSyncTime(),
                     lastSyncSummary = lastSyncSummary,
                     lastSyncError = lastSyncError,
                     canSync = canSync,
@@ -75,6 +80,20 @@ class LinovelibSourceSettingsViewModel @Inject constructor(
                 _uiState.update { it.copy(isSyncing = false) }
             }
         }
+    }
+}
+
+private val lastSyncTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+
+private fun String.formatLastSyncTime(): String {
+    if (isBlank()) return ""
+    return try {
+        Instant.parse(this)
+            .atZone(ZoneId.systemDefault())
+            .format(lastSyncTimeFormatter)
+    } catch (_: DateTimeParseException) {
+        runCatching { LocalDateTime.parse(this).format(lastSyncTimeFormatter) }
+            .getOrElse { this }
     }
 }
 
