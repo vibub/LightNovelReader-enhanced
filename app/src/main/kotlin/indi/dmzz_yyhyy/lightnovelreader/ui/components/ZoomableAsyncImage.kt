@@ -97,11 +97,14 @@ fun ZoomableImage(
     var retryKey by remember { mutableIntStateOf(0) }
     var lastError by remember { mutableStateOf<String?>(null) }
     val cachedImageHeightPx = remember(imageUriString) { cachedReaderImageHeight(imageUriString) }
-    val lastMeasuredHeightPx = remember(imageUriString) { intArrayOf(cachedImageHeightPx ?: 0) }
     val reservedImageHeight = cachedImageHeightPx
         ?.takeIf { it > 0 }
         ?.let { with(density) { it.toDp() } }
         ?: placeholderHeight
+    val reservedImageHeightPx = with(density) { reservedImageHeight.roundToPx() }
+    val lastMeasuredHeightPx = remember(imageUriString, reservedImageHeightPx) {
+        intArrayOf(cachedImageHeightPx ?: reservedImageHeightPx)
+    }
 
     Box(modifier = modifier) {
         key(retryKey) {
@@ -259,12 +262,13 @@ fun ZoomableImage(
                                 val heightPx = it.size.height
                                 if (heightPx <= 0 || lastMeasuredHeightPx[0] == heightPx) return@onGloballyPositioned
                                 val previousCachedHeight = if (DEBUG_READER_IMAGE) cachedReaderImageHeight(imageUriString) else null
+                                val previousHeightPx = lastMeasuredHeightPx[0]
                                 lastMeasuredHeightPx[0] = heightPx
                                 cacheReaderImageHeight(imageUriString, heightPx)
                                 debugImageLog {
                                     "successContentSize uri=${imageUri.shortForLog()} retry=$retryKey " +
                                             "new=${it.size.width}x${it.size.height} placeholder=$placeholderHeight " +
-                                            "cachedHeightBefore=$previousCachedHeight cachedHeightAfter=$heightPx"
+                                            "previousHeight=$previousHeightPx cachedHeightBefore=$previousCachedHeight cachedHeightAfter=$heightPx"
                                 }
                             }
                     )

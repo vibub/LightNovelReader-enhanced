@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -21,7 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
@@ -61,6 +60,7 @@ import indi.dmzz_yyhyy.lightnovelreader.utils.rememberReaderBackgroundPainter
 import indi.dmzz_yyhyy.lightnovelreader.utils.rememberReaderFontFamily
 import indi.dmzz_yyhyy.lightnovelreader.utils.showSnackbar
 import io.nightfish.lightnovelreader.api.book.ChapterContent
+import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -124,6 +124,36 @@ private fun LoopReaderBackground(
     )
 }
 
+private sealed interface ScrollContentRenderItem {
+    val content: ChapterContent
+    val key: String
+
+    data class Header(
+        override val content: ChapterContent
+    ) : ScrollContentRenderItem {
+        override val key = scrollContentItemKey(content.id, ScrollContentItemType.Header)
+    }
+
+    data class Component(
+        override val content: ChapterContent,
+        val index: Int,
+        val component: AbstractContentComponent<*>
+    ) : ScrollContentRenderItem {
+        override val key = scrollContentItemKey(content.id, ScrollContentItemType.Component, index)
+    }
+
+    data class Footer(
+        override val content: ChapterContent
+    ) : ScrollContentRenderItem {
+        override val key = scrollContentItemKey(content.id, ScrollContentItemType.Footer)
+    }
+}
+
+private data class RestoreTarget(
+    val globalIndex: Int,
+    val itemProgress: Float
+)
+
 @Composable
 fun ScrollContentComponent(
     modifier: Modifier,
@@ -156,12 +186,21 @@ fun ScrollContentTextComponent(
     onClickNextChapter: () -> Unit
 ) {
     val snackbarHostState = LocalSnackbarHost.current
-    val density = LocalDensity.current
     val screenHeight = LocalResources.current.displayMetrics.heightPixels
     val textColor = readerTextColor(settingState)
     val fontFamily = rememberReaderFontFamily(settingState.fontFamilyUriUserData)
     val listState = uiState.lazyListState
     var lazyColumnSize by remember { mutableStateOf(IntSize(0, 0)) }
+    val renderItems = buildList {
+        uiState.contentList.forEach { content ->
+            if (content == null) return@forEach
+            if (settingState.isUsingContinuousScrolling) add(ScrollContentRenderItem.Header(content))
+            uiState.contentComponentsMap[content.id]?.forEachIndexed { index, component ->
+                add(ScrollContentRenderItem.Component(content, index, component))
+            }
+            add(ScrollContentRenderItem.Footer(content))
+        }
+    }
 
     val reachedTopMsg = stringResource(R.string.reader_reached_top)
     val prevChapterLabel = stringResource(R.string.previous_chapter)
@@ -171,7 +210,7 @@ fun ScrollContentTextComponent(
     val reachedStartMsg = stringResource(R.string.reader_reached_start)
     val reachedEndMsg = stringResource(R.string.reader_reached_end)
 
-    LaunchedEffect(listState, uiState.restoreVersion) {
+    LaunchedEffect(listState, uiState.restoreVersion, renderItems.size) {
         val restoringVersion = uiState.restoreVersion
         debugScrollLog {
             "restoreEffect start version=$restoringVersion should=${uiState.shouldRestoreProgress} " +
@@ -179,34 +218,47 @@ fun ScrollContentTextComponent(
                     "content=${uiState.contentList.idsSummary()} visible=${listState.layoutInfo.visibleItemsInfo.itemsSummary()}"
         }
         if (!uiState.shouldRestoreProgress) return@LaunchedEffect
-        snapshotFlow { listState.layoutInfo.visibleItemsInfo }
-            .filter { it.any { item -> item.key == uiState.readingContentId } }
+        val chapterItems = renderItems.withIndex()
+            .filter { it.value.content.id == uiState.readingContentId }
+        if (chapterItems.isEmpty()) return@LaunchedEffect
+        val restoreTarget = if (uiState.restoreProgress >= 1f) {
+            RestoreTarget(chapterItems.last().index, 1f)
+        } else {
+            val scaled = (chapterItems.size * uiState.restoreProgress).coerceAtLeast(0f)
+            val localIndex = scaled.toInt().coerceIn(0, chapterItems.lastIndex)
+            RestoreTarget(
+                globalIndex = chapterItems[localIndex].index,
+                itemProgress = (scaled - localIndex).coerceIn(0f, 1f)
+            )
+        }
+        snapshotFlow { listState.layoutInfo.totalItemsCount }
+            .filter { it > restoreTarget.globalIndex }
             .first()
         debugScrollLog {
-            "restoreEffect targetVisible version=$restoringVersion reading=${uiState.readingContentId} " +
-                    "visible=${listState.layoutInfo.visibleItemsInfo.itemsSummary()}"
+            "restoreEffect targetReady version=$restoringVersion reading=${uiState.readingContentId} " +
+                    "target=${restoreTarget.globalIndex}@${restoreTarget.itemProgress} visible=${listState.layoutInfo.visibleItemsInfo.itemsSummary()}"
         }
         withFrameNanos { }
-        listState.scrollToItem(1)
-        val item = uiState.lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == uiState.readingContentId }
+        listState.scrollToItem(restoreTarget.globalIndex)
+        val item = uiState.lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == restoreTarget.globalIndex }
             ?: run {
                 debugScrollLog {
                     "restoreEffect targetMissing version=$restoringVersion reading=${uiState.readingContentId} " +
-                            "visible=${listState.layoutInfo.visibleItemsInfo.itemsSummary()}"
+                            "target=${restoreTarget.globalIndex} visible=${listState.layoutInfo.visibleItemsInfo.itemsSummary()}"
                 }
                 return@LaunchedEffect
             }
         snapshotFlow { lazyColumnSize }
             .filter { lazyColumnSize.height > 0 }
             .first()
-        val rawOffset = (item.size * uiState.restoreProgress).toInt() - lazyColumnSize.height
+        val rawOffset = (item.size * restoreTarget.itemProgress).toInt() - lazyColumnSize.height
         val offset = rawOffset.coerceAtLeast(0)
         debugScrollLog {
             "restoreEffect scroll version=$restoringVersion reading=${uiState.readingContentId} " +
                     "matched=${item.index}:${item.key}@${item.offset}+${item.size} lazySize=${lazyColumnSize.width}x${lazyColumnSize.height} " +
-                    "restore=${uiState.restoreProgress} rawOffset=$rawOffset computedOffset=$offset content=${uiState.contentList.idsSummary()}"
+                    "restore=${uiState.restoreProgress} targetProgress=${restoreTarget.itemProgress} rawOffset=$rawOffset computedOffset=$offset content=${uiState.contentList.idsSummary()}"
         }
-        listState.scrollToItem(1, offset)
+        listState.scrollToItem(restoreTarget.globalIndex, offset)
         withFrameNanos { }
         debugScrollLog {
             "restoreEffect complete version=$restoringVersion firstIndex=${listState.firstVisibleItemIndex} " +
@@ -343,83 +395,83 @@ fun ScrollContentTextComponent(
                 },
             state = listState,
         ) {
-            itemsIndexed(
-                items = uiState.contentList,
-                key = { slot, content -> content?.id ?: "slot-$slot" },
-                contentType = { _, content -> if (content == null) "placeholder" else "chapter" }
-            ) { _, chapterContent ->
-                chapterContent?.let { content ->
-                    Column(
-                        Modifier.defaultMinSize(
-                            minHeight = with(density) {
-                                screenHeight.toDp()
+            items(
+                items = renderItems,
+                key = { it.key },
+                contentType = {
+                    when (it) {
+                        is ScrollContentRenderItem.Header -> "chapter-header"
+                        is ScrollContentRenderItem.Component -> "chapter-component:${it.component.id}"
+                        is ScrollContentRenderItem.Footer -> "chapter-footer"
+                    }
+                }
+            ) { item ->
+                when (item) {
+                    is ScrollContentRenderItem.Header -> {
+                        val content = item.content
+                        val matchResult = VOLUME_TITLE_REGEX.find(content.title)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 36.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            if (matchResult != null) {
+                                val (volumeTitle, chapterTitle) = matchResult.destructured
+                                Text(
+                                    text = volumeTitle,
+                                    textAlign = TextAlign.Center,
+                                    fontSize = (settingState.fontSize + 2).sp,
+                                    fontWeight = FontWeight.Medium,
+                                    fontFamily = fontFamily,
+                                    color = textColor,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Text(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 8.dp),
+                                    text = chapterTitle,
+                                    textAlign = TextAlign.Center,
+                                    fontSize = (settingState.fontSize + 6).sp,
+                                    lineHeight = (settingState.fontSize + settingState.fontLineHeight + 6).sp,
+                                    fontWeight = FontWeight((settingState.fontWeigh.toInt() + 100)),
+                                    fontFamily = fontFamily,
+                                    color = textColor
+                                )
+                            } else {
+                                Text(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 8.dp),
+                                    text = content.title,
+                                    textAlign = TextAlign.Center,
+                                    fontSize = (settingState.fontSize + 6).sp,
+                                    lineHeight = (settingState.fontSize + settingState.fontLineHeight + 6).sp,
+                                    fontWeight = FontWeight((settingState.fontWeigh.toInt() + 100)),
+                                    fontFamily = fontFamily,
+                                    color = textColor
+                                )
                             }
-                        )
-                    ) {
-                        if (settingState.isUsingContinuousScrolling) {
-                            val matchResult = VOLUME_TITLE_REGEX.find(content.title)
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 36.dp),
-                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.Center
                             ) {
-                                if (matchResult != null) {
-                                    val (volumeTitle, chapterTitle) = matchResult.destructured
-                                    Text(
-                                        text = volumeTitle,
-                                        textAlign = TextAlign.Center,
-                                        fontSize = (settingState.fontSize + 2).sp,
-                                        fontWeight = FontWeight.Medium,
-                                        fontFamily = fontFamily,
-                                        color = textColor,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                    Text(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 8.dp),
-                                        text = chapterTitle,
-                                        textAlign = TextAlign.Center,
-                                        fontSize = (settingState.fontSize + 6).sp,
-                                        lineHeight = (settingState.fontSize + settingState.fontLineHeight + 6).sp,
-                                        fontWeight = FontWeight((settingState.fontWeigh.toInt() + 100)),
-                                        fontFamily = fontFamily,
-                                        color = textColor
-                                    )
-                                } else {
-                                    Text(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 8.dp),
-                                        text = content.title,
-                                        textAlign = TextAlign.Center,
-                                        fontSize = (settingState.fontSize + 6).sp,
-                                        lineHeight = (settingState.fontSize + settingState.fontLineHeight + 6).sp,
-                                        fontWeight = FontWeight((settingState.fontWeigh.toInt() + 100)),
-                                        fontFamily = fontFamily,
-                                        color = textColor
-                                    )
-                                }
-                                Box(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    HorizontalDivider(
-                                        modifier = Modifier.width(48.dp),
-                                        color = textColor
-                                    )
-                                }
-                                Spacer(Modifier.height(16.dp))
+                                HorizontalDivider(
+                                    modifier = Modifier.width(48.dp),
+                                    color = textColor
+                                )
                             }
+                            Spacer(Modifier.height(16.dp))
                         }
-                        val components = uiState.contentComponentsMap[content.id]
-                        components?.let {
-                            val contentModifier = Modifier.fillMaxWidth()
-                            for (component in it) {
-                                component.Content(contentModifier)
-                            }
-                        }
+                    }
+
+                    is ScrollContentRenderItem.Component -> {
+                        item.component.Content(Modifier.fillMaxWidth())
+                    }
+
+                    is ScrollContentRenderItem.Footer -> {
+                        Spacer(Modifier.height(1.dp))
                     }
                 }
             }

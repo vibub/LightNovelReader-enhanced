@@ -262,18 +262,32 @@ class ScrollContentViewModel(
     ): VisibleChapterItem? {
         if (lazyColumnSize.height <= 0 || visibleItems.isEmpty()) return null
         val item = visibleItems.lastOrNull { item ->
-            val key = item.key as? String ?: return@lastOrNull false
-            item.offset < lazyColumnSize.height && contentByChapterId(key) != null
+            val chapterId = item.key.scrollContentChapterId() ?: return@lastOrNull false
+            item.offset < lazyColumnSize.height && contentByChapterId(chapterId) != null
         } ?: return null
-        val chapterId = item.key as? String ?: return null
+        val chapterId = item.key.scrollContentChapterId() ?: return null
         val content = contentByChapterId(chapterId) ?: return null
         return VisibleChapterItem(content, item)
     }
 
     private fun chapterProgressOf(visible: VisibleChapterItem): VisibleChapterProgress {
         val item = visible.itemInfo
-        val progress = 1f.coerceAtMost((-item.offset + lazyColumnSize.height).toFloat() / item.size.coerceAtLeast(1))
+        val itemProgress = 1f.coerceAtMost((-item.offset + lazyColumnSize.height).toFloat() / item.size.coerceAtLeast(1))
             .coerceIn(0f, 1f)
+        val key = item.key.scrollContentItemKeyOrNull()
+        val progress = if (key == null) {
+            itemProgress
+        } else {
+            val componentCount = uiState.contentComponentsMap[visible.content.id]?.size ?: 0
+            val headerCount = if (settingState.isUsingContinuousScrolling) 1 else 0
+            val totalItems = (componentCount + headerCount + 1).coerceAtLeast(1)
+            val itemIndex = when (key.type) {
+                ScrollContentItemType.Header -> 0
+                ScrollContentItemType.Component -> (key.index + headerCount).coerceIn(headerCount, totalItems - 1)
+                ScrollContentItemType.Footer -> totalItems - 1
+            }
+            ((itemIndex + itemProgress) / totalItems).coerceIn(0f, 1f)
+        }
         return VisibleChapterProgress(visible.content, progress)
     }
 
