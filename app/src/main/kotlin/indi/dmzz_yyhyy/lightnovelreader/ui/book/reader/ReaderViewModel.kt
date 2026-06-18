@@ -14,6 +14,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.statistics.StatsRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book.targetLinovelibChapterPageId
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.sync.LinovelibBookmarkRepository
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentViewModel
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip.FlipPageContentViewModel
@@ -145,6 +146,16 @@ class ReaderViewModel @Inject constructor(
             )
         }
         return true
+    }
+
+    fun currentLinovelibWebChapterId(): String {
+        val contentUiState = _uiState.contentUiState
+        val chapter = contentUiState.readingChapterContent
+        if (chapter.id.isBlank()) return ""
+        return chapter.content.targetLinovelibChapterPageId(
+            fallbackChapterId = chapter.id,
+            readingProgress = contentUiState.readingProgress
+        )
     }
 
     private fun saveReadingProgress(snapshot: ReadingProgressSnapshot) {

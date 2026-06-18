@@ -107,7 +107,9 @@ class LinovelibWebsiteDataSource(
         val parserWarnings = mutableListOf<String>()
         val seenPageSignatures = mutableSetOf<String>()
         val chapterParts = mutableListOf<LinovelibChapterContentParser.Part>()
+        val pageBoundaries = mutableListOf<LinovelibChapterPageBoundary>()
         val baseChapterId = normalizedChapterId.substringBefore('_')
+        var accumulatedPageWeight = 0
         var title = ""
         var lastChapterId = ""
         var nextChapterId = ""
@@ -142,6 +144,13 @@ class LinovelibWebsiteDataSource(
             }
             val parseResult = LinovelibChapterContentParser.parse(content, currentPageChapterId) { it.imageUrl() }
             parseResult.warning?.let(parserWarnings::add)
+            val pageWeight = parseResult.parts.linovelibContentWeight().coerceAtLeast(1)
+            pageBoundaries += LinovelibChapterPageBoundary(
+                chapterId = currentPageChapterId,
+                startWeight = accumulatedPageWeight,
+                endWeight = accumulatedPageWeight + pageWeight
+            )
+            accumulatedPageWeight += pageWeight
             chapterParts.addAll(parseResult.parts)
             val scriptNextPage = extractLinovelibScriptPage(document, "nextpage")
             val scriptNextPageId = scriptNextPage?.let { extractLinovelibChapterPageId(normalizedBookId, it) }
@@ -168,7 +177,9 @@ class LinovelibWebsiteDataSource(
                 LinovelibChapterContentParser.Part.SectionBreak -> Unit
             }
         }
-        val content = builder.build().withParserWarnings(parserWarnings)
+        val content = builder.build()
+            .withLinovelibChapterPageMap(pageBoundaries)
+            .withParserWarnings(parserWarnings)
         val cleanTitle = title.cleanText()
         val navigation = if (cleanTitle.isBlank() || !foundFirstPrevPageScript || !foundTerminalNextPageScript) {
             getChapterNavigation(normalizedBookId, normalizedChapterId)

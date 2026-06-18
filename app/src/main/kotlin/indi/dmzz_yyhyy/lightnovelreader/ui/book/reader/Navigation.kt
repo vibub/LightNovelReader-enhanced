@@ -61,19 +61,19 @@ fun NavGraphBuilder.bookReaderDestination() {
             onSelectChapterFromReaderCatalog = viewModel::selectChapterFromReaderCatalog,
             onClickThemeSettings = navController::navigateToSettingsThemeDestination,
             onClickBookmark = {
-                val chapterId = viewModel.uiState.contentUiState.readingChapterContent.id
+                val targetWebChapterId = viewModel.currentLinovelibWebChapterId()
                 if (viewModel.bookmarkCurrentChapter()) {
                     navController.navigateToLinovelibWebBookDestination(
                         bookId = viewModel.bookId,
-                        chapterId = chapterId,
+                        chapterId = targetWebChapterId,
                         autoBookmark = true
                     )
                 }
             },
             onClickWebView = if (viewModel.uiState.isLinovelibSource) {
                 {
-                    val chapterId = viewModel.uiState.contentUiState.readingChapterContent.id
-                    navController.navigateToLinovelibWebBookDestination(viewModel.bookId, chapterId)
+                    val targetWebChapterId = viewModel.currentLinovelibWebChapterId()
+                    navController.navigateToLinovelibWebBookDestination(viewModel.bookId, targetWebChapterId)
                 }
             } else {
                 null

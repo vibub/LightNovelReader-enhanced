@@ -37,9 +37,13 @@ class ComponentProcessor(
      * @since Api 2
      */
     inline fun <reified T: AbstractContentComponentData> process(crossinline block: (T) -> T) {
+        val originalContent = content
         content = buildJsonObject {
+            originalContent.forEach { (key, value) ->
+                if (key != "components") put(key, value)
+            }
             putJsonArray("components") {
-                content["components"]
+                originalContent["components"]
                     ?.jsonArray
                     ?.mapNotNull { it.jsonObject }
                     ?.forEach {
