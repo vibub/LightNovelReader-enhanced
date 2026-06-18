@@ -21,6 +21,7 @@ jobs:
         with:
           distribution: jetbrains
           java-version: 21
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Build with Gradle
         uses: gradle/actions/setup-gradle@v6
       - name: make gradle wrapper executable
