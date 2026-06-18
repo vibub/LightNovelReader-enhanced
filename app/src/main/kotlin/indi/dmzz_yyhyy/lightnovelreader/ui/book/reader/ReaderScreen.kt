@@ -434,34 +434,29 @@ fun Content(
                     settingState.enableChapterTitleIndicator
 
         Box(Modifier.fillMaxSize()) {
-            AnimatedContent(
-                readingScreenUiState.contentUiState,
-                label = "ContentAnimate"
-            ) { contentUiState ->
-                ContentComponent(
-                    uiState = contentUiState,
-                    settingState = settingState,
-                    paddingValues =
-                        if (settingState.autoPadding)
-                            PaddingValues(
-                                top = stableSafeTopDp,
-                                bottom = with(density) { WindowInsets.safeContent.getBottom(density).toDp() } + if (isEnableIndicator) 40.dp else 0.dp,
-                                start = 16.dp,
-                                end = 16.dp
-                            )
-                        else PaddingValues(
-                            top = settingState.topPadding.dp,
-                            bottom = if (isEnableIndicator)
-                                (settingState.bottomPadding + 40).dp
-                            else settingState.bottomPadding.dp,
-                            start = settingState.leftPadding.dp,
-                            end = settingState.rightPadding.dp
-                        ),
-                    changeIsImmersive = onChangeIsImmersive,
-                    onClickPrevChapter = onClickPrevChapter,
-                    onClickNextChapter = onClickNextChapter
-                )
-            }
+            ContentComponent(
+                uiState = readingScreenUiState.contentUiState,
+                settingState = settingState,
+                paddingValues =
+                    if (settingState.autoPadding)
+                        PaddingValues(
+                            top = stableSafeTopDp,
+                            bottom = with(density) { WindowInsets.safeContent.getBottom(density).toDp() } + if (isEnableIndicator) 40.dp else 0.dp,
+                            start = 16.dp,
+                            end = 16.dp
+                        )
+                    else PaddingValues(
+                        top = settingState.topPadding.dp,
+                        bottom = if (isEnableIndicator)
+                            (settingState.bottomPadding + 40).dp
+                        else settingState.bottomPadding.dp,
+                        start = settingState.leftPadding.dp,
+                        end = settingState.rightPadding.dp
+                    ),
+                changeIsImmersive = onChangeIsImmersive,
+                onClickPrevChapter = onClickPrevChapter,
+                onClickNextChapter = onClickNextChapter
+            )
 
             AnimatedVisibility(
                 modifier = Modifier.align(Alignment.BottomCenter),

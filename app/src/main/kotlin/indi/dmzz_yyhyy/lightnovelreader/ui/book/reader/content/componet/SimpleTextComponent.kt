@@ -1,6 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet
 
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -28,7 +28,7 @@ fun SimpleTextComponentContent(
 
     SelectionContainer {
         Text(
-            modifier = modifier.fillMaxSize(),
+            modifier = modifier.fillMaxWidth(),
             text = text,
             textAlign = TextAlign.Start,
             style = MaterialTheme.typography.bodyMedium.copy(
@@ -38,9 +38,7 @@ fun SimpleTextComponentContent(
             fontSize = fontSize,
             fontFamily = fontFamily,
             color = color,
-            lineHeight = (fontSize.value + fontLineHeight.value).sp,
-            onTextLayout = {
-            }
+            lineHeight = (fontSize.value + fontLineHeight.value).sp
         )
     }
 }

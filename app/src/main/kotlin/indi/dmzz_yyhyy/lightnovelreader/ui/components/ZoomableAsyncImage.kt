@@ -2,7 +2,8 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.components
 
 import android.net.Uri
 import android.util.Log
-import androidx.compose.animation.animateContentSize
+import android.util.LruCache
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,28 +37,43 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImagePainter
-import coil3.compose.SubcomposeAsyncImage
-import coil3.compose.SubcomposeAsyncImageContent
+import coil3.compose.rememberAsyncImagePainter
 import coil3.network.NetworkHeaders
 import coil3.network.httpHeaders
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import coil3.size.Dimension
+import coil3.size.Size
 import kotlinx.coroutines.Dispatchers
-import java.util.concurrent.ConcurrentHashMap
 import indi.dmzz_yyhyy.lightnovelreader.BuildConfig
 import indi.dmzz_yyhyy.lightnovelreader.R
 
-private const val DEBUG_READER_IMAGE = true
+private const val DEBUG_READER_IMAGE = false
 private const val READER_IMAGE_LOG_TAG = "ReaderImageDbg"
-private val readerImageHeightCache = ConcurrentHashMap<String, Int>()
+private const val MAX_READER_IMAGE_HEIGHT_CACHE_SIZE = 512
+private val readerImageHeightCache = LruCache<String, Int>(MAX_READER_IMAGE_HEIGHT_CACHE_SIZE)
 
-private fun debugImageLog(message: () -> String) {
+@Suppress("SimplifyBooleanWithConstants")
+private inline fun debugImageLog(message: () -> String) {
     if (BuildConfig.DEBUG && DEBUG_READER_IMAGE) Log.d(READER_IMAGE_LOG_TAG, message())
+}
+
+private fun cachedReaderImageHeight(imageUri: String): Int? = synchronized(readerImageHeightCache) {
+    readerImageHeightCache.get(imageUri)
+}
+
+private fun cacheReaderImageHeight(imageUri: String, heightPx: Int) {
+    if (heightPx <= 0) return
+    synchronized(readerImageHeightCache) {
+        if (readerImageHeightCache.get(imageUri) != heightPx) {
+            readerImageHeightCache.put(imageUri, heightPx)
+        }
+    }
 }
 
 private fun Uri.shortForLog(): String {
@@ -76,113 +92,103 @@ fun ZoomableImage(
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
+    val screenWidthPx = LocalResources.current.displayMetrics.widthPixels.coerceAtLeast(1)
     val imageUriString = remember(imageUri) { imageUri.toString() }
     var retryKey by remember { mutableIntStateOf(0) }
     var lastError by remember { mutableStateOf<String?>(null) }
-    var outerSize by remember { mutableStateOf(IntSize.Zero) }
-    var successContentSize by remember { mutableStateOf(IntSize.Zero) }
-    var cachedImageHeightPx by remember(imageUriString) {
-        mutableStateOf(readerImageHeightCache[imageUriString])
-    }
+    val cachedImageHeightPx = remember(imageUriString) { cachedReaderImageHeight(imageUriString) }
+    val lastMeasuredHeightPx = remember(imageUriString) { intArrayOf(cachedImageHeightPx ?: 0) }
     val reservedImageHeight = cachedImageHeightPx
         ?.takeIf { it > 0 }
         ?.let { with(density) { it.toDp() } }
         ?: placeholderHeight
 
-    Box(
-        modifier = modifier
-            .animateContentSize()
-            .onGloballyPositioned {
-                if (outerSize != it.size) {
-                    debugImageLog {
-                        "outerSize uri=${imageUri.shortForLog()} retry=$retryKey old=${outerSize.width}x${outerSize.height} " +
-                                "new=${it.size.width}x${it.size.height} placeholder=$placeholderHeight"
-                    }
-                    outerSize = it.size
-                }
-            }
-    ) {
+    Box(modifier = modifier) {
         key(retryKey) {
-            SubcomposeAsyncImage(
-                model = remember(imageUri, header) {
-                    ImageRequest.Builder(context)
-                        .data(imageUri)
-                        .crossfade(true)
-                        .interceptorCoroutineContext(Dispatchers.Default)
-                        .listener(
-                            onSuccess = { _, _ -> lastError = null },
-                            onError = { _, result -> lastError = result.throwable.localizedMessage }
-                        )
-                        .httpHeaders(
-                            NetworkHeaders.Builder().apply {
-                                header.forEach { (key, value) -> add(key, value) }
-                            }.build()
-                        )
-                        .build()
-                },
-                contentDescription = null,
-                contentScale = ContentScale.FillWidth,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = reservedImageHeight)
-                    .align(Alignment.Center)
-            ) {
-                val state by painter.state.collectAsState()
+            val imageRequest = remember(imageUri, header, retryKey, screenWidthPx) {
+                ImageRequest.Builder(context)
+                    .data(imageUri)
+                    .size(Size(screenWidthPx, Dimension.Undefined))
+                    .crossfade(false)
+                    .interceptorCoroutineContext(Dispatchers.Default)
+                    .listener(
+                        onSuccess = { _, _ -> lastError = null },
+                        onError = { _, result -> lastError = result.throwable.localizedMessage }
+                    )
+                    .httpHeaders(
+                        NetworkHeaders.Builder().apply {
+                            header.forEach { (key, value) -> add(key, value) }
+                        }.build()
+                    )
+                    .build()
+            }
+            val painter = rememberAsyncImagePainter(model = imageRequest)
+            val state by painter.state.collectAsState()
+            if (DEBUG_READER_IMAGE) {
                 LaunchedEffect(state::class.simpleName, retryKey) {
                     debugImageLog {
                         "state uri=${imageUri.shortForLog()} retry=$retryKey state=${state::class.simpleName} " +
                                 "placeholder=$placeholderHeight lastError=${lastError?.take(96)} headerKeys=${header.keys.joinToString(prefix = "[", postfix = "]")}"
                     }
                 }
-                when (state) {
-                    is AsyncImagePainter.State.Loading -> {
-                        Box(
-                            modifier = Modifier
-                                .height(reservedImageHeight)
-                                .fillMaxWidth(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Loading()
-                        }
+            }
+            when (state) {
+                is AsyncImagePainter.State.Loading -> {
+                    Box(
+                        modifier = Modifier
+                            .height(reservedImageHeight)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Loading()
                     }
+                }
 
-                    is AsyncImagePainter.State.Error -> {
-                        Column(
-                            modifier = Modifier
-                                .height(reservedImageHeight)
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                modifier = Modifier.size(36.dp),
-                                painter = painterResource(R.drawable.release_alert_24px),
-                                tint = colorScheme.secondary,
-                                contentDescription = null
+                is AsyncImagePainter.State.Error -> {
+                    Column(
+                        modifier = Modifier
+                            .height(reservedImageHeight)
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            modifier = Modifier.size(36.dp),
+                            painter = painterResource(R.drawable.release_alert_24px),
+                            tint = colorScheme.secondary,
+                            contentDescription = null
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text("图片加载失败", style = typography.labelLarge)
+                        lastError?.let {
+                            Text(
+                                text = it,
+                                style = typography.labelMedium,
+                                color = colorScheme.error
                             )
-                            Spacer(Modifier.height(6.dp))
-                            Text("图片加载失败", style = typography.labelLarge)
-                            lastError?.let {
-                                Text(
-                                    text = it,
-                                    style = typography.labelMedium,
-                                    color = colorScheme.error
-                                )
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            Button(onClick = {
-                                retryKey++
-                                lastError = null
-                            }) {
-                                Text("重试")
-                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Button(onClick = {
+                            retryKey++
+                            lastError = null
+                        }) {
+                            Text("重试")
                         }
                     }
+                }
 
-                    is AsyncImagePainter.State.Success -> {
-                        SubcomposeAsyncImageContent(
-                            modifier = Modifier.pointerInput(onViewImage) {
+                is AsyncImagePainter.State.Success -> {
+                    val successPainter = (state as AsyncImagePainter.State.Success).painter
+                    Image(
+                        painter = successPainter,
+                        contentDescription = null,
+                        contentScale = ContentScale.FillWidth,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = reservedImageHeight)
+                            .align(Alignment.Center)
+                            .pointerInput(onViewImage) {
                                 awaitPointerEventScope {
                                     val longPressMillis = 380L
                                     val twoFingerTapMaxMillis = 280L
@@ -249,35 +255,29 @@ fun ZoomableImage(
                                     }
                                 }
                             }
-                                .onGloballyPositioned {
-                                    if (successContentSize != it.size) {
-                                        val previousCachedHeight = cachedImageHeightPx
-                                        if (it.size.height > 0) {
-                                            readerImageHeightCache[imageUriString] = it.size.height
-                                            cachedImageHeightPx = it.size.height
-                                        }
-                                        debugImageLog {
-                                            "successContentSize uri=${imageUri.shortForLog()} retry=$retryKey " +
-                                                    "old=${successContentSize.width}x${successContentSize.height} " +
-                                                    "new=${it.size.width}x${it.size.height} placeholder=$placeholderHeight " +
-                                                    "cachedHeightBefore=$previousCachedHeight cachedHeightAfter=${cachedImageHeightPx}"
-                                        }
-                                        successContentSize = it.size
-                                    }
+                            .onGloballyPositioned {
+                                val heightPx = it.size.height
+                                if (heightPx <= 0 || lastMeasuredHeightPx[0] == heightPx) return@onGloballyPositioned
+                                val previousCachedHeight = if (DEBUG_READER_IMAGE) cachedReaderImageHeight(imageUriString) else null
+                                lastMeasuredHeightPx[0] = heightPx
+                                cacheReaderImageHeight(imageUriString, heightPx)
+                                debugImageLog {
+                                    "successContentSize uri=${imageUri.shortForLog()} retry=$retryKey " +
+                                            "new=${it.size.width}x${it.size.height} placeholder=$placeholderHeight " +
+                                            "cachedHeightBefore=$previousCachedHeight cachedHeightAfter=$heightPx"
                                 }
-                        )
-                    }
+                            }
+                    )
+                }
 
-
-                    else -> {
-                        Box(
-                            modifier = Modifier
-                                .height(reservedImageHeight)
-                                .fillMaxWidth(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator()
-                        }
+                else -> {
+                    Box(
+                        modifier = Modifier
+                            .height(reservedImageHeight)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
                     }
                 }
             }

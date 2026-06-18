@@ -16,11 +16,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListItemInfo
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.SnackbarResult
@@ -30,12 +30,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -64,10 +65,12 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-private const val DEBUG_READER_SCROLL = true
+private const val DEBUG_READER_SCROLL = false
 private const val READER_SCROLL_LOG_TAG = "ReaderScrollDbg"
+private val VOLUME_TITLE_REGEX = Regex("^(第[一二三四五六七八九十]+卷)\\s+(.*)")
 
-private fun debugScrollLog(message: () -> String) {
+@Suppress("SimplifyBooleanWithConstants")
+private inline fun debugScrollLog(message: () -> String) {
     if (BuildConfig.DEBUG && DEBUG_READER_SCROLL) Log.d(READER_SCROLL_LOG_TAG, message())
 }
 
@@ -80,6 +83,45 @@ private fun List<LazyListItemInfo>.itemsSummary(limit: Int = 8): String {
     return take(limit).joinToString(prefix = "[", postfix = "$suffix]") { item ->
         "${item.index}:${item.key}@${item.offset}+${item.size}"
     }
+}
+
+private fun loopBackgroundBaseOffsetPx(listState: LazyListState, screenHeightPx: Int): Int {
+    if (screenHeightPx <= 0) return 0
+    val firstVisibleOffset = listState.layoutInfo.visibleItemsInfo.firstOrNull()?.offset
+        ?: -listState.firstVisibleItemScrollOffset
+    return firstVisibleOffset % screenHeightPx
+}
+
+@Composable
+private fun LoopReaderBackground(
+    listState: LazyListState,
+    screenHeightPx: Int,
+    painter: Painter
+) {
+    val density = LocalDensity.current
+    val screenHeightDp = with(density) { screenHeightPx.toDp() }
+    Image(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(screenHeightDp)
+            .graphicsLayer {
+                translationY = (loopBackgroundBaseOffsetPx(listState, screenHeightPx) + screenHeightPx).toFloat()
+            },
+        painter = painter,
+        contentDescription = null,
+        contentScale = ContentScale.Crop
+    )
+    Image(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(screenHeightDp)
+            .graphicsLayer {
+                translationY = loopBackgroundBaseOffsetPx(listState, screenHeightPx).toFloat()
+            },
+        painter = painter,
+        contentDescription = null,
+        contentScale = ContentScale.Crop
+    )
 }
 
 @Composable
@@ -119,10 +161,7 @@ fun ScrollContentTextComponent(
     val textColor = readerTextColor(settingState)
     val fontFamily = rememberReaderFontFamily(settingState.fontFamilyUriUserData)
     val listState = uiState.lazyListState
-    val scope = rememberCoroutineScope()
-    val chapterItemHeights = remember { mutableMapOf<String, Int>() }
     var lazyColumnSize by remember { mutableStateOf(IntSize(0, 0)) }
-    var lastReadingItemOffset by remember { mutableStateOf<Int?>(null) }
 
     val reachedTopMsg = stringResource(R.string.reader_reached_top)
     val prevChapterLabel = stringResource(R.string.previous_chapter)
@@ -259,51 +298,11 @@ fun ScrollContentTextComponent(
             }
     }
 
-    val contentListIds = uiState.contentList.idsSummary()
-    LaunchedEffect(contentListIds, uiState.readingContentId, uiState.restoreVersion, uiState.shouldRestoreProgress) {
-        debugScrollLog {
-            "contentListSnapshot content=$contentListIds reading=${uiState.readingContentId} " +
-                    "restoreVersion=${uiState.restoreVersion} shouldRestore=${uiState.shouldRestoreProgress} " +
-                    "lazySize=${lazyColumnSize.width}x${lazyColumnSize.height} visible=${listState.layoutInfo.visibleItemsInfo.itemsSummary()}"
-        }
-    }
-
-    LaunchedEffect(listState, uiState.readingContentId) {
-        snapshotFlow {
-            listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == uiState.readingContentId }?.offset
-        }.collect { offset ->
-            if (offset != null) lastReadingItemOffset = offset
-        }
-    }
-
     if (settingState.enableBackgroundImage && settingState.backgroundImageDisplayMode == MenuOptions.ReaderBgImageDisplayModeOptions.Loop) {
-        Image(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(with(density) {
-                    screenHeight.toDp()
-                })
-                .offset(y = with(density) {
-                    ((uiState.lazyListState.layoutInfo.visibleItemsInfo.getOrNull(0)?.offset
-                        ?: 0) % screenHeight + screenHeight).toDp()
-                }),
-            painter = rememberReaderBackgroundPainter(settingState),
-            contentDescription = null,
-            contentScale = ContentScale.Crop
-        )
-        Image(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(with(density) {
-                    screenHeight.toDp()
-                })
-                .offset(y = with(density) {
-                    ((uiState.lazyListState.layoutInfo.visibleItemsInfo.getOrNull(0)?.offset
-                        ?: 0) % screenHeight).toDp()
-                }),
-            painter = rememberReaderBackgroundPainter(settingState),
-            contentDescription = null,
-            contentScale = ContentScale.Crop
+        LoopReaderBackground(
+            listState = listState,
+            screenHeightPx = screenHeight,
+            painter = rememberReaderBackgroundPainter(settingState)
         )
     }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
@@ -332,60 +331,33 @@ fun ScrollContentTextComponent(
                     )
                 }
                 .onGloballyPositioned {
-                    scope.launch {
-                        withFrameNanos { }
-                        if (lazyColumnSize != it.size) {
-                            debugScrollLog {
-                                "lazyColumnSize old=${lazyColumnSize.width}x${lazyColumnSize.height} new=${it.size.width}x${it.size.height} " +
-                                        "viewport=${listState.layoutInfo.viewportStartOffset}..${listState.layoutInfo.viewportEndOffset} " +
-                                        "first=${listState.firstVisibleItemIndex}@${listState.firstVisibleItemScrollOffset} " +
-                                        "reading=${uiState.readingContentId} content=${uiState.contentList.idsSummary()}"
-                            }
-                        }
-                        uiState.setLazyColumnSize(it.size)
-                        lazyColumnSize = it.size
+                    if (lazyColumnSize == it.size) return@onGloballyPositioned
+                    debugScrollLog {
+                        "lazyColumnSize old=${lazyColumnSize.width}x${lazyColumnSize.height} new=${it.size.width}x${it.size.height} " +
+                                "viewport=${listState.layoutInfo.viewportStartOffset}..${listState.layoutInfo.viewportEndOffset} " +
+                                "first=${listState.firstVisibleItemIndex}@${listState.firstVisibleItemScrollOffset} " +
+                                "reading=${uiState.readingContentId} content=${uiState.contentList.idsSummary()}"
                     }
+                    uiState.setLazyColumnSize(it.size)
+                    lazyColumnSize = it.size
                 },
             state = listState,
         ) {
             itemsIndexed(
                 items = uiState.contentList,
-                key = { slot, content -> content?.id ?: "slot-$slot" }
+                key = { slot, content -> content?.id ?: "slot-$slot" },
+                contentType = { _, content -> if (content == null) "placeholder" else "chapter" }
             ) { _, chapterContent ->
                 chapterContent?.let { content ->
                     Column(
-                        Modifier
-                            .defaultMinSize(
-                                minHeight = with(density) {
-                                    screenHeight.toDp()
-                                }
-                            )
-                            .onGloballyPositioned { coordinates ->
-                                val newHeight = coordinates.size.height
-                                val oldHeight = chapterItemHeights.put(content.id, newHeight)
-                                if (oldHeight == newHeight) return@onGloballyPositioned
-
-                                val changedSlot = uiState.contentList.indexOfFirst { it?.id == content.id }
-                                val readingSlot = uiState.contentList.indexOfFirst { it?.id == uiState.readingContentId }
-                                val changedBeforeReading = changedSlot in 0 until readingSlot
-                                val currentReadingOffset = listState.layoutInfo.visibleItemsInfo
-                                    .firstOrNull { it.key == uiState.readingContentId }
-                                    ?.offset
-                                val rememberedReadingOffset = lastReadingItemOffset
-                                val sizeDelta = newHeight - (oldHeight ?: 0)
-                                debugScrollLog {
-                                    "chapterItemSize chapter=${content.id} old=${oldHeight ?: "null"} new=$newHeight " +
-                                            "delta=$sizeDelta changedSlot=$changedSlot reading=${uiState.readingContentId} " +
-                                            "readingSlot=$readingSlot changedBeforeReading=$changedBeforeReading " +
-                                            "readingOffset=$currentReadingOffset rememberedOffset=$rememberedReadingOffset " +
-                                            "shouldRestore=${uiState.shouldRestoreProgress} " +
-                                            "visible=${listState.layoutInfo.visibleItemsInfo.itemsSummary()} content=${uiState.contentList.idsSummary()}"
-                                }
+                        Modifier.defaultMinSize(
+                            minHeight = with(density) {
+                                screenHeight.toDp()
                             }
+                        )
                     ) {
                         if (settingState.isUsingContinuousScrolling) {
-                            val titleRegex = Regex("^(第[一二三四五六七八九十]+卷)\\s+(.*)")
-                            val matchResult = titleRegex.find(content.title)
+                            val matchResult = VOLUME_TITLE_REGEX.find(content.title)
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -443,8 +415,9 @@ fun ScrollContentTextComponent(
                         }
                         val components = uiState.contentComponentsMap[content.id]
                         components?.let {
+                            val contentModifier = Modifier.fillMaxWidth()
                             for (component in it) {
-                                component.Content(modifier)
+                                component.Content(contentModifier)
                             }
                         }
                     }

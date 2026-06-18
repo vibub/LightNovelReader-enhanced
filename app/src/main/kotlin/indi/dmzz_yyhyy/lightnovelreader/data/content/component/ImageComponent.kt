@@ -1,6 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.content.component
 
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -26,7 +26,7 @@ class ImageComponent(
         ZoomableImage(
             imageUri = data.uri,
             modifier = modifier
-                .fillMaxSize()
+                .fillMaxWidth()
                 .padding(
                     top = data.topPaddingDp.dp,
                     bottom = data.bottomPaddingDp.dp
