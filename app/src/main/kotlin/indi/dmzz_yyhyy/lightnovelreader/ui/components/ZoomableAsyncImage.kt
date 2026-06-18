@@ -1,6 +1,7 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.components
 
 import android.net.Uri
+import android.util.Log
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +21,7 @@ import androidx.compose.material3.MaterialTheme.colorScheme
 import androidx.compose.material3.MaterialTheme.typography
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -31,9 +33,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImagePainter
 import coil3.compose.SubcomposeAsyncImage
@@ -43,7 +48,22 @@ import coil3.network.httpHeaders
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import kotlinx.coroutines.Dispatchers
+import java.util.concurrent.ConcurrentHashMap
+import indi.dmzz_yyhyy.lightnovelreader.BuildConfig
 import indi.dmzz_yyhyy.lightnovelreader.R
+
+private const val DEBUG_READER_IMAGE = true
+private const val READER_IMAGE_LOG_TAG = "ReaderImageDbg"
+private val readerImageHeightCache = ConcurrentHashMap<String, Int>()
+
+private fun debugImageLog(message: () -> String) {
+    if (BuildConfig.DEBUG && DEBUG_READER_IMAGE) Log.d(READER_IMAGE_LOG_TAG, message())
+}
+
+private fun Uri.shortForLog(): String {
+    val value = toString()
+    return if (value.length <= 96) value else value.take(72) + "..." + value.takeLast(16)
+}
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -55,12 +75,32 @@ fun ZoomableImage(
     header: Map<String, String>
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current
+    val imageUriString = remember(imageUri) { imageUri.toString() }
     var retryKey by remember { mutableIntStateOf(0) }
     var lastError by remember { mutableStateOf<String?>(null) }
+    var outerSize by remember { mutableStateOf(IntSize.Zero) }
+    var successContentSize by remember { mutableStateOf(IntSize.Zero) }
+    var cachedImageHeightPx by remember(imageUriString) {
+        mutableStateOf(readerImageHeightCache[imageUriString])
+    }
+    val reservedImageHeight = cachedImageHeightPx
+        ?.takeIf { it > 0 }
+        ?.let { with(density) { it.toDp() } }
+        ?: placeholderHeight
 
     Box(
         modifier = modifier
             .animateContentSize()
+            .onGloballyPositioned {
+                if (outerSize != it.size) {
+                    debugImageLog {
+                        "outerSize uri=${imageUri.shortForLog()} retry=$retryKey old=${outerSize.width}x${outerSize.height} " +
+                                "new=${it.size.width}x${it.size.height} placeholder=$placeholderHeight"
+                    }
+                    outerSize = it.size
+                }
+            }
     ) {
         key(retryKey) {
             SubcomposeAsyncImage(
@@ -84,15 +124,21 @@ fun ZoomableImage(
                 contentScale = ContentScale.FillWidth,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = placeholderHeight)
+                    .heightIn(min = reservedImageHeight)
                     .align(Alignment.Center)
             ) {
                 val state by painter.state.collectAsState()
+                LaunchedEffect(state::class.simpleName, retryKey) {
+                    debugImageLog {
+                        "state uri=${imageUri.shortForLog()} retry=$retryKey state=${state::class.simpleName} " +
+                                "placeholder=$placeholderHeight lastError=${lastError?.take(96)} headerKeys=${header.keys.joinToString(prefix = "[", postfix = "]")}"
+                    }
+                }
                 when (state) {
                     is AsyncImagePainter.State.Loading -> {
                         Box(
                             modifier = Modifier
-                                .height(placeholderHeight)
+                                .height(reservedImageHeight)
                                 .fillMaxWidth(),
                             contentAlignment = Alignment.Center
                         ) {
@@ -103,7 +149,7 @@ fun ZoomableImage(
                     is AsyncImagePainter.State.Error -> {
                         Column(
                             modifier = Modifier
-                                .height(placeholderHeight)
+                                .height(reservedImageHeight)
                                 .fillMaxWidth()
                                 .padding(12.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -203,6 +249,22 @@ fun ZoomableImage(
                                     }
                                 }
                             }
+                                .onGloballyPositioned {
+                                    if (successContentSize != it.size) {
+                                        val previousCachedHeight = cachedImageHeightPx
+                                        if (it.size.height > 0) {
+                                            readerImageHeightCache[imageUriString] = it.size.height
+                                            cachedImageHeightPx = it.size.height
+                                        }
+                                        debugImageLog {
+                                            "successContentSize uri=${imageUri.shortForLog()} retry=$retryKey " +
+                                                    "old=${successContentSize.width}x${successContentSize.height} " +
+                                                    "new=${it.size.width}x${it.size.height} placeholder=$placeholderHeight " +
+                                                    "cachedHeightBefore=$previousCachedHeight cachedHeightAfter=${cachedImageHeightPx}"
+                                        }
+                                        successContentSize = it.size
+                                    }
+                                }
                         )
                     }
 
@@ -210,7 +272,7 @@ fun ZoomableImage(
                     else -> {
                         Box(
                             modifier = Modifier
-                                .height(placeholderHeight)
+                                .height(reservedImageHeight)
                                 .fillMaxWidth(),
                             contentAlignment = Alignment.Center
                         ) {
