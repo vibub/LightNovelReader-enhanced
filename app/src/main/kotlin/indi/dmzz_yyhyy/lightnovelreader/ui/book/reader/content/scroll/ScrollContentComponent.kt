@@ -372,9 +372,6 @@ fun ScrollContentTextComponent(
                                     .firstOrNull { it.key == uiState.readingContentId }
                                     ?.offset
                                 val rememberedReadingOffset = lastReadingItemOffset
-                                val offsetDelta = if (currentReadingOffset != null && rememberedReadingOffset != null) {
-                                    currentReadingOffset - rememberedReadingOffset
-                                } else null
                                 val sizeDelta = newHeight - (oldHeight ?: 0)
                                 debugScrollLog {
                                     "chapterItemSize chapter=${content.id} old=${oldHeight ?: "null"} new=$newHeight " +
