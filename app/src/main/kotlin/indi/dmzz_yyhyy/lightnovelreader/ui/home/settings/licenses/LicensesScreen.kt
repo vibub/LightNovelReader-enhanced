@@ -74,7 +74,7 @@ fun LicenseList(items: List<Library>) {
         item(key = "app_license_card") {
             AppLicenseCard(
                 onClick = {
-                    uriHandler.openUri("https://github.com/dmzz-yyhyy/LightNovelReader?tab=readme-ov-file#license")
+                    uriHandler.openUri("https://github.com/vibub/LightNovelReader-enhanced?tab=readme-ov-file#license")
                 }
             )
         }

@@ -83,7 +83,7 @@ fun AboutSettingsList(
         painter = painterResource(R.drawable.archive_24px),
         title = stringResource(R.string.settings_github_repo),
         description = stringResource(R.string.settings_github_repo_desc),
-        openUrl = "https://github.com/dmzz-yyhyy/LightNovelReader"
+        openUrl = "https://github.com/vibub/LightNovelReader-enhanced"
     )
     SettingsClickableEntry(
         modifier = Modifier.background(colorScheme.surfaceContainer),

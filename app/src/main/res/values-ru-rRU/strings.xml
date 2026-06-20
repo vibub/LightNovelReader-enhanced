@@ -264,7 +264,8 @@
     <string name="about_settings">О приложении</string>
     <string name="settings_debug_tools">Средства отладки</string>
     <string name="settings_debug_tools_desc">Утилиты для отладки</string>
-    <string name="settings_about_source_code"><![CDATA[Исходный код: %1$s<br/>Сообщить об ошибках и запросить функции: %2$s]]></string>
+    <string name="settings_about_source_code"><![CDATA[Исходный код: %1$s<br/>Сообщить об ошибках и запросить функции: %2$s<br/>Открыть %3$s]]></string>
+    <string name="settings_about_upstream_repo">вышестоящий репозиторий</string>
     <string name="settings_about_oss">LightNovelReader — подарок всем любителям ранобэ в мире.</string>
     <string name="settings_github_repo">Репозиторий GitHub</string>
     <string name="settings_github_repo_desc">Поставьте звезду нашему репозиторию, чтобы помочь нам привлечь больше пользователей</string>

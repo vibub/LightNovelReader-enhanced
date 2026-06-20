@@ -68,6 +68,7 @@ import indi.dmzz_yyhyy.lightnovelreader.BuildConfig
 import indi.dmzz_yyhyy.lightnovelreader.R
 import kotlinx.coroutines.delay
 import kotlin.math.round
+import kotlin.time.Duration.Companion.seconds
 
 @Composable
 fun BaseDialog(
@@ -362,7 +363,7 @@ fun ImportUserDataDialog(
         if (confirmingOverwrite) {
             countdown = 3
             repeat(3) {
-                delay(1000)
+                delay(1.seconds)
                 countdown--
             }
         }
@@ -567,11 +568,13 @@ fun SettingsAboutInfoDialog(
                     style = typography.labelLarge
                 )
                 Spacer(Modifier.height(10.dp))
+                val upstreamRepositoryText = stringResource(R.string.settings_about_upstream_repo)
                 AnnotatedText(
                     text = stringResource(
                         id = R.string.settings_about_source_code,
-                        "<b><a href=\"https://github.com/dmzz-yyhyy/LightNovelReader\">GitHub</a></b>",
-                        "<b><a href=\"https://github.com/dmzz-yyhyy/LightNovelReader/issues\">GitHub Issues</a></b>"
+                        "<b><a href=\"https://github.com/vibub/LightNovelReader-enhanced\">GitHub</a></b>",
+                        "<b><a href=\"https://github.com/vibub/LightNovelReader-enhanced/issues\">GitHub Issues</a></b>",
+                        "<b><a href=\"https://github.com/dmzz-yyhyy/LightNovelReader\">$upstreamRepositoryText</a></b>"
                     ),
                     style = typography.labelLarge
                 )

@@ -263,7 +263,8 @@
     <string name="about_settings">关于</string>
     <string name="settings_debug_tools">调试选项</string>
     <string name="settings_debug_tools_desc">供开发使用的调试与诊断功能</string>
-    <string name="settings_about_source_code"><![CDATA[在 %1$s 查看源代码<br/>在 %2$s 提交 Bug 或新功能请求]]></string>
+    <string name="settings_about_source_code"><![CDATA[在 %1$s 查看源代码<br/>在 %2$s 提交 Bug 或新功能请求<br/>查看 %3$s]]></string>
+    <string name="settings_about_upstream_repo">上游仓库</string>
     <string name="settings_about_oss">LightNovelReader 是献给世界上所有阅读爱好者的礼物。</string>
     <string name="settings_github_repo">GitHub 仓库</string>
     <string name="settings_github_repo_desc">给本项目点颗 star, 帮助我们被更多人发现</string>
