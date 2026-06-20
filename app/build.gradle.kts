@@ -14,18 +14,6 @@ plugins {
     id("com.mikepenz.aboutlibraries.plugin.android")
 }
 
-// CI 构建通过 CI_VERSION_CODE_OFFSET 自动递增 versionCode，versionName 仍手动维护。
-val ciVersionCodeOffset = providers.environmentVariable("CI_VERSION_CODE_OFFSET")
-    .orNull
-    ?.toIntOrNull()
-    ?.coerceAtLeast(0)
-    ?: 0
-
-fun versionCodeWithCiOffset(manualVersionCode: Int): Int {
-    val maxOffset = 999 - manualVersionCode % 1000
-    return manualVersionCode + ciVersionCodeOffset.coerceAtMost(maxOffset)
-}
-
 android {
     namespace = "indi.dmzz_yyhyy.lightnovelreader"
     compileSdk = 37
@@ -36,8 +24,7 @@ android {
         minSdk = 24
         targetSdk = 37
         // 版本号为x.y.z则versionCode为x*1000000+y*10000+z*1000+debug版本号(开发需要时迭代, 三位数)
-        val manualVersionCode = 1_02_02_006
-        versionCode = versionCodeWithCiOffset(manualVersionCode)
+        versionCode = 1_02_02_040
         versionName = "1.2.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

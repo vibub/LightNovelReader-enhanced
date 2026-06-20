@@ -14,8 +14,6 @@ on:
 jobs:
   BuildReleaseApk:
     runs-on: ubuntu-latest
-    env:
-      CI_VERSION_CODE_OFFSET: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v6
       - name: Setup Java 21

@@ -20,7 +20,6 @@ object GithubParser {
     private const val REPOSITORY_PATH = "/vibub/LightNovelReader-enhanced"
     private const val DEFAULT_BRANCH = "refactoring"
     private const val WORKFLOW_FILE = "marge.yml"
-    private val manualVersionCodeRegex = Regex("manualVersionCode = ([0-9_]+)")
     private val versionCodeRegex = Regex("versionCode = ([0-9_]+)")
     private val versionNameRegex = Regex("versionName = (.*)")
     private val artifactNameRegex = Regex("""LightNovelReader-(.+)-([0-9]+)-release(?:\\.zip)?""")
@@ -28,14 +27,6 @@ object GithubParser {
     private const val RAW_HOST = "https://github.com"
     private const val PROXY_HOST = "https://dgithub.xyz"
     private var host = RAW_HOST
-
-    private fun parseVersionCode(gradle: String): Int? =
-        (manualVersionCodeRegex.find(gradle) ?: versionCodeRegex.find(gradle))
-            ?.groups
-            ?.get(1)
-            ?.value
-            ?.replace("_", "")
-            ?.toIntOrNull()
 
     private fun updateHost(): String {
         try {
@@ -117,7 +108,7 @@ object GithubParser {
                             .syntax(Document.OutputSettings.Syntax.xml)
                     )
                     .toString()
-                val versionCode = parseVersionCode(gradle) ?: Log.e("GithubParser", "failed to get versionCode").also { return null }
+                val versionCode = versionCodeRegex.find(gradle)?.groups?.get(1)?.value?.replace("_", "")?.toIntOrNull() ?: Log.e("GithubParser", "failed to get versionCode").also { return null }
                 val versionName = versionNameRegex.find(gradle)?.groups?.get(1)?.value?.replace("\"", "") ?: Log.e("GithubParser", "failed to get versionName").also { return null }
                 updatePhase.tryEmit("GitHub步骤: 解析更新日志")
                 val releaseNotes = releaseDocument
@@ -188,7 +179,7 @@ object GithubParser {
                         .syntax(Document.OutputSettings.Syntax.xml)
                 )
                 .toString()
-            val fallbackVersionCode = parseVersionCode(gradle) ?: Log.e("GithubParser", "failed to get versionCode").also { return null }
+            val fallbackVersionCode = versionCodeRegex.find(gradle)?.groups?.get(1)?.value?.replace("_", "")?.toIntOrNull() ?: Log.e("GithubParser", "failed to get versionCode").also { return null }
             val fallbackVersionName = versionNameRegex.find(gradle)?.groups?.get(1)?.value?.replace("\"", "") ?: Log.e("GithubParser", "failed to get versionName").also { return null }
             val connection = Jsoup.connect(host + URL)
             if (host.startsWith("http://")) {
