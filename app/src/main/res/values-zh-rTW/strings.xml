@@ -599,7 +599,7 @@
     <string name="key_default_text">預設字型</string>
     <string name="key_customize_text">自訂字型</string>
     <!-- Update Channel -->
-    <string name="key_update_channel_release">無</string>
+    <string name="key_update_channel_release">正式版</string>
     <string name="key_update_channel_development">Beta 測試版</string>
     <string name="key_update_channel_ci">Alpha 測試版 (不穩定)</string>
     <!-- Distribution Platform -->

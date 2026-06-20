@@ -658,7 +658,7 @@
     <string name="key_default_text">Default Font</string>
     <string name="key_customize_text">Customize Image</string>
     <!-- Update Channel -->
-    <string name="key_update_channel_release">None (Stable)</string>
+    <string name="key_update_channel_release">Stable Release</string>
     <string name="key_update_channel_development">Beta Version</string>
     <string name="key_update_channel_ci">Alpha Version (Unstable)</string>
     <!-- Distribution Platform -->

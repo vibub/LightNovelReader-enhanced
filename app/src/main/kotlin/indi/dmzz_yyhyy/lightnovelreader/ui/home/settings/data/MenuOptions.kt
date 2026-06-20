@@ -1,7 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data
 
 import indi.dmzz_yyhyy.lightnovelreader.R
-import indi.dmzz_yyhyy.lightnovelreader.data.update.APIParser
 import indi.dmzz_yyhyy.lightnovelreader.data.update.GithubParser
 import indi.dmzz_yyhyy.lightnovelreader.data.update.UpdateParser
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfSortType
@@ -87,15 +86,8 @@ sealed class MenuOptions {
         OptionWithValue("CI", R.string.key_update_channel_ci, GithubParser.CIParser)
     )
 
-    data object LnrAPIUpdateChannelOptions: UpdateChannelOptions(
-        OptionWithValue(RELEASE, R.string.key_update_channel_release, APIParser.StableParser),
-        OptionWithValue(DEVELOPMENT, R.string.key_update_channel_development, APIParser.BetaParser),
-        OptionWithValue("CI", R.string.key_update_channel_ci, APIParser.UnstableParser)
-    )
-
     data object UpdatePlatformOptions: MenuOptionsWithValues<UpdateChannelOptions>() {
         val GitHub = option("GitHub", R.string.key_platform_github, GitHubUpdateChannelOptions)
-        val LnrAPI = option("LnrAPI", R.string.key_platform_lnr_api, LnrAPIUpdateChannelOptions)
     }
 
     data object DarkModeOptions: MenuOptions(

@@ -603,7 +603,7 @@
     <string name="key_default_text">Шрифт по умолчанию</string>
     <string name="key_customize_text">Настроить текст</string>
     <!-- Update Channel -->
-    <string name="key_update_channel_release">Релизные сборки</string>
+    <string name="key_update_channel_release">Стабильная версия</string>
     <string name="key_update_channel_development">Разработческие сборки</string>
     <string name="key_update_channel_ci">CI</string>
     <!-- Distribution Platform -->

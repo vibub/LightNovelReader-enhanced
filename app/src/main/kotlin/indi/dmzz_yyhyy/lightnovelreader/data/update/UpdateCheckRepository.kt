@@ -82,15 +82,16 @@ class UpdateCheckRepository @Inject constructor(
         if (checkJob != null && checkJob!!.isActive) return
         checkJob = coroutineScope.launch {
             val updateChannelKey = userDataRepository.stringUserData(UserDataPath.Settings.App.UpdateChannel.path).get() ?: MenuOptions.UpdateChannelOptions.DEVELOPMENT
-            val distributionPlatform = userDataRepository.stringUserData(UserDataPath.Settings.App.DistributionPlatform.path).get() ?: MenuOptions.UpdatePlatformOptions.LnrAPI
+            val platformOption = MenuOptions.UpdatePlatformOptions.getOptionWithValueOrDefault(
+                userDataRepository.stringUserData(UserDataPath.Settings.App.DistributionPlatform.path).get()
+            )
+            val distributionPlatform = platformOption.key
             Log.i("UpdateChecker", "Checking for updates from $distributionPlatform/$updateChannelKey")
             _updatePhase.update { "已请求更新，等待 $distributionPlatform 应答" }
             try {
-                release =
-                    MenuOptions.UpdatePlatformOptions
-                        .getOptionWithValue(distributionPlatform).value
-                        .getOptionWithValue(updateChannelKey).value
-                        .parser(_updatePhase)
+                release = platformOption.value
+                    .getOptionWithValueOrDefault(updateChannelKey).value
+                    .parser(_updatePhase)
             } catch (e: Exception) {
                 Log.e("UpdateChecker", "failed to get release")
                 e.printStackTrace()
