@@ -70,7 +70,6 @@ fun UpdatesAvailableDialog(
     isDownloading: Boolean = false,
     downloadProgress: Float = 0f
 ) {
-    println(release?.downloadUrl)
     val context = LocalContext.current
     AlertDialog(
         icon = {
@@ -125,7 +124,7 @@ fun UpdatesAvailableDialog(
                             )
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
-                                    text = release.versionName,
+                                    text = release.displayVersionName(),
                                     style = typography.titleSmall,
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.Bold
@@ -227,6 +226,14 @@ fun UpdatesAvailableDialog(
         }
     )
 }
+
+private fun Release.displayVersionName(): String =
+    versionName
+        .substringAfterLast('/')
+        .removePrefix("LightNovelReader-")
+        .removeSuffix("-$version-release.zip")
+        .removeSuffix("-$version-release.apk")
+        .removeSuffix("-$version-release")
 
 fun NavController.navigateUpdatesAvailableDialog() {
     navigate(Route.UpdatesAvailableDialog)

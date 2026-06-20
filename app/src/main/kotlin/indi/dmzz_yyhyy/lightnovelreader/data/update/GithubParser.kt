@@ -22,7 +22,7 @@ object GithubParser {
     private const val WORKFLOW_FILE = "marge.yml"
     private val versionCodeRegex = Regex("versionCode = ([0-9_]+)")
     private val versionNameRegex = Regex("versionName = (.*)")
-    private val artifactNameRegex = Regex("""LightNovelReader-(.+)-([0-9]+)-release(?:\\.zip)?""")
+    private val artifactNameRegex = Regex("""(?:^|/)LightNovelReader-([^/\s]+)-([0-9]+)-release(?:\.(?:zip|apk))?(?:$|[?#])""")
     private val regex = Regex("([0-9]*\\.[0-9]*\\.[0-9]*\\.[0-9]*).*[^.]github.com\\n")
     private const val RAW_HOST = "https://github.com"
     private const val PROXY_HOST = "https://dgithub.xyz"
@@ -70,6 +70,72 @@ object GithubParser {
         override val downloadUrl: String,
         override val downloadFileProgress: ((File, File) -> Unit)? = null
     ): Release
+
+    private fun normalizeGithubUrl(href: String): String =
+        when {
+            href.startsWith("https://github.com") -> href.replace("https://github.com", host)
+            href.startsWith("http") -> href
+            else -> host + href
+        }
+
+    private fun connectGithubPage(url: String) =
+        Jsoup.connect(url).also {
+            if (url.startsWith("http://")) it.header("Host", "github.com")
+        }
+
+    private fun parseCommitReleaseNotes(commitHref: String): String? =
+        try {
+            val commitDocument = connectGithubPage(normalizeGithubUrl(commitHref)).get()
+            val commitSha = commitHref.substringBefore('?').substringAfterLast('/').take(7)
+            val commitTitle = commitDocument
+                .selectFirst("div[class*=CommitHeader-module__commitMessageContainer] span.ws-pre-wrap div")
+                ?.text()
+                ?: commitDocument.selectFirst("span.ws-pre-wrap div")?.text()
+                ?: commitDocument.title().substringBefore(" · ").trim().takeIf { it.isNotBlank() }
+            val commitDescription = commitDocument
+                .selectFirst("span.extended-commit-description-container, pre.commit-desc")
+                ?.wholeText()
+                ?.trim()
+
+            commitTitle?.let {
+                buildString {
+                    append("本次 CI 构建来源提交")
+                    if (commitSha.isNotBlank()) append(" `$commitSha`")
+                    append(": \n\n")
+                    appendLine(it)
+                    if (!commitDescription.isNullOrBlank()) {
+                        appendLine()
+                        append(commitDescription)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("GithubParser", "failed to get commit release notes: ${e.message}")
+            null
+        }
+
+    private fun parseWorkflowRunCommitReleaseNotes(
+        actionRunHref: String,
+        workflowRunTitle: String?
+    ): String? =
+        try {
+            val runDocument = connectGithubPage(normalizeGithubUrl(actionRunHref)).get()
+            val commitReleaseNotes = runDocument
+                .select("""a[href*="$REPOSITORY_PATH/commit/"]""")
+                .firstOrNull()
+                ?.attr("href")
+                ?.let(::parseCommitReleaseNotes)
+            commitReleaseNotes
+                ?: runDocument.title()
+                    .substringBefore(" · ")
+                    .trim()
+                    .takeIf { it.isNotBlank() }
+                    ?.let { "本次 CI 构建来源: $it" }
+                ?: workflowRunTitle?.let { "本次 CI 构建来源: $it" }
+        } catch (e: Exception) {
+            Log.e("GithubParser", "failed to get workflow run commit release notes: ${e.message}")
+            workflowRunTitle?.let { "本次 CI 构建来源: $it" }
+        }
 
     private fun progressReleasePage(url: String, updatePhase: MutableStateFlow<String>): Release? {
         Jsoup
@@ -162,7 +228,7 @@ object GithubParser {
     }
     object CIParser: UpdateParser {
         private const val URL = "$REPOSITORY_PATH/actions/workflows/$WORKFLOW_FILE"
-        private val prIdRegex = Regex("Merge pull request #([0-9]*)")
+        private val prIdRegex = Regex("""(?:(?:Merge pull request|pull request)\s*#|/pull/)([0-9]+)""", RegexOption.IGNORE_CASE)
         override fun parser(updatePhase: MutableStateFlow<String>): Release? {
             System.setProperty("sun.net.http.allowRestrictedHeaders", "true")
             host = updateHost()
@@ -190,15 +256,20 @@ object GithubParser {
             val apkLinkElement = document.select(
                 "div[id^=check_suite_]:contains(ReleaseApkBuild) > div > div.d-table-cell.v-align-top.col-11.col-md-6.position-relative > a"
             ).first()
-            val actionUrl = "https://nightly.link" + apkLinkElement?.attr("href")
+                ?: Log.e("GithubParser", "failed to get action run link").let { return null }
+            val actionRunHref = apkLinkElement.attr("href")
+                .takeIf { it.isNotBlank() }
+                ?: Log.e("GithubParser", "failed to get action run link").let { return null }
+            val actionUrl = "https://nightly.link$actionRunHref"
             val fileDocument = Jsoup.connect(actionUrl).get()
             val artifactLinkElement = fileDocument
                 .select("body > article > table > tbody > tr > td > a")
                 .first()
                 ?: Log.e("GithubParser", "failed to get artifact link").let { return null }
             val apkDownloadHref = artifactLinkElement.attr("href")
+            val artifactFileName = apkDownloadHref.substringBefore('?').substringAfterLast('/')
             val artifactMatch = artifactNameRegex.find(artifactLinkElement.text())
-                ?: artifactNameRegex.find(apkDownloadHref)
+                ?: artifactNameRegex.find(artifactFileName)
             val versionCode = artifactMatch?.groups?.get(2)?.value?.toIntOrNull() ?: fallbackVersionCode
             val versionName = artifactMatch?.groups?.get(1)?.value ?: fallbackVersionName
             downloadUrl = apkDownloadHref
@@ -232,8 +303,13 @@ object GithubParser {
             }
             updatePhase.tryEmit("GitHub步骤: 获取更新日志")
 
-            val spanText = document.select("span").text()
-            val prId = prIdRegex.find(spanText)?.groups?.get(1)?.value
+            val workflowRunTitle = apkLinkElement.text()
+                .trim()
+                .takeIf { it.isNotBlank() && it != "ReleaseApkBuild" }
+            val prId = document.select("""a[href*="$REPOSITORY_PATH/pull/"]""")
+                .firstNotNullOfOrNull { prIdRegex.find(it.attr("href"))?.groups?.get(1)?.value }
+                ?: prIdRegex.find(document.text())?.groups?.get(1)?.value
+                ?: workflowRunTitle?.let { prIdRegex.find(it)?.groups?.get(1)?.value }
 
             val prUrl = prId?.let { "$host$REPOSITORY_PATH/pull/$it" }
             val prConnection = prUrl?.let { Jsoup.connect(it) }
@@ -241,14 +317,24 @@ object GithubParser {
                 prConnection?.header("Host", "github.com")
             }
 
-            val taskListElement = prConnection?.get()?.select(
-                "#discussion_bucket > div > div.Layout-main > div > div.js-discussion.ml-0.pl-0.ml-md-6.pl-md-3 > div.TimelineItem.TimelineItem--condensed.pt-0.js-comment-container.js-socket-channel.js-updatable-content.js-command-palette-pull-body > div.timeline-comment-group.js-minimizable-comment-group.js-targetable-element.TimelineItem-body.my-0 > div > div:nth-child(2) > div > task-lists > div"
-            )?.toString()
-
-            val releaseNotes = taskListElement
-                ?.let(HtmlToMdUtil::convertHtml)
-                ?.let { "**注意! 这是一个由 GitHub Actions 构建出来的版本, 此版本未经过严格测试**\n\n$it" }
-                ?: "**注意! 这是一个由 GitHub Actions 构建出来的版本, 此版本未经过严格测试**\n\n暂无可用更新日志。"
+            val prReleaseNotes = try {
+                prConnection?.get()
+                    ?.selectFirst("div.js-comment-body.markdown-body, div.js-comment-body, td.comment-body, div.comment-body.markdown-body, div.markdown-body")
+                    ?.html()
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let(HtmlToMdUtil::convertHtml)
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+            } catch (e: Exception) {
+                Log.e("GithubParser", "failed to get PR release notes: ${e.message}")
+                null
+            }
+            val fallbackReleaseNotes = if (prReleaseNotes == null) {
+                parseWorkflowRunCommitReleaseNotes(actionRunHref, workflowRunTitle)
+                    ?: workflowRunTitle?.let { "本次 CI 构建来源: $it" }
+                    ?: "暂无可用更新日志。"
+            } else null
+            val releaseNotes = "**注意! 这是一个由 GitHub Actions 构建出来的版本, 此版本未经过严格测试**\n\n${prReleaseNotes ?: fallbackReleaseNotes}"
 
             updatePhase.tryEmit("GitHub步骤: 比对版本号")
             val lastReleaseRelease = ReleaseParser.parser(MutableStateFlow(""))
