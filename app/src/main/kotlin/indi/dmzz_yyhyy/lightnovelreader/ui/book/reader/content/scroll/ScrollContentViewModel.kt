@@ -257,13 +257,29 @@ class ScrollContentViewModel(
         val progress: Float
     )
 
+    private fun LazyListItemInfo.isVisibleInViewport(): Boolean =
+        offset + size > 0 && offset < lazyColumnSize.height
+
+    private fun viewportTopChapterItem(
+        visibleItems: List<LazyListItemInfo> = uiState.lazyListState.layoutInfo.visibleItemsInfo
+    ): VisibleChapterItem? {
+        if (lazyColumnSize.height <= 0 || visibleItems.isEmpty()) return null
+        val item = visibleItems.firstOrNull { item ->
+            val chapterId = item.key.scrollContentChapterId() ?: return@firstOrNull false
+            item.isVisibleInViewport() && contentByChapterId(chapterId) != null
+        } ?: return null
+        val chapterId = item.key.scrollContentChapterId() ?: return null
+        val content = contentByChapterId(chapterId) ?: return null
+        return VisibleChapterItem(content, item)
+    }
+
     private fun viewportBottomChapterItem(
         visibleItems: List<LazyListItemInfo> = uiState.lazyListState.layoutInfo.visibleItemsInfo
     ): VisibleChapterItem? {
         if (lazyColumnSize.height <= 0 || visibleItems.isEmpty()) return null
         val item = visibleItems.lastOrNull { item ->
             val chapterId = item.key.scrollContentChapterId() ?: return@lastOrNull false
-            item.offset < lazyColumnSize.height && contentByChapterId(chapterId) != null
+            item.isVisibleInViewport() && contentByChapterId(chapterId) != null
         } ?: return null
         val chapterId = item.key.scrollContentChapterId() ?: return null
         val content = contentByChapterId(chapterId) ?: return null
@@ -375,27 +391,44 @@ class ScrollContentViewModel(
                     updateVisibleItemSizes(lastRotationVisibleItemSizes, visibleItems)
                     return@collect
                 }
-                val anchor = viewportBottomChapterItem(visibleItems) ?: run {
+                val topAnchor = viewportTopChapterItem(visibleItems) ?: run {
                     updateVisibleItemSizes(lastRotationVisibleItemSizes, visibleItems)
                     return@collect
                 }
-                val itemInfo = anchor.itemInfo
-                val previousAnchorSize = lastRotationVisibleItemSizes[itemInfo.key]
+                val bottomAnchor = viewportBottomChapterItem(visibleItems) ?: run {
+                    updateVisibleItemSizes(lastRotationVisibleItemSizes, visibleItems)
+                    return@collect
+                }
+                val previousTopAnchorSize = lastRotationVisibleItemSizes[topAnchor.itemInfo.key]
+                val previousBottomAnchorSize = lastRotationVisibleItemSizes[bottomAnchor.itemInfo.key]
                 updateVisibleItemSizes(lastRotationVisibleItemSizes, visibleItems)
-                val anchorSizeChanged = previousAnchorSize?.let { it != itemInfo.size } == true
-                if (anchorSizeChanged || scrollDirection == 0) {
+                val topAnchorSizeChanged = previousTopAnchorSize?.let { it != topAnchor.itemInfo.size } == true
+                val bottomAnchorSizeChanged = previousBottomAnchorSize?.let { it != bottomAnchor.itemInfo.size } == true
+                if (scrollDirection == 0) {
                     debugLog {
-                        "rotationSkipped book=${uiState.bookId} reason=${if (anchorSizeChanged) "anchorSizeChanged" else "noScrollDelta"} " +
-                                "directionCandidate=${when (anchor.content.id) { currentContent.lastChapter -> "prev"; currentContent.nextChapter -> "next"; else -> "none" }} " +
-                                "scrollDirection=$scrollDirection item=${itemInfo.index}:${itemInfo.key}@${itemInfo.offset}+${itemInfo.size} " +
-                                "previousSize=$previousAnchorSize lazyHeight=${lazyColumnSize.height} " +
-                                "slots=${slotsSummary()} current=${currentContent.id} visible=${visibleItemsSummary()}"
+                        "rotationSkipped book=${uiState.bookId} reason=noScrollDelta " +
+                                "top=${topAnchor.itemInfo.index}:${topAnchor.itemInfo.key}@${topAnchor.itemInfo.offset}+${topAnchor.itemInfo.size} " +
+                                "bottom=${bottomAnchor.itemInfo.index}:${bottomAnchor.itemInfo.key}@${bottomAnchor.itemInfo.offset}+${bottomAnchor.itemInfo.size} " +
+                                "lazyHeight=${lazyColumnSize.height} slots=${slotsSummary()} current=${currentContent.id} " +
+                                "visible=${visibleItemsSummary()}"
                     }
                     return@collect
                 }
-                if (anchor.content.id == currentContent.lastChapter && currentContent.hasPrevChapter() && scrollDirection < 0) {
+                if (topAnchor.content.id == currentContent.lastChapter && currentContent.hasPrevChapter() && scrollDirection < 0) {
+                    val itemInfo = topAnchor.itemInfo
+                    if (topAnchorSizeChanged || bottomAnchor.content.id == currentContent.nextChapter) {
+                        debugLog {
+                            "rotationSkipped book=${uiState.bookId} direction=prev " +
+                                    "reason=${if (topAnchorSizeChanged) "anchorSizeChanged" else "nextStillVisible"} " +
+                                    "top=${itemInfo.index}:${itemInfo.key}@${itemInfo.offset}+${itemInfo.size} previousTopSize=$previousTopAnchorSize " +
+                                    "bottom=${bottomAnchor.itemInfo.index}:${bottomAnchor.itemInfo.key}@${bottomAnchor.itemInfo.offset}+${bottomAnchor.itemInfo.size} " +
+                                    "lazyHeight=${lazyColumnSize.height} slots=${slotsSummary()} current=${currentContent.id} " +
+                                    "visible=${visibleItemsSummary()}"
+                        }
+                        return@collect
+                    }
                     debugLog {
-                        "rotationTrigger direction=prev book=${uiState.bookId} anchor=viewportBottom " +
+                        "rotationTrigger direction=prev book=${uiState.bookId} anchor=viewportTop " +
                                 "item=${itemInfo.index}:${itemInfo.key}@${itemInfo.offset}+${itemInfo.size} " +
                                 "lazyHeight=${lazyColumnSize.height} slotsBefore=${slotsSummary()} current=${currentContent.id} " +
                                 "last=${currentContent.lastChapter} next=${currentContent.nextChapter} " +
@@ -428,7 +461,19 @@ class ScrollContentViewModel(
                     }
                     return@collect
                 }
-                if (anchor.content.id == currentContent.nextChapter && currentContent.hasNextChapter() && scrollDirection > 0) {
+                if (bottomAnchor.content.id == currentContent.nextChapter && currentContent.hasNextChapter() && scrollDirection > 0) {
+                    val itemInfo = bottomAnchor.itemInfo
+                    if (bottomAnchorSizeChanged || topAnchor.content.id == currentContent.lastChapter) {
+                        debugLog {
+                            "rotationSkipped book=${uiState.bookId} direction=next " +
+                                    "reason=${if (bottomAnchorSizeChanged) "anchorSizeChanged" else "prevStillVisible"} " +
+                                    "top=${topAnchor.itemInfo.index}:${topAnchor.itemInfo.key}@${topAnchor.itemInfo.offset}+${topAnchor.itemInfo.size} " +
+                                    "bottom=${itemInfo.index}:${itemInfo.key}@${itemInfo.offset}+${itemInfo.size} previousBottomSize=$previousBottomAnchorSize " +
+                                    "lazyHeight=${lazyColumnSize.height} slots=${slotsSummary()} current=${currentContent.id} " +
+                                    "visible=${visibleItemsSummary()}"
+                        }
+                        return@collect
+                    }
                     debugLog {
                         "rotationTrigger direction=next book=${uiState.bookId} anchor=viewportBottom " +
                                 "item=${itemInfo.index}:${itemInfo.key}@${itemInfo.offset}+${itemInfo.size} " +
