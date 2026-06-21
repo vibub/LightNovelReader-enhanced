@@ -20,6 +20,7 @@ interface ScrollContentUiState: ContentUiState {
     val setLazyColumnSize: (IntSize) -> Unit
     val writeProgressRightNow: () -> Unit
     val completeProgressRestore: (Int) -> Unit
+    val componentHeightsByChapterId: Map<String, Map<Int, Int>>
     val restoreProgress: Float
     val restoreVersion: Int
     val shouldRestoreProgress: Boolean
@@ -33,7 +34,8 @@ class MutableScrollContentUiSate(
     override val changeChapter: (String) -> Unit,
     override val setLazyColumnSize: (IntSize) -> Unit,
     override val writeProgressRightNow: () -> Unit,
-    override val completeProgressRestore: (Int) -> Unit
+    override val completeProgressRestore: (Int) -> Unit,
+    override val componentHeightsByChapterId: Map<String, Map<Int, Int>>
 ) : ScrollContentUiState {
     override var bookId by mutableStateOf("")
     override var readingProgress by mutableFloatStateOf(0f)

@@ -221,16 +221,24 @@ fun ScrollContentTextComponent(
         val chapterItems = renderItems.withIndex()
             .filter { it.value.content.id == uiState.readingContentId }
         if (chapterItems.isEmpty()) return@LaunchedEffect
-        val restoreTarget = if (uiState.restoreProgress >= 1f) {
-            RestoreTarget(chapterItems.last().index, 1f)
-        } else {
-            val scaled = (chapterItems.size * uiState.restoreProgress).coerceAtLeast(0f)
-            val localIndex = scaled.toInt().coerceIn(0, chapterItems.lastIndex)
-            RestoreTarget(
-                globalIndex = chapterItems[localIndex].index,
-                itemProgress = (scaled - localIndex).coerceIn(0f, 1f)
-            )
-        }
+        val componentItems = chapterItems.filter { it.value is ScrollContentRenderItem.Component }
+        val progressTarget = scrollContentRestoreTarget(
+            progress = uiState.restoreProgress,
+            componentIndices = componentItems.map { it.index },
+            headerIndex = chapterItems
+                .firstOrNull { it.value is ScrollContentRenderItem.Header }
+                ?.index,
+            footerIndex = chapterItems
+                .firstOrNull { it.value is ScrollContentRenderItem.Footer }
+                ?.index,
+            fallbackIndex = chapterItems.last().index,
+            componentHeights = uiState.componentHeightsByChapterId[uiState.readingContentId].orEmpty(),
+            defaultComponentHeight = screenHeight
+        )
+        val restoreTarget = RestoreTarget(
+            globalIndex = progressTarget.itemIndex,
+            itemProgress = progressTarget.itemProgress
+        )
         snapshotFlow { listState.layoutInfo.totalItemsCount }
             .filter { it > restoreTarget.globalIndex }
             .first()

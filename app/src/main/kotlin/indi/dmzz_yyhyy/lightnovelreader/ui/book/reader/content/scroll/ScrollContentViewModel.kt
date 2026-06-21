@@ -49,6 +49,7 @@ class ScrollContentViewModel(
     private var lastProgressFirstIndex: Int? = null
     private var lastProgressFirstOffset: Int? = null
     private val lastProgressVisibleItemSizes: MutableMap<Any?, Int> = mutableMapOf()
+    private val componentHeightsByChapterId: MutableMap<String, MutableMap<Int, Int>> = mutableMapOf()
 
     override val uiState: MutableScrollContentUiSate = MutableScrollContentUiSate(
         loadLastChapter = ::loadLastChapter,
@@ -58,7 +59,8 @@ class ScrollContentViewModel(
             lazyColumnSize = it
         },
         writeProgressRightNow = ::writeProgressRightNow,
-        completeProgressRestore = ::completeProgressRestore
+        completeProgressRestore = ::completeProgressRestore,
+        componentHeightsByChapterId = componentHeightsByChapterId
     )
 
     @Suppress("SimplifyBooleanWithConstants")
@@ -103,6 +105,16 @@ class ScrollContentViewModel(
     ) {
         target.clear()
         items.forEach { target[it.key] = it.size }
+    }
+
+    private fun updateVisibleComponentHeights(items: List<LazyListItemInfo>) {
+        items.forEach { item ->
+            val key = item.key.scrollContentItemKeyOrNull() ?: return@forEach
+            if (key.type != ScrollContentItemType.Component || item.size <= 0) return@forEach
+            if (contentByChapterId(key.chapterId) == null) return@forEach
+            componentHeightsByChapterId
+                .getOrPut(key.chapterId) { mutableMapOf() }[key.index] = item.size
+        }
     }
 
     private fun contentByChapterId(chapterId: String): ChapterContent? =
@@ -154,6 +166,7 @@ class ScrollContentViewModel(
                 .throttleLatest(200L)
                 .collect {
                     val visibleItems = uiState.lazyListState.layoutInfo.visibleItemsInfo
+                    updateVisibleComponentHeights(visibleItems)
                     val progressScrollDirection = scrollDirectionFrom(lastProgressFirstIndex, lastProgressFirstOffset)
                     lastProgressFirstIndex = uiState.lazyListState.firstVisibleItemIndex
                     lastProgressFirstOffset = uiState.lazyListState.firstVisibleItemScrollOffset
@@ -212,10 +225,7 @@ class ScrollContentViewModel(
                                 "scrollDirection=$progressScrollDirection anchorSizeChanged=$anchorSizeChanged " +
                                 "canPersist=$canPersistProgress slots=${slotsSummary()}"
                     }
-                    if (!isSameChapter) {
-                        uiState.readingContentId = visibleProgress.content.id
-                    }
-                    uiState.readingProgress = visibleProgress.progress
+                    applyVisibleChapterProgress(visibleProgress)
 
                     val now = System.currentTimeMillis()
                     val scrolling = uiState.lazyListState.isScrollInProgress
@@ -232,6 +242,7 @@ class ScrollContentViewModel(
                 .distinctUntilChanged()
                 .collect { scrolling ->
                     if (!scrolling) {
+                        updateVisibleComponentHeights(uiState.lazyListState.layoutInfo.visibleItemsInfo)
                         debugLog {
                             "scrollIdle book=${uiState.bookId} reading=${uiState.readingContentId} " +
                                     "progress=${uiState.readingProgress} restore=${uiState.restoreProgress} " +
@@ -288,27 +299,26 @@ class ScrollContentViewModel(
 
     private fun chapterProgressOf(visible: VisibleChapterItem): VisibleChapterProgress {
         val item = visible.itemInfo
-        val itemProgress = 1f.coerceAtMost((-item.offset + lazyColumnSize.height).toFloat() / item.size.coerceAtLeast(1))
-            .coerceIn(0f, 1f)
-        val key = item.key.scrollContentItemKeyOrNull()
-        val progress = if (key == null) {
-            itemProgress
-        } else {
-            val componentCount = uiState.contentComponentsMap[visible.content.id]?.size ?: 0
-            val headerCount = if (settingState.isUsingContinuousScrolling) 1 else 0
-            val totalItems = (componentCount + headerCount + 1).coerceAtLeast(1)
-            val itemIndex = when (key.type) {
-                ScrollContentItemType.Header -> 0
-                ScrollContentItemType.Component -> (key.index + headerCount).coerceIn(headerCount, totalItems - 1)
-                ScrollContentItemType.Footer -> totalItems - 1
-            }
-            ((itemIndex + itemProgress) / totalItems).coerceIn(0f, 1f)
-        }
+        val progress = scrollContentChapterProgress(
+            key = item.key.scrollContentItemKeyOrNull(),
+            itemOffset = item.offset,
+            itemSize = item.size,
+            viewportHeight = lazyColumnSize.height,
+            componentCount = uiState.contentComponentsMap[visible.content.id]?.size ?: 0,
+            componentHeights = componentHeightsByChapterId[visible.content.id].orEmpty()
+        )
         return VisibleChapterProgress(visible.content, progress)
     }
 
     private fun currentVisibleChapterProgress(): VisibleChapterProgress? =
         viewportBottomChapterItem()?.let(::chapterProgressOf)
+
+    private fun applyVisibleChapterProgress(visibleProgress: VisibleChapterProgress) {
+        if (uiState.readingContentId != visibleProgress.content.id) {
+            uiState.readingContentId = visibleProgress.content.id
+        }
+        uiState.readingProgress = visibleProgress.progress
+    }
 
     private fun persistVisibleChapterProgress(
         visibleProgress: VisibleChapterProgress? = currentVisibleChapterProgress()
@@ -334,10 +344,7 @@ class ScrollContentViewModel(
                     "firstOffset=${uiState.lazyListState.firstVisibleItemScrollOffset} firstItem=${firstVisibleItemSummary()} " +
                     "slots=${slotsSummary()}"
         }
-        if (uiState.readingContentId != visible.content.id) {
-            uiState.readingContentId = visible.content.id
-        }
-        uiState.readingProgress = visible.progress
+        applyVisibleChapterProgress(visible)
         uiState.restoreProgress = visible.progress
         updateReadingProgress(
             ReadingProgressSnapshot(
@@ -378,6 +385,7 @@ class ScrollContentViewModel(
             snapshotFlow { uiState.lazyListState.layoutInfo.visibleItemsInfo }
                 .throttleLatest(64L)
                 .collect { visibleItems ->
+                updateVisibleComponentHeights(visibleItems)
                 val firstIndex = uiState.lazyListState.firstVisibleItemIndex
                 val firstOffset = uiState.lazyListState.firstVisibleItemScrollOffset
                 val scrollDirection = scrollDirectionFrom(lastRotationFirstIndex, lastRotationFirstOffset)
@@ -436,6 +444,7 @@ class ScrollContentViewModel(
                                 "collectingLast=$collectingLastChapterId collectingNext=$collectingNextChapterId " +
                                 "visible=${visibleItemsSummary()}"
                     }
+                    val activeProgressAfterRotation = chapterProgressOf(bottomAnchor)
                     collectNextChapterJob?.cancel()
                     collectCurrentChapterJob?.cancel()
                     collectLastChapterJob?.cancel()
@@ -447,9 +456,9 @@ class ScrollContentViewModel(
                     pruneContentComponentsMap()
                     collectingNextChapterId = currentContent.id
                     collectNextChapterJob = collectChapter(2, currentContent.id)
-                    collectCurrentChapterJob = collectChapter(1, currentContent.lastChapter)
-                    uiState.readingContentId = currentContent.lastChapter
-                    requestedChapterId = uiState.readingContentId
+                    requestedChapterId = currentContent.lastChapter
+                    collectCurrentChapterJob = collectChapter(1, requestedChapterId)
+                    applyVisibleChapterProgress(activeProgressAfterRotation)
                     uiState.contentList[1]?.takeIf { it.hasPrevChapter() }?.let {
                         collectingLastChapterId = it.lastChapter
                         collectLastChapterJob = collectChapter(0, it.lastChapter)
@@ -483,6 +492,7 @@ class ScrollContentViewModel(
                                 "collectingLast=$collectingLastChapterId collectingNext=$collectingNextChapterId " +
                                 "visible=${visibleItemsSummary()}"
                     }
+                    val activeProgressAfterRotation = chapterProgressOf(bottomAnchor)
                     collectNextChapterJob?.cancel()
                     collectCurrentChapterJob?.cancel()
                     collectLastChapterJob?.cancel()
@@ -494,9 +504,9 @@ class ScrollContentViewModel(
                     pruneContentComponentsMap()
                     collectingLastChapterId = currentContent.id
                     collectLastChapterJob = collectChapter(0, currentContent.id)
-                    collectCurrentChapterJob = collectChapter(1, currentContent.nextChapter)
-                    uiState.readingContentId = currentContent.nextChapter
-                    requestedChapterId = uiState.readingContentId
+                    requestedChapterId = currentContent.nextChapter
+                    collectCurrentChapterJob = collectChapter(1, requestedChapterId)
+                    applyVisibleChapterProgress(activeProgressAfterRotation)
                     uiState.contentList[1]?.takeIf { it.hasNextChapter() }?.let {
                         collectingNextChapterId = it.nextChapter
                         collectNextChapterJob = collectChapter(2, it.nextChapter)
@@ -519,6 +529,7 @@ class ScrollContentViewModel(
         prefetchedNextChapterKey = ""
         collectingLastChapterId = ""
         collectingNextChapterId = ""
+        componentHeightsByChapterId.clear()
         resetScrollTracking()
     }
 
@@ -715,7 +726,7 @@ class ScrollContentViewModel(
         val currentContent = uiState.contentList.getOrNull(1)
         return when (index) {
             0 -> currentContent?.lastChapter == chapterId
-            1 -> uiState.readingContentId == chapterId && requestedChapterId == chapterId
+            1 -> requestedChapterId == chapterId
             2 -> currentContent?.nextChapter == chapterId
             else -> false
         }
