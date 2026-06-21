@@ -31,14 +31,18 @@ data class ReadingProgressSnapshot(
     val bookId: String,
     val chapterId: String,
     val chapterTitle: String,
-    val progress: Float
+    val progress: Float,
+    val restoreAnchor: String? = null
 )
+
+private fun scrollReadingAnchorPath(bookId: String, chapterId: String): String =
+    UserDataPath.Reader.ScrollRestoreAnchor.chapter(bookId, chapterId)
 
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
     private val statsRepository: StatsRepository,
     private val bookRepository: BookRepository,
-    userDataRepository: UserDataRepository,
+    private val userDataRepository: UserDataRepository,
     val contentComponentRepository: ContentComponentRepository,
     private val linovelibBookmarkRepository: LinovelibBookmarkRepository,
     private val webBookDataSourceProvider: WebBookDataSourceProvider
@@ -110,7 +114,8 @@ class ReaderViewModel @Inject constructor(
                         coroutineScope = viewModelScope,
                         settingState = settingState,
                         updateReadingProgress = ::saveReadingProgress,
-                        contentComponentRepository = contentComponentRepository
+                        contentComponentRepository = contentComponentRepository,
+                        loadReadingAnchor = ::loadScrollReadingAnchor
                     )
                     contentViewModel.changeBookId(bookId)
                     contentViewModel.changeChapter(chapterId, restoreProgress = true)
@@ -158,11 +163,18 @@ class ReaderViewModel @Inject constructor(
         )
     }
 
+    private fun loadScrollReadingAnchor(bookId: String, chapterId: String): String? {
+        if (bookId.isBlank() || chapterId.isBlank()) return null
+        return userDataRepository.stringUserData(scrollReadingAnchorPath(bookId, chapterId)).get()
+    }
+
     private fun saveReadingProgress(snapshot: ReadingProgressSnapshot) {
-        if (snapshot.progress.isNaN() || snapshot.progress <= 0f ||
-            snapshot.bookId.isBlank() || snapshot.chapterId.isBlank()
-        ) return
+        if (snapshot.progress.isNaN() || snapshot.bookId.isBlank() || snapshot.chapterId.isBlank()) return
+        if (snapshot.progress <= 0f && snapshot.restoreAnchor.isNullOrBlank()) return
         viewModelScope.launch(Dispatchers.IO) {
+            snapshot.restoreAnchor
+                ?.takeIf { it.isNotBlank() }
+                ?.let { userDataRepository.stringUserData(scrollReadingAnchorPath(snapshot.bookId, snapshot.chapterId)).set(it) }
             val currentTime = LocalDateTime.now()
 
             bookRepository.updateUserReadingData(snapshot.bookId) { userReadingData ->

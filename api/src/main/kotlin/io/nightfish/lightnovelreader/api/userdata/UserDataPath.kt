@@ -102,6 +102,15 @@ sealed class UserDataPath(
         data object BackgroundDarkImageUri : UserDataPath("backgroundDarkImageUri", Reader)
         /** 返回键阻断模式 @since Api 2 */
         data object BackBlockMode : UserDataPath("backBlockMode", Reader)
+        /** 滚动阅读位置锚点路径组 @since Api 4 */
+        data object ScrollRestoreAnchor : UserDataPath("scrollRestoreAnchor", Reader) {
+            /**
+             * 指定书籍章节的滚动阅读位置锚点路径
+             *
+             * @since Api 4
+             */
+            fun chapter(bookId: String, chapterId: String): String = "$path.$bookId.$chapterId"
+        }
     }
     /** 当前正在阅读的书籍列表路径 @since Api 2 */
     data object ReadingBooks : UserDataPath("reading_books")

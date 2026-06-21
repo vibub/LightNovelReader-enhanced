@@ -75,6 +75,20 @@ class ScrollReadingProgressTest {
     }
 
     @Test
+    fun unknownComponentHeightsUseStableViewportFallback() {
+        val progress = scrollContentChapterProgress(
+            key = ParsedScrollContentItemKey("chapter", ScrollContentItemType.Component, index = 1),
+            itemOffset = 0,
+            itemSize = 1000,
+            viewportHeight = 100,
+            componentCount = 3,
+            componentHeights = mapOf(0 to 1000)
+        )
+
+        assertEquals(1100f / 2100f, progress, 0.0001f)
+    }
+
+    @Test
     fun restoreTargetUsesComponentScale() {
         val target = scrollContentRestoreTarget(
             progress = 0.75f,
@@ -142,5 +156,24 @@ class ScrollReadingProgressTest {
 
         assertEquals(11, target.itemIndex)
         assertEquals(1f, target.itemProgress, 0.0001f)
+    }
+
+    @Test
+    fun scrollReadingAnchorRoundTrips() {
+        val anchor = ScrollReadingAnchor(
+            chapterId = "chapter",
+            itemType = ScrollContentItemType.Component.name,
+            componentIndex = 3,
+            itemProgress = 0.46f,
+            itemSize = 1200,
+            viewportHeight = 900,
+            componentHeights = mapOf(0 to 320, 3 to 1200, 5 to 1800),
+            componentCount = 8
+        )
+
+        val restored = decodeScrollReadingAnchor(encodeScrollReadingAnchor(anchor))
+
+        assertEquals(anchor, restored)
+        assertEquals(ScrollContentItemType.Component, restored?.parsedItemType)
     }
 }

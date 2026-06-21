@@ -64,6 +64,7 @@ import io.nightfish.lightnovelreader.api.content.component.AbstractContentCompon
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 private const val DEBUG_READER_SCROLL = false
 private const val READER_SCROLL_LOG_TAG = "ReaderScrollDbg"
@@ -151,8 +152,47 @@ private sealed interface ScrollContentRenderItem {
 
 private data class RestoreTarget(
     val globalIndex: Int,
-    val itemProgress: Float
+    val itemProgress: Float,
+    val expectedItemSize: Int = 0
 )
+
+private data class RestoreItemResult(
+    val item: LazyListItemInfo,
+    val layoutStable: Boolean
+)
+
+private fun ScrollContentRenderItem.matches(anchor: ScrollReadingAnchor, componentCount: Int): Boolean = when (this) {
+    is ScrollContentRenderItem.Header -> anchor.parsedItemType == ScrollContentItemType.Header
+    is ScrollContentRenderItem.Component ->
+        anchor.parsedItemType == ScrollContentItemType.Component &&
+                index == anchor.componentIndex &&
+                (anchor.componentCount < 0 || anchor.componentCount == componentCount)
+    is ScrollContentRenderItem.Footer -> anchor.parsedItemType == ScrollContentItemType.Footer
+}
+
+private fun compatibleRestoreViewport(savedViewportHeight: Int, currentViewportHeight: Int): Boolean {
+    if (savedViewportHeight <= 0 || currentViewportHeight <= 0) return false
+    val larger = maxOf(savedViewportHeight, currentViewportHeight)
+    return abs(savedViewportHeight - currentViewportHeight).toFloat() / larger <= 0.15f
+}
+
+private suspend fun LazyListState.waitForRestoreItem(
+    index: Int,
+    expectedSize: Int
+): RestoreItemResult? {
+    val visibleItem = { layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } }
+    if (expectedSize <= 0) {
+        return snapshotFlow { visibleItem() }
+            .filter { it != null }
+            .first()
+            ?.let { RestoreItemResult(it, layoutStable = true) }
+    }
+    val minimumExpectedSize = (expectedSize * 85 / 100).coerceAtLeast(1)
+    return snapshotFlow { visibleItem() }
+        .filter { item -> item != null && item.size >= minimumExpectedSize }
+        .first()
+        ?.let { RestoreItemResult(it, layoutStable = true) }
+}
 
 @Composable
 fun ScrollContentComponent(
@@ -221,24 +261,47 @@ fun ScrollContentTextComponent(
         val chapterItems = renderItems.withIndex()
             .filter { it.value.content.id == uiState.readingContentId }
         if (chapterItems.isEmpty()) return@LaunchedEffect
-        val componentItems = chapterItems.filter { it.value is ScrollContentRenderItem.Component }
-        val progressTarget = scrollContentRestoreTarget(
-            progress = uiState.restoreProgress,
-            componentIndices = componentItems.map { it.index },
-            headerIndex = chapterItems
-                .firstOrNull { it.value is ScrollContentRenderItem.Header }
-                ?.index,
-            footerIndex = chapterItems
-                .firstOrNull { it.value is ScrollContentRenderItem.Footer }
-                ?.index,
-            fallbackIndex = chapterItems.last().index,
-            componentHeights = uiState.componentHeightsByChapterId[uiState.readingContentId].orEmpty(),
-            defaultComponentHeight = screenHeight
-        )
-        val restoreTarget = RestoreTarget(
-            globalIndex = progressTarget.itemIndex,
-            itemProgress = progressTarget.itemProgress
-        )
+        snapshotFlow { lazyColumnSize }
+            .filter { lazyColumnSize.height > 0 }
+            .first()
+        val anchorTarget = uiState.restoreAnchor
+            ?.takeIf { it.chapterId == uiState.readingContentId }
+            ?.let { anchor ->
+                val componentCount = uiState.contentComponentsMap[anchor.chapterId]?.size ?: 0
+                chapterItems
+                    .firstOrNull { it.value.matches(anchor, componentCount) }
+                    ?.let {
+                        RestoreTarget(
+                            globalIndex = it.index,
+                            itemProgress = anchor.itemProgress.coerceIn(0f, 1f),
+                            expectedItemSize = if (compatibleRestoreViewport(anchor.viewportHeight, lazyColumnSize.height)) {
+                                anchor.itemSize
+                            } else {
+                                0
+                            }
+                        )
+                    }
+            }
+        val restoreTarget = anchorTarget ?: run {
+            val componentItems = chapterItems.filter { it.value is ScrollContentRenderItem.Component }
+            val progressTarget = scrollContentRestoreTarget(
+                progress = uiState.restoreProgress,
+                componentIndices = componentItems.map { it.index },
+                headerIndex = chapterItems
+                    .firstOrNull { it.value is ScrollContentRenderItem.Header }
+                    ?.index,
+                footerIndex = chapterItems
+                    .firstOrNull { it.value is ScrollContentRenderItem.Footer }
+                    ?.index,
+                fallbackIndex = chapterItems.last().index,
+                componentHeights = uiState.componentHeightsByChapterId[uiState.readingContentId].orEmpty(),
+                defaultComponentHeight = screenHeight
+            )
+            RestoreTarget(
+                globalIndex = progressTarget.itemIndex,
+                itemProgress = progressTarget.itemProgress
+            )
+        }
         snapshotFlow { listState.layoutInfo.totalItemsCount }
             .filter { it > restoreTarget.globalIndex }
             .first()
@@ -248,31 +311,33 @@ fun ScrollContentTextComponent(
         }
         withFrameNanos { }
         listState.scrollToItem(restoreTarget.globalIndex)
-        val item = uiState.lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == restoreTarget.globalIndex }
-            ?: run {
-                debugScrollLog {
-                    "restoreEffect targetMissing version=$restoringVersion reading=${uiState.readingContentId} " +
-                            "target=${restoreTarget.globalIndex} visible=${listState.layoutInfo.visibleItemsInfo.itemsSummary()}"
-                }
-                return@LaunchedEffect
+        val restoreItem = listState.waitForRestoreItem(
+            index = restoreTarget.globalIndex,
+            expectedSize = restoreTarget.expectedItemSize
+        ) ?: run {
+            debugScrollLog {
+                "restoreEffect targetMissing version=$restoringVersion reading=${uiState.readingContentId} " +
+                        "target=${restoreTarget.globalIndex} visible=${listState.layoutInfo.visibleItemsInfo.itemsSummary()}"
             }
-        snapshotFlow { lazyColumnSize }
-            .filter { lazyColumnSize.height > 0 }
-            .first()
+            return@LaunchedEffect
+        }
+        val item = restoreItem.item
         val rawOffset = (item.size * restoreTarget.itemProgress).toInt() - lazyColumnSize.height
         val offset = rawOffset.coerceAtLeast(0)
         debugScrollLog {
             "restoreEffect scroll version=$restoringVersion reading=${uiState.readingContentId} " +
                     "matched=${item.index}:${item.key}@${item.offset}+${item.size} lazySize=${lazyColumnSize.width}x${lazyColumnSize.height} " +
-                    "restore=${uiState.restoreProgress} targetProgress=${restoreTarget.itemProgress} rawOffset=$rawOffset computedOffset=$offset content=${uiState.contentList.idsSummary()}"
+                    "restore=${uiState.restoreProgress} targetProgress=${restoreTarget.itemProgress} rawOffset=$rawOffset computedOffset=$offset " +
+                    "layoutStable=${restoreItem.layoutStable} content=${uiState.contentList.idsSummary()}"
         }
         listState.scrollToItem(restoreTarget.globalIndex, offset)
         withFrameNanos { }
         debugScrollLog {
             "restoreEffect complete version=$restoringVersion firstIndex=${listState.firstVisibleItemIndex} " +
-                    "firstOffset=${listState.firstVisibleItemScrollOffset} visible=${listState.layoutInfo.visibleItemsInfo.itemsSummary()}"
+                    "firstOffset=${listState.firstVisibleItemScrollOffset} layoutStable=${restoreItem.layoutStable} " +
+                    "visible=${listState.layoutInfo.visibleItemsInfo.itemsSummary()}"
         }
-        uiState.completeProgressRestore(restoringVersion)
+        uiState.completeProgressRestore(restoringVersion, restoreItem.layoutStable)
     }
     LaunchedEffect(listState) {
         var atTop = false

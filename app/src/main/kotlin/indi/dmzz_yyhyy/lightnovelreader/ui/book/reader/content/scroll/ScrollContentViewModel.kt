@@ -30,7 +30,8 @@ class ScrollContentViewModel(
     val coroutineScope: CoroutineScope,
     val settingState: SettingState,
     val contentComponentRepository: ContentComponentRepository,
-    val updateReadingProgress: (ReadingProgressSnapshot) -> Unit
+    val updateReadingProgress: (ReadingProgressSnapshot) -> Unit,
+    val loadReadingAnchor: (bookId: String, chapterId: String) -> String? = { _, _ -> null }
 ) : ContentViewModel {
     private var progressScrollLoadJob: Job? = null
     private var lazyColumnSize = IntSize(0, 0)
@@ -214,6 +215,16 @@ class ScrollContentViewModel(
                         return@collect
                     }
                     val isSameChapter = visibleProgress.content.id == uiState.readingContentId
+                    if (isSameChapter && anchorSizeChanged) {
+                        debugLog {
+                            "progressSkipped book=${uiState.bookId} reason=anchorSizeChanged current=${uiState.readingContentId} " +
+                                    "progress=${visibleProgress.progress} previousSize=$previousAnchorSize " +
+                                    "anchor=${anchor.itemInfo.index}:${anchor.itemInfo.key}@${anchor.itemInfo.offset}+${anchor.itemInfo.size} " +
+                                    "firstIndex=${uiState.lazyListState.firstVisibleItemIndex} firstOffset=${uiState.lazyListState.firstVisibleItemScrollOffset} " +
+                                    "slots=${slotsSummary()} visible=${visibleItemsSummary()}"
+                        }
+                        return@collect
+                    }
                     val progressDelta = abs(visibleProgress.progress - uiState.readingProgress)
                     if (isSameChapter && progressDelta < PROGRESS_UPDATE_EPSILON && visibleProgress.progress < 1f) return@collect
                     debugLog {
@@ -265,7 +276,8 @@ class ScrollContentViewModel(
 
     private data class VisibleChapterProgress(
         val content: ChapterContent,
-        val progress: Float
+        val progress: Float,
+        val restoreAnchor: String?
     )
 
     private fun LazyListItemInfo.isVisibleInViewport(): Boolean =
@@ -299,15 +311,42 @@ class ScrollContentViewModel(
 
     private fun chapterProgressOf(visible: VisibleChapterItem): VisibleChapterProgress {
         val item = visible.itemInfo
+        val key = item.key.scrollContentItemKeyOrNull()
+        val itemProgress = scrollContentItemProgress(
+            itemOffset = item.offset,
+            itemSize = item.size,
+            viewportHeight = lazyColumnSize.height
+        )
         val progress = scrollContentChapterProgress(
-            key = item.key.scrollContentItemKeyOrNull(),
+            key = key,
             itemOffset = item.offset,
             itemSize = item.size,
             viewportHeight = lazyColumnSize.height,
             componentCount = uiState.contentComponentsMap[visible.content.id]?.size ?: 0,
             componentHeights = componentHeightsByChapterId[visible.content.id].orEmpty()
         )
-        return VisibleChapterProgress(visible.content, progress)
+        val restoreAnchor = key
+            ?.takeIf { it.type == ScrollContentItemType.Component && item.size > 0 && lazyColumnSize.height > 0 }
+            ?.let {
+                val componentHeights = componentHeightsByChapterId[visible.content.id]
+                    .orEmpty()
+                    .toMutableMap()
+                    .apply { this[it.index] = item.size }
+                val componentCount = uiState.contentComponentsMap[visible.content.id]?.size ?: 0
+                encodeScrollReadingAnchor(
+                    ScrollReadingAnchor(
+                        chapterId = visible.content.id,
+                        itemType = it.type.name,
+                        componentIndex = it.index,
+                        itemProgress = itemProgress,
+                        itemSize = item.size,
+                        viewportHeight = lazyColumnSize.height,
+                        componentHeights = componentHeights,
+                        componentCount = componentCount
+                    )
+                )
+            }
+        return VisibleChapterProgress(visible.content, progress, restoreAnchor)
     }
 
     private fun currentVisibleChapterProgress(): VisibleChapterProgress? =
@@ -351,12 +390,13 @@ class ScrollContentViewModel(
                 bookId = uiState.bookId,
                 chapterId = visible.content.id,
                 chapterTitle = visible.content.title,
-                progress = visible.progress
+                progress = visible.progress,
+                restoreAnchor = visible.restoreAnchor
             )
         )
     }
 
-    private fun completeProgressRestore(restoredVersion: Int) {
+    private fun completeProgressRestore(restoredVersion: Int, success: Boolean) {
         if (uiState.restoreVersion != restoredVersion) {
             debugLog {
                 "restoreComplete ignored book=${uiState.bookId} restoredVersion=$restoredVersion " +
@@ -367,11 +407,13 @@ class ScrollContentViewModel(
             return
         }
         debugLog {
-            "restoreComplete accepted book=${uiState.bookId} restoredVersion=$restoredVersion " +
+            "restoreComplete accepted book=${uiState.bookId} restoredVersion=$restoredVersion layoutStable=$success " +
                     "consumedBefore=${uiState.consumedRestoreVersion} reading=${uiState.readingContentId}/${uiState.readingProgress} " +
                     "restore=${uiState.restoreProgress} canPersistBefore=$canPersistProgress slots=${slotsSummary()}"
         }
+        if (!success) return
         uiState.consumedRestoreVersion = restoredVersion
+        uiState.restoreAnchor = null
         canPersistProgress = true
     }
 
@@ -593,6 +635,7 @@ class ScrollContentViewModel(
         uiState.readingContentId = id
         uiState.readingProgress = 0f
         uiState.restoreProgress = 0f
+        uiState.restoreAnchor = null
         uiState.restoreVersion++
         uiState.lazyListState = LazyListState()
         resetScrollTracking()
@@ -611,6 +654,19 @@ class ScrollContentViewModel(
         }
     }
 
+    private fun savedRestoreAnchor(chapterId: String, restoreProgress: Boolean): ScrollReadingAnchor? {
+        if (!restoreProgress) return null
+        return decodeScrollReadingAnchor(loadReadingAnchor(uiState.bookId, chapterId))
+            ?.takeIf { it.chapterId == chapterId }
+            ?.also { anchor ->
+                if (anchor.componentHeights.isNotEmpty()) {
+                    componentHeightsByChapterId
+                        .getOrPut(chapterId) { mutableMapOf() }
+                        .putAll(anchor.componentHeights.filterKeys { it >= 0 }.mapValues { it.value.coerceAtLeast(1) })
+                }
+            }
+    }
+
     private fun chapterChapterWithoutContinuousScrolling(id: String, restoreProgress: Boolean) {
         collectCurrentChapterJob?.cancel()
         collectCurrentChapterJob = coroutineScope.launch(Dispatchers.IO) {
@@ -620,6 +676,7 @@ class ScrollContentViewModel(
                     bookRepository.getUserReadingData(uiState.bookId)
                         .currentChapterReadingProgressMap[id] ?: 0f
                 } else 0f
+                val savedAnchor = savedRestoreAnchor(id, restoreProgress)
                 val components = contentComponentRepository.getContentDataFromJson(content.content).components
                 debugLog {
                     "currentLoaded mode=single book=${uiState.bookId} chapter=${content.id} restoreArg=$restoreProgress " +
@@ -629,6 +686,7 @@ class ScrollContentViewModel(
                 }
                 uiState.readingProgress = savedProgress
                 uiState.restoreProgress = savedProgress
+                uiState.restoreAnchor = savedAnchor
                 uiState.contentList[1] = content
                 uiState.contentComponentsMap[content.id] = components
                 pruneContentComponentsMap()
@@ -664,6 +722,7 @@ class ScrollContentViewModel(
                     bookRepository.getUserReadingData(uiState.bookId)
                         .currentChapterReadingProgressMap[id] ?: 0f
                 } else 0f
+                val savedAnchor = savedRestoreAnchor(id, restoreProgress)
                 val components = contentComponentRepository.getContentDataFromJson(content.content).components
                 debugLog {
                     "currentLoaded mode=continuous book=${uiState.bookId} chapter=${content.id} restoreArg=$restoreProgress " +
@@ -673,6 +732,7 @@ class ScrollContentViewModel(
                 }
                 uiState.readingProgress = savedProgress
                 uiState.restoreProgress = savedProgress
+                uiState.restoreAnchor = savedAnchor
                 uiState.contentList[1] = content
                 uiState.contentComponentsMap[content.id] = components
                 pruneContentComponentsMap()

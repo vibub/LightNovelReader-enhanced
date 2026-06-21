@@ -1,6 +1,35 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.scroll
 
-import kotlin.math.roundToInt
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+
+private val ScrollReadingAnchorJson = Json {
+    ignoreUnknownKeys = true
+    encodeDefaults = true
+}
+
+@Serializable
+data class ScrollReadingAnchor(
+    val chapterId: String,
+    val itemType: String,
+    val componentIndex: Int = -1,
+    val itemProgress: Float,
+    val itemSize: Int,
+    val viewportHeight: Int,
+    val componentHeights: Map<Int, Int> = emptyMap(),
+    val componentCount: Int = -1
+) {
+    internal val parsedItemType: ScrollContentItemType?
+        get() = runCatching { ScrollContentItemType.valueOf(itemType) }.getOrNull()
+}
+
+internal fun encodeScrollReadingAnchor(anchor: ScrollReadingAnchor): String =
+    ScrollReadingAnchorJson.encodeToString(anchor)
+
+internal fun decodeScrollReadingAnchor(value: String?): ScrollReadingAnchor? =
+    value
+        ?.takeIf { it.isNotBlank() }
+        ?.let { runCatching { ScrollReadingAnchorJson.decodeFromString<ScrollReadingAnchor>(it) }.getOrNull() }
 
 internal data class ScrollRestoreTarget(
     val itemIndex: Int,
@@ -128,11 +157,6 @@ private fun scrollContentComponentWeights(
     if (currentComponentIndex != null && currentComponentIndex in 0 until componentCount && currentComponentHeight != null) {
         validHeights[currentComponentIndex] = currentComponentHeight.coerceAtLeast(1)
     }
-    val fallback = validHeights.values
-        .takeIf { it.isNotEmpty() }
-        ?.average()
-        ?.roundToInt()
-        ?.coerceAtLeast(1)
-        ?: viewportHeight.coerceAtLeast(1)
+    val fallback = viewportHeight.coerceAtLeast(1)
     return List(componentCount) { index -> validHeights[index] ?: fallback }
 }
