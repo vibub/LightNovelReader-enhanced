@@ -10,11 +10,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.isUnspecified
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.createFontFamilyResolver
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
@@ -25,6 +30,7 @@ import indi.dmzz_yyhyy.lightnovelreader.utils.loadReaderFontFamilySafe
 import indi.dmzz_yyhyy.lightnovelreader.utils.rememberReaderFontFamily
 import io.nightfish.lightnovelreader.api.content.component.AbstractDivisibleContentComponent
 import io.nightfish.lightnovelreader.api.content.component.SimpleTextComponentData
+import io.nightfish.lightnovelreader.api.content.component.SimpleTextStyleRange
 import io.nightfish.lightnovelreader.api.ui.LocalReaderStyle
 import io.nightfish.lightnovelreader.api.ui.theme.AppTypography
 import io.nightfish.lightnovelreader.api.userdata.UriUserData
@@ -59,9 +65,10 @@ class SimpleTextComponent(
     @Composable
     override fun Content(modifier: Modifier) {
         val combinedStyle = LocalReaderStyle.current
+        val annotatedText = remember(data.text, data.styleRanges) { data.toAnnotatedString() }
         SimpleTextComponentContent(
             modifier = modifier,
-            text = data.text,
+            text = annotatedText,
             fontSize = combinedStyle.fontSize.sp,
             fontLineHeight = combinedStyle.fontLineHeight.sp,
             fontWeight = FontWeight(combinedStyle.fontWeight.toInt()),
@@ -94,7 +101,7 @@ class SimpleTextComponent(
         val fontLineHeight = fontLineHeightUserData.getOrDefault(7f)
         val fontWeigh = fontWeightUserData.getOrDefault(500f)
         return textMeasurer.measure(
-            text = data.text,
+            text = data.toAnnotatedString(),
             style = AppTypography.bodyMedium.copy(
                 fontSize = fontSize.sp,
                 lineHeight = (fontLineHeight + fontSize).sp,
@@ -113,7 +120,7 @@ class SimpleTextComponent(
         val fontLineHeight = fontLineHeightUserData.getOrDefault(7f)
         val fontWeigh = fontWeightUserData.getOrDefault(500f)
         return textMeasurer.measure(
-            text = data.text,
+            text = data.toAnnotatedString(),
             style = AppTypography.bodyMedium.copy(
                 fontSize = fontSize.sp,
                 lineHeight = (fontLineHeight + fontSize).sp,
@@ -122,8 +129,8 @@ class SimpleTextComponent(
             ),
             constraints = Constraints(maxHeight = height, maxWidth = width),
         )
-            .getSlipString(data.text, width, height)
-            .map { SimpleTextComponent(SimpleTextComponentData(it), userDataRepositoryApi, context) }
+            .getSlipData(data, width, height)
+            .map { SimpleTextComponent(it, userDataRepositoryApi, context) }
     }
 
     fun readerFontFamily(fontFamilyUriUserData: UriUserData): FontFamily? {
@@ -132,10 +139,10 @@ class SimpleTextComponent(
         return fontFamily
     }
 
-    fun TextLayoutResult.getSlipString(text: String, width: Int, height: Int): List<String> {
-        val result: MutableList<String> = mutableListOf()
+    fun TextLayoutResult.getSlipData(data: SimpleTextComponentData, width: Int, height: Int): List<SimpleTextComponentData> {
+        val result: MutableList<IntRange> = mutableListOf()
         var lastLine = 0
-        fun getNotOverflowText(startLine: Int): String {
+        fun getNotOverflowRange(startLine: Int): IntRange {
             fun getNotOverflowLine(): Int {
                 val startHeight = getLineTop(startLine)
                 fun isLineOverflow(line: Int): Boolean =
@@ -157,17 +164,63 @@ class SimpleTextComponent(
             lastLine = getNotOverflowLine()
             val endTextOffset = getLineEnd(lastLine)
             lastLine++
-            return text.slice(startTextOffset..<endTextOffset)
+            return startTextOffset..<endTextOffset
         }
         while (lastLine < this.lineCount) {
-            getNotOverflowText(lastLine).let(result::add)
+            getNotOverflowRange(lastLine).let(result::add)
         }
-        return result.mapIndexedNotNull { index, string ->
+        return result.mapIndexedNotNull { index, range ->
+            val text = data.text.slice(range)
             when (index) {
-                0 if string.isBlank() -> null
-                result.size - 1 if string.isBlank() -> null
-                else -> string
+                0 if text.isBlank() -> null
+                result.size - 1 if text.isBlank() -> null
+                else -> data.slice(range)
             }
         }
     }
+}
+
+private fun SimpleTextComponentData.toAnnotatedString(): AnnotatedString {
+    if (styleRanges.isEmpty()) return AnnotatedString(text)
+    return buildAnnotatedString {
+        append(text)
+        styleRanges.forEach { range ->
+            val start = range.start.coerceIn(0, text.length)
+            val end = range.end.coerceIn(start, text.length)
+            if (start < end) addStyle(range.toSpanStyle(), start, end)
+        }
+    }
+}
+
+private fun SimpleTextComponentData.slice(range: IntRange): SimpleTextComponentData {
+    val start = range.first.coerceIn(0, text.length)
+    val end = (range.last + 1).coerceIn(start, text.length)
+    return SimpleTextComponentData(
+        text = text.slice(start..<end),
+        styleRanges = styleRanges.mapNotNull { styleRange ->
+            val overlapStart = maxOf(styleRange.start, start)
+            val overlapEnd = minOf(styleRange.end, end)
+            if (overlapStart >= overlapEnd) return@mapNotNull null
+            styleRange.copy(
+                start = overlapStart - start,
+                end = overlapEnd - start
+            )
+        }
+    )
+}
+
+private fun SimpleTextStyleRange.toSpanStyle(): SpanStyle {
+    val decorations = buildList {
+        if (underline) add(TextDecoration.Underline)
+        if (strikethrough) add(TextDecoration.LineThrough)
+    }
+    return SpanStyle(
+        fontWeight = fontWeight?.let { FontWeight(it.coerceIn(1, 1000)) },
+        fontStyle = if (italic) FontStyle.Italic else null,
+        textDecoration = when (decorations.size) {
+            0 -> null
+            1 -> decorations.single()
+            else -> TextDecoration.combine(decorations)
+        }
+    )
 }

@@ -1,5 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book
 
+import io.nightfish.lightnovelreader.api.content.component.SimpleTextStyleRange
 import org.jsoup.Jsoup
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -85,6 +86,52 @@ class LinovelibChapterContentParserTest {
                 LinovelibChapterContentParser.Part.Text("图片前"),
                 LinovelibChapterContentParser.Part.Image("https://www.linovelib.com/img.jpg"),
                 LinovelibChapterContentParser.Part.Text("图片后")
+            ),
+            result.parts
+        )
+    }
+
+    @Test
+    fun parseKeepsBoldStyleRange() {
+        val result = parse(
+            """
+                <div id="TextContent">
+                    <p><b>加粗标题 </b>普通正文<strong>强调</strong></p>
+                </div>
+            """.trimIndent()
+        )
+
+        assertNull(result.warning)
+        assertEquals(
+            listOf(
+                LinovelibChapterContentParser.Part.Text(
+                    text = "加粗标题 普通正文强调",
+                    styleRanges = listOf(
+                        SimpleTextStyleRange(start = 0, end = 5, fontWeight = 700),
+                        SimpleTextStyleRange(start = 9, end = 11, fontWeight = 700)
+                    )
+                )
+            ),
+            result.parts
+        )
+    }
+
+    @Test
+    fun parseKeepsInlineStyleRangeAfterTrimming() {
+        val result = parse(
+            """
+                <div id="TextContent">
+                    <p><b>标题 </b></p>
+                </div>
+            """.trimIndent()
+        )
+
+        assertEquals(
+            listOf(
+                LinovelibChapterContentParser.Part.Text(
+                    text = "标题",
+                    styleRanges = listOf(SimpleTextStyleRange(start = 0, end = 2, fontWeight = 700))
+                )
             ),
             result.parts
         )

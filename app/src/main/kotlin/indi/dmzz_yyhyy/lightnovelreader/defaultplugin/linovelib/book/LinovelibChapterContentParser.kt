@@ -1,5 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book
 
+import io.nightfish.lightnovelreader.api.content.component.SimpleTextStyleRange
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
@@ -12,7 +13,10 @@ internal object LinovelibChapterContentParser {
     const val SECTION_SEPARATOR = "\n\n\n"// 解析层识别到“小节分隔”后使用的内部语义分隔。
 
     sealed interface Part {
-        data class Text(val text: String) : Part
+        data class Text(
+            val text: String,
+            val styleRanges: List<SimpleTextStyleRange> = emptyList()
+        ) : Part
         data class Image(val url: String) : Part
         data object SectionBreak : Part
     }
@@ -29,12 +33,12 @@ internal object LinovelibChapterContentParser {
         }
         val orderedNodes = orderedContent as OrderedContent.Nodes
         val parts = buildList {
-            val pendingText = StringBuilder()
+            val pendingText = StyledTextBuilder()
 
             fun flushText() {
-                val text = pendingText.toString().cleanText()
+                val textPart = pendingText.toCleanTextPart()
                 pendingText.clear()
-                if (text.isNotBlank() && !text.isNoiseText()) add(Part.Text(text))
+                if (textPart != null && !textPart.text.isNoiseText()) add(textPart)
             }
 
             fun appendSectionBreak() {
@@ -54,10 +58,14 @@ internal object LinovelibChapterContentParser {
                         }
                         else -> {
                             val pendingStart = pendingText.length
+                            val styleStart = pendingText.length
                             node.childNodes().forEach(::appendNode)
+                            node.inlineTextStyle()?.let { style ->
+                                pendingText.addStyle(styleStart, pendingText.length, style)
+                            }
                             if (node.isBlockTextElement()) {
                                 if (node.isBlankBlockTextElement()) {
-                                    pendingText.setLength(pendingStart)
+                                    pendingText.truncate(pendingStart)
                                     appendSectionBreak()
                                 } else {
                                     pendingText.append('\n')
@@ -216,13 +224,12 @@ internal object LinovelibChapterContentParser {
 
     private fun List<Part>.mergeAdjacentTextParts(): List<Part> {
         val merged = mutableListOf<Part>()
-        val pendingText = StringBuilder()
+        val pendingText = StyledTextBuilder()
         var hasPendingSectionBreak = false
 
         fun flushText() {
-            val text = pendingText.toString()
+            pendingText.toTextPart()?.let(merged::add)
             pendingText.clear()
-            if (text.isNotBlank()) merged.add(Part.Text(text))
         }
 
         fun flushTrailingSectionBreak() {
@@ -240,7 +247,7 @@ internal object LinovelibChapterContentParser {
                         merged.removeAt(merged.lastIndex)
                         pendingText.append(SECTION_SEPARATOR)
                     }
-                    pendingText.append(part.text)
+                    pendingText.append(part)
                     hasPendingSectionBreak = false
                 }
                 is Part.Image -> {
@@ -298,16 +305,158 @@ internal object LinovelibChapterContentParser {
         else -> true
     }
 
+    private fun Element.inlineTextStyle(): SimpleTextStyleRange? {
+        val tag = tagName().lowercase()
+        var fontWeight: Int? = when (tag) {
+            "b", "strong" -> 700
+            else -> null
+        }
+        var italic = tag in setOf("i", "em", "cite")
+        var underline = tag in setOf("u", "ins")
+        var strikethrough = tag in setOf("s", "strike", "del")
+        val style = attr("style").lowercase()
+        FONT_WEIGHT_STYLE_REGEX.find(style)?.groups?.get(1)?.value?.trim()?.let { value ->
+            fontWeight = when {
+                value.contains("bold") -> 700
+                value.contains("normal") -> null
+                else -> value.toIntOrNull() ?: fontWeight
+            }
+        }
+        if (FONT_STYLE_REGEX.find(style)?.groups?.get(1)?.value?.contains("italic") == true) italic = true
+        TEXT_DECORATION_STYLE_REGEX.find(style)?.groups?.get(1)?.value?.let { value ->
+            if ("underline" in value) underline = true
+            if ("line-through" in value) strikethrough = true
+        }
+        return if (fontWeight == null && !italic && !underline && !strikethrough) {
+            null
+        } else {
+            SimpleTextStyleRange(
+                start = 0,
+                end = 0,
+                fontWeight = fontWeight,
+                italic = italic,
+                underline = underline,
+                strikethrough = strikethrough
+            )
+        }
+    }
+
     private fun String.isBlankSpacingText(): Boolean = replace(' ', ' ').isBlank()
 
     private fun Element.cleanOwnTextForCompare(): String = text().cleanText()
 
-    private fun String.cleanText(): String = replace(' ', ' ')
-        .replace(Regex("[ \\t\\x0B\\f\\r]+"), " ")
-        .replace(Regex("\\n{3,}"), SECTION_SEPARATOR)
-        .trim()
+    private fun String.cleanText(): String = cleanTextWithSourceMap().text
+
+    private fun String.cleanTextWithSourceMap(): LinovelibTextWithSourceMap {
+        val chars = mutableListOf<Char>()
+        val sourceIndices = mutableListOf<Int?>()
+        var index = 0
+        while (index < length) {
+            val char = if (this[index] == ' ') ' ' else this[index]
+            when {
+                char.isLinovelibCollapsibleSpace() -> {
+                    chars.add(' ')
+                    sourceIndices.add(index)
+                    index++
+                    while (index < length) {
+                        val next = if (this[index] == ' ') ' ' else this[index]
+                        if (!next.isLinovelibCollapsibleSpace()) break
+                        index++
+                    }
+                }
+                char == '\n' -> {
+                    val start = index
+                    while (index < length && this[index] == '\n') index++
+                    val count = index - start
+                    val outputCount = if (count >= 3) SECTION_SEPARATOR.length else count
+                    repeat(outputCount) { offset ->
+                        chars.add('\n')
+                        sourceIndices.add(start + offset.coerceAtMost(count - 1))
+                    }
+                }
+                else -> {
+                    chars.add(char)
+                    sourceIndices.add(index)
+                    index++
+                }
+            }
+        }
+        var start = 0
+        var end = chars.size
+        while (start < end && chars[start].isWhitespace()) start++
+        while (end > start && chars[end - 1].isWhitespace()) end--
+        return LinovelibTextWithSourceMap(
+            text = chars.subList(start, end).joinToString(""),
+            sourceIndices = sourceIndices.subList(start, end).toList()
+        )
+    }
+
+    private fun Char.isLinovelibCollapsibleSpace(): Boolean = this == ' ' || this == '\t' || this == '' || this == '' || this == '\r'
 
     private fun String.isNoiseText(): Boolean = contains("最新网址") || contains("请收藏") || contains("本章未完")
+
+    private class StyledTextBuilder {
+        private val text = StringBuilder()
+        private val styleRanges = mutableListOf<SimpleTextStyleRange>()
+
+        val length: Int get() = text.length
+
+        fun append(value: String) {
+            text.append(value)
+        }
+
+        fun append(value: Char) {
+            text.append(value)
+        }
+
+        fun append(part: Part.Text) {
+            val offset = text.length
+            text.append(part.text)
+            styleRanges += part.styleRanges.map { range ->
+                range.copy(start = range.start + offset, end = range.end + offset)
+            }
+        }
+
+        fun addStyle(start: Int, end: Int, style: SimpleTextStyleRange) {
+            if (start >= end) return
+            styleRanges += style.copy(start = start, end = end)
+        }
+
+        fun truncate(length: Int) {
+            text.setLength(length)
+            val truncatedRanges = styleRanges.mapNotNull { range ->
+                when {
+                    range.start >= length -> null
+                    range.end > length -> range.copy(end = length).takeIf { it.start < it.end }
+                    else -> range
+                }
+            }
+            styleRanges.clear()
+            styleRanges.addAll(truncatedRanges)
+        }
+
+        fun clear() {
+            text.clear()
+            styleRanges.clear()
+        }
+
+        fun isNotBlank(): Boolean = text.isNotBlank()
+
+        fun toCleanTextPart(): Part.Text? {
+            val cleaned = text.toString().cleanTextWithSourceMap()
+            if (cleaned.text.isBlank()) return null
+            return Part.Text(
+                text = cleaned.text,
+                styleRanges = styleRanges.remapLinovelibStyleRanges(cleaned.sourceIndices)
+            )
+        }
+
+        fun toTextPart(): Part.Text? {
+            val text = text.toString()
+            if (text.isBlank()) return null
+            return Part.Text(text, styleRanges.toList())
+        }
+    }
 
     private const val LINOVELIB_STABLE_PARAGRAPH_COUNT = 20
     private const val LINOVELIB_SEED_MULTIPLIER = 126L
@@ -317,6 +466,9 @@ internal object LinovelibChapterContentParser {
     private const val LINOVELIB_SHUFFLE_MODULUS = 233280L
 
     private val ORDER_STYLE_REGEX = Regex("(?:^|;)\\s*order\\s*:\\s*(-?\\d+)", RegexOption.IGNORE_CASE)
+    private val FONT_WEIGHT_STYLE_REGEX = Regex("(?:^|;)\\s*font-weight\\s*:\\s*([^;]+)", RegexOption.IGNORE_CASE)
+    private val FONT_STYLE_REGEX = Regex("(?:^|;)\\s*font-style\\s*:\\s*([^;]+)", RegexOption.IGNORE_CASE)
+    private val TEXT_DECORATION_STYLE_REGEX = Regex("(?:^|;)\\s*text-decoration(?:-line)?\\s*:\\s*([^;]+)", RegexOption.IGNORE_CASE)
     private val ORDER_ATTRS = listOf(
         "data-order",
         "data-index",
@@ -326,3 +478,25 @@ internal object LinovelibChapterContentParser {
         "data-seq"
     )
 }
+
+internal data class LinovelibTextWithSourceMap(
+    val text: String,
+    val sourceIndices: List<Int?>
+)
+
+internal fun List<SimpleTextStyleRange>.remapLinovelibStyleRanges(sourceIndices: List<Int?>): List<SimpleTextStyleRange> =
+    flatMap { range ->
+        val remapped = mutableListOf<SimpleTextStyleRange>()
+        var segmentStart: Int? = null
+        sourceIndices.forEachIndexed { index, sourceIndex ->
+            val covered = sourceIndex != null && sourceIndex >= range.start && sourceIndex < range.end
+            if (covered && segmentStart == null) {
+                segmentStart = index
+            } else if (!covered && segmentStart != null) {
+                remapped += range.copy(start = segmentStart, end = index)
+                segmentStart = null
+            }
+        }
+        segmentStart?.let { remapped += range.copy(start = it, end = sourceIndices.size) }
+        remapped
+    }.filter { it.start < it.end }

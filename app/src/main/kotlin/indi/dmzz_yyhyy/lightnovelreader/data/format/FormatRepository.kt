@@ -193,7 +193,11 @@ class FormatRepository @Inject constructor(
     override fun processChapterContent(bookId: String, chapterContent: ChapterContent, componentProcessor: ComponentProcessor): ChapterContent = chapterContent.toMutable().apply {
         this.content = componentProcessor.apply {
             process<SimpleTextComponentData> {
-                SimpleTextComponentData(processText(bookId, it.text))
+                val processedText = processText(bookId, it.text)
+                it.copy(
+                    text = processedText,
+                    styleRanges = if (processedText.length == it.text.length) it.styleRanges else emptyList()
+                )
             }
         }.get()
     }

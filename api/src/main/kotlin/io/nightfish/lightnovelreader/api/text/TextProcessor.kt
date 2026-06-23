@@ -107,7 +107,11 @@ interface TextProcessor {
     fun processChapterContent(bookId: String, chapterContent: ChapterContent, componentProcessor: ComponentProcessor): ChapterContent = chapterContent.toMutable().apply {
         this.content = componentProcessor.apply {
             process<SimpleTextComponentData> {
-                SimpleTextComponentData(processText(it.text))
+                val processedText = processText(it.text)
+                it.copy(
+                    text = processedText,
+                    styleRanges = if (processedText.length == it.text.length) it.styleRanges else emptyList()
+                )
             }
         }.get()
     }

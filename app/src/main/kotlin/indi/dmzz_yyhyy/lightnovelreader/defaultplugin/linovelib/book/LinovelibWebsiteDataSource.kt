@@ -14,8 +14,9 @@ import io.nightfish.lightnovelreader.api.book.Volume
 import io.nightfish.lightnovelreader.api.book.WordCount
 import io.nightfish.lightnovelreader.api.content.builder.ContentBuilder
 import io.nightfish.lightnovelreader.api.content.builder.image
-import io.nightfish.lightnovelreader.api.content.builder.simpleText
 import io.nightfish.lightnovelreader.api.content.component.ImageComponentData
+import io.nightfish.lightnovelreader.api.content.component.SimpleTextComponentData
+import io.nightfish.lightnovelreader.api.content.component.SimpleTextStyleRange
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -168,7 +169,7 @@ class LinovelibWebsiteDataSource(
         val mergedParts = chapterParts.mergeLinovelibPagedTextParts()
         mergedParts.forEachIndexed { index, part ->
             when (part) {
-                is LinovelibChapterContentParser.Part.Text -> builder.simpleText(part.text.renderLinovelibSpacing())
+                is LinovelibChapterContentParser.Part.Text -> builder.component(part.toLinovelibSimpleTextComponentData())
                 is LinovelibChapterContentParser.Part.Image -> builder.image(
                     uri = part.url.toUri(),
                     topPaddingDp = mergedParts.linovelibImageTopPaddingDp(index),
@@ -496,12 +497,24 @@ private fun String.cleanLinovelibPageText(): String = replace(' ', ' ')
 internal fun List<LinovelibChapterContentParser.Part>.mergeLinovelibPagedTextParts(): List<LinovelibChapterContentParser.Part> {
     val merged = mutableListOf<LinovelibChapterContentParser.Part>()
     val pendingText = StringBuilder()
+    val pendingStyleRanges = mutableListOf<SimpleTextStyleRange>()
     var hasPendingSectionBreak = false
+
+    fun appendTextPart(part: LinovelibChapterContentParser.Part.Text) {
+        val offset = pendingText.length
+        pendingText.append(part.text)
+        pendingStyleRanges += part.styleRanges.map { range ->
+            range.copy(start = range.start + offset, end = range.end + offset)
+        }
+    }
 
     fun flushText() {
         val text = pendingText.toString()
+        if (text.isNotBlank()) {
+            merged.add(LinovelibChapterContentParser.Part.Text(text, pendingStyleRanges.toList()))
+        }
         pendingText.clear()
-        if (text.isNotBlank()) merged.add(LinovelibChapterContentParser.Part.Text(text))
+        pendingStyleRanges.clear()
     }
 
     fun flushTrailingSectionBreak() {
@@ -527,7 +540,7 @@ internal fun List<LinovelibChapterContentParser.Part>.mergeLinovelibPagedTextPar
                     merged.removeAt(merged.lastIndex)
                     pendingText.append(LinovelibChapterContentParser.SECTION_SEPARATOR)
                 }
-                pendingText.append(part.text)
+                appendTextPart(part)
                 hasPendingSectionBreak = false
             }
             is LinovelibChapterContentParser.Part.Image -> {
@@ -566,7 +579,68 @@ internal fun List<LinovelibChapterContentParser.Part>.linovelibImageBottomPaddin
         0
     }
 
-internal fun String.renderLinovelibSpacing(): String =
-    replace(LinovelibChapterContentParser.SECTION_SEPARATOR, LINOVELIB_DISPLAY_SECTION_SEPARATOR)
+internal fun LinovelibChapterContentParser.Part.Text.toLinovelibSimpleTextComponentData(): SimpleTextComponentData {
+    val rendered = text.renderLinovelibSpacingWithSourceMap()
+    return SimpleTextComponentData(
+        text = rendered.text,
+        styleRanges = styleRanges.remapLinovelibStyleRanges(rendered.sourceIndices)
+    )
+}
 
+internal fun String.renderLinovelibSpacing(): String = renderLinovelibSpacingWithSourceMap().text
+
+private fun String.renderLinovelibSpacingWithSourceMap(): LinovelibTextWithSourceMap {
+    val chars = mutableListOf<Char>()
+    val sourceIndices = mutableListOf<Int?>()
+    var index = 0
+    var paragraphStart = true
+
+    fun appendIndent() {
+        LINOVELIB_PARAGRAPH_INDENT.forEach { char ->
+            chars.add(char)
+            sourceIndices.add(null)
+        }
+    }
+
+    fun appendText(value: String, sourceIndex: (Int) -> Int?) {
+        value.forEachIndexed { offset, char ->
+            chars.add(char)
+            sourceIndices.add(sourceIndex(offset))
+        }
+    }
+
+    while (index < length) {
+        if (paragraphStart && this[index] != '\n') {
+            appendIndent()
+            paragraphStart = false
+        }
+        when {
+            startsWith(LinovelibChapterContentParser.SECTION_SEPARATOR, index) -> {
+                appendText(LINOVELIB_DISPLAY_SECTION_SEPARATOR) { offset ->
+                    when (offset) {
+                        0 -> index
+                        1 -> index + 1
+                        3 -> index + 2
+                        else -> null
+                    }
+                }
+                index += LinovelibChapterContentParser.SECTION_SEPARATOR.length
+                paragraphStart = true
+            }
+            startsWith(LinovelibChapterContentParser.PARAGRAPH_SEPARATOR, index) -> {
+                appendText(LinovelibChapterContentParser.PARAGRAPH_SEPARATOR) { offset -> index + offset }
+                index += LinovelibChapterContentParser.PARAGRAPH_SEPARATOR.length
+                paragraphStart = true
+            }
+            else -> {
+                chars.add(this[index])
+                sourceIndices.add(index)
+                index++
+            }
+        }
+    }
+    return LinovelibTextWithSourceMap(chars.joinToString(""), sourceIndices)
+}
+
+private const val LINOVELIB_PARAGRAPH_INDENT = "　　"
 private const val LINOVELIB_DISPLAY_SECTION_SEPARATOR = "\n\n \n"

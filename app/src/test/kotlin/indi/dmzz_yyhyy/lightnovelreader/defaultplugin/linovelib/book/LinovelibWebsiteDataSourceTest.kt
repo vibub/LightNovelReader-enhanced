@@ -1,6 +1,7 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book
 
 import io.nightfish.lightnovelreader.api.content.component.ImageComponentData
+import io.nightfish.lightnovelreader.api.content.component.SimpleTextStyleRange
 import org.jsoup.Jsoup
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -163,8 +164,19 @@ class LinovelibWebsiteDataSourceTest {
 
     @Test
     fun renderLinovelibSpacingKeepsSectionGapVisiblyLargerThanParagraphGap() {
-        assertEquals("第一段\n\n第二段", "第一段\n\n第二段".renderLinovelibSpacing())
-        assertEquals("第一段\n\n \n第二段", "第一段\n\n\n第二段".renderLinovelibSpacing())
+        assertEquals("　　第一段\n\n　　第二段", "第一段\n\n第二段".renderLinovelibSpacing())
+        assertEquals("　　第一段\n\n \n　　第二段", "第一段\n\n\n第二段".renderLinovelibSpacing())
+    }
+
+    @Test
+    fun toLinovelibSimpleTextComponentDataShiftsStyleRangesAfterParagraphIndent() {
+        val data = LinovelibChapterContentParser.Part.Text(
+            text = "加粗段\n\n普通段",
+            styleRanges = listOf(SimpleTextStyleRange(start = 0, end = 3, fontWeight = 700))
+        ).toLinovelibSimpleTextComponentData()
+
+        assertEquals("　　加粗段\n\n　　普通段", data.text)
+        assertEquals(listOf(SimpleTextStyleRange(start = 2, end = 5, fontWeight = 700)), data.styleRanges)
     }
 
     @Test
