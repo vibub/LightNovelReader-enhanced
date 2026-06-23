@@ -22,6 +22,12 @@ object LinovelibConstants {
     fun catalogUrl(bookId: String): String = "$BASE_URL/novel/${bookId.normalizeBookId()}/catalog"
     fun chapterUrl(bookId: String, chapterId: String): String =
         "$BASE_URL/novel/${bookId.normalizeBookId()}/${chapterId.normalizeChapterId()}.html"
+    fun addBookcaseUrl(bookId: String, chapterId: String, page: Int): String =
+        "$BASE_URL/modules/article/addbookcase.php" +
+            "?bid=${bookId.normalizeBookId()}" +
+            "&cid=${chapterId.normalizeChapterId().substringBefore('_')}" +
+            "&pid=${page.coerceAtLeast(1)}" +
+            "&ajax_request=1"
 
     // ── 移动端 URL（WebView 浏览）──
     fun mobileDetailUrl(bookId: String): String = "$MOBILE_BASE_URL/novel/${bookId.normalizeBookId()}.html"

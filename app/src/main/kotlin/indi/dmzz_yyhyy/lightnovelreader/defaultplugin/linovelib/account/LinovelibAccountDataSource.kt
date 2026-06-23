@@ -12,6 +12,22 @@ class LinovelibAccountDataSource(
 ) {
     suspend fun getRemoteBookshelf(): List<LinovelibRemoteBook> = getRemoteBookshelfResult().books
 
+    suspend fun addBookcaseBookmark(
+        bookId: String,
+        chapterId: String,
+        page: Int,
+        refererChapterPageId: String
+    ): String {
+        if (!accountStore.hasCookie()) throw IllegalStateException("尚未保存 Linovelib 登录 Cookie")
+        return jsoup.getRaw(
+            url = LinovelibConstants.addBookcaseUrl(bookId, chapterId, page),
+            referer = LinovelibConstants.chapterUrl(bookId, refererChapterPageId),
+            accept = "text/html,text/plain,*/*",
+            useCookie = true,
+            retryTime = 1
+        )
+    }
+
     suspend fun getRemoteBookshelfResult(): LinovelibRemoteBookshelf {
         if (!accountStore.hasCookie()) throw IllegalStateException("尚未保存 Linovelib 登录 Cookie")
         val candidates = linkedMapOf<String, LinovelibRemoteBook>()

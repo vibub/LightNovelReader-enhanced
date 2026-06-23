@@ -600,7 +600,7 @@ private fun BottomBar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val isBookmarked = bookmarkUiState.chapterId.isNotBlank() &&
-                    bookmarkUiState.chapterId == chapterContent.id
+                    bookmarkUiState.chapterId.substringBefore('_') == chapterContent.id.substringBefore('_')
                 IconButton(
                     enabled = bookmarkUiState.isAvailable && chapterContent.id.isNotBlank(),
                     onClick = onClickBookmark

@@ -33,6 +33,69 @@ class LinovelibSyncRepository @Inject constructor(
     private val websiteDataSource = LinovelibWebsiteDataSource(jsoup)
     private val accountDataSource = LinovelibAccountDataSource(jsoup, accountStore)
 
+    suspend fun syncBookmarkToRemote(
+        bookId: String,
+        chapterPageId: String,
+        chapterTitle: String
+    ): LinovelibRemoteBookmarkResult = withContext(Dispatchers.IO) {
+        if (webBookDataSourceProvider.default.id != LinovelibConstants.SOURCE_ID) {
+            val message = "请先切换到 Linovelib 数据源后再同步"
+            bookmarkRepository.markFailed(bookId)
+            return@withContext LinovelibRemoteBookmarkResult(success = false, message = message)
+        }
+        if (!accountStore.hasCookie()) {
+            val message = "尚未保存 Linovelib 登录 Cookie"
+            bookmarkRepository.markFailed(bookId)
+            return@withContext LinovelibRemoteBookmarkResult(success = false, message = message)
+        }
+        val target = LinovelibRemoteBookmarkTarget.from(bookId, chapterPageId)
+        if (target == null) {
+            bookmarkRepository.markFailed(bookId)
+            return@withContext LinovelibRemoteBookmarkResult(success = false, message = "章节书签参数无效")
+        }
+
+        runCatching {
+            val response = accountDataSource.addBookcaseBookmark(
+                bookId = target.bookId,
+                chapterId = target.chapterId,
+                page = target.page,
+                refererChapterPageId = target.chapterPageId
+            )
+            val responseMessage = response.toBookmarkResponseMessage()
+            if (responseMessage.isLoginRequiredBookmarkMessage()) {
+                error("Linovelib Cookie 可能已失效，请重新登录并保存 Cookie")
+            }
+            val responseSuccess = responseMessage.isSuccessfulBookmarkMessage()
+            delay(1_500.milliseconds)
+            val synced = runCatching {
+                isRemoteBookmarkAt(
+                    bookId = target.bookId,
+                    chapterId = target.chapterPageId,
+                    chapterTitle = chapterTitle
+                )
+            }.getOrDefault(false)
+            if (synced || responseSuccess) {
+                bookmarkRepository.markSynced(target.bookId)
+                LinovelibRemoteBookmarkResult(
+                    success = true,
+                    message = responseMessage.ifBlank { "章节书签已同步到 Linovelib" }
+                )
+            } else {
+                bookmarkRepository.markFailed(target.bookId)
+                LinovelibRemoteBookmarkResult(
+                    success = false,
+                    message = responseMessage.ifBlank { "已发送章节书签请求，但未能确认远端状态" }
+                )
+            }
+        }.getOrElse { throwable ->
+            bookmarkRepository.markFailed(target.bookId)
+            LinovelibRemoteBookmarkResult(
+                success = false,
+                message = throwable.message ?: throwable.javaClass.simpleName
+            )
+        }
+    }
+
     suspend fun isRemoteBookmarkAt(bookId: String, chapterId: String, chapterTitle: String): Boolean = withContext(Dispatchers.IO) {
         val remoteBook = accountDataSource.getRemoteBookshelf().firstOrNull { it.bookId == bookId }
             ?: return@withContext false
@@ -211,3 +274,58 @@ data class LinovelibSyncResult(
     val summary: String = "",
     val error: String? = null
 )
+
+data class LinovelibRemoteBookmarkResult(
+    val success: Boolean,
+    val message: String
+)
+
+internal data class LinovelibRemoteBookmarkTarget(
+    val bookId: String,
+    val chapterId: String,
+    val page: Int,
+    val chapterPageId: String
+) {
+    val addBookcaseUrl: String = LinovelibConstants.addBookcaseUrl(bookId, chapterId, page)
+    val referer: String = LinovelibConstants.chapterUrl(bookId, chapterPageId)
+
+    companion object {
+        fun from(bookId: String, chapterPageId: String): LinovelibRemoteBookmarkTarget? {
+            val normalizedBookId = LinovelibConstants.run { bookId.normalizeBookId() }
+            val normalizedChapterPageId = LinovelibConstants.run { chapterPageId.normalizeChapterId() }
+            if (normalizedBookId.isBlank() || normalizedChapterPageId.isBlank()) return null
+
+            val chapterId = normalizedChapterPageId.substringBefore('_')
+                .takeIf { it.isNotBlank() && it.all { char -> char.isDigit() } }
+                ?: return null
+            val pageSuffix = normalizedChapterPageId.substringAfter('_', missingDelimiterValue = "")
+            val page = if ('_' in normalizedChapterPageId) {
+                pageSuffix.toIntOrNull()?.takeIf { it > 0 } ?: return null
+            } else {
+                1
+            }
+            val normalizedPageId = if (page <= 1) chapterId else "${chapterId}_$page"
+            return LinovelibRemoteBookmarkTarget(
+                bookId = normalizedBookId,
+                chapterId = chapterId,
+                page = page,
+                chapterPageId = normalizedPageId
+            )
+        }
+    }
+}
+
+private fun String.toBookmarkResponseMessage(): String = replace(Regex("(?i)<br\\s*/?>"), "\n")
+    .replace(Regex("<[^>]+>"), "")
+    .replace(Regex("[ \\t\\x0B\\f\\r]+"), " ")
+    .replace(Regex("\\n{3,}"), "\n\n")
+    .trim()
+
+private fun String.isLoginRequiredBookmarkMessage(): Boolean =
+    listOf("请先登录", "請先登入", "会员登录", "會員登入", "登录后", "登入後").any { it in this }
+
+private fun String.isSuccessfulBookmarkMessage(): Boolean {
+    if (isBlank()) return false
+    if (listOf("失败", "失敗", "错误", "錯誤", "请先", "請先").any { it in this }) return false
+    return listOf("成功", "已加入", "已添加", "书签", "書籤", "书架", "書架").any { it in this }
+}

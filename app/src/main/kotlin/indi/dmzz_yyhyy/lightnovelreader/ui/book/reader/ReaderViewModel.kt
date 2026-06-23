@@ -18,6 +18,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book.targetLinovelibChapterPageId
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.sync.LinovelibBookmarkRepository
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.sync.LinovelibSyncRepository
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentViewModel
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip.FlipPageContentViewModel
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.scroll.ScrollContentViewModel
@@ -50,6 +51,7 @@ class ReaderViewModel @Inject constructor(
     private val userDataRepository: UserDataRepository,
     val contentComponentRepository: ContentComponentRepository,
     private val linovelibBookmarkRepository: LinovelibBookmarkRepository,
+    private val linovelibSyncRepository: LinovelibSyncRepository,
     private val webBookDataSourceProvider: WebBookDataSourceProvider,
     @param:ApplicationContext private val applicationContext: Context
 ) : ViewModel() {
@@ -165,10 +167,16 @@ class ReaderViewModel @Inject constructor(
         val chapter = _uiState.contentUiState.readingChapterContent
         if (chapter.id.isBlank()) return false
         val currentBookId = bookId
+        val targetWebChapterId = currentLinovelibWebChapterId().ifBlank { chapter.id }
         viewModelScope.launch(Dispatchers.IO) {
             linovelibBookmarkRepository.upsertLocalBookmark(
                 bookId = currentBookId,
-                chapterId = chapter.id,
+                chapterId = targetWebChapterId,
+                chapterTitle = chapter.title
+            )
+            linovelibSyncRepository.syncBookmarkToRemote(
+                bookId = currentBookId,
+                chapterPageId = targetWebChapterId,
                 chapterTitle = chapter.title
             )
         }
