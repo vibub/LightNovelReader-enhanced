@@ -8,6 +8,7 @@ import androidx.compose.ui.unit.IntSize
 import indi.dmzz_yyhyy.lightnovelreader.BuildConfig
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.content.ContentComponentRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.content.component.SimpleTextComponent
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReadingProgressSnapshot
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentViewModel
@@ -17,6 +18,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged
 import io.nightfish.lightnovelreader.api.book.ChapterContent
+import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
+import io.nightfish.lightnovelreader.api.content.component.ImageComponentData
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import kotlin.math.abs
@@ -31,7 +34,9 @@ class ScrollContentViewModel(
     val settingState: SettingState,
     val contentComponentRepository: ContentComponentRepository,
     val updateReadingProgress: (ReadingProgressSnapshot) -> Unit,
-    val loadReadingAnchor: (bookId: String, chapterId: String) -> String? = { _, _ -> null }
+    val loadReadingAnchor: (bookId: String, chapterId: String) -> String? = { _, _ -> null },
+    val imagePreloadWidth: () -> Int = { 0 },
+    val preloadImageComponentHeight: suspend (ImageComponentData, Int) -> Int? = { _, _ -> null }
 ) : ContentViewModel {
     private var progressScrollLoadJob: Job? = null
     private var lazyColumnSize = IntSize(0, 0)
@@ -51,13 +56,21 @@ class ScrollContentViewModel(
     private var lastProgressFirstOffset: Int? = null
     private val lastProgressVisibleItemSizes: MutableMap<Any?, Int> = mutableMapOf()
     private val componentHeightsByChapterId: MutableMap<String, MutableMap<Int, Int>> = mutableMapOf()
+    private val imageHeightPreloadedKeys = mutableSetOf<String>()
 
     override val uiState: MutableScrollContentUiSate = MutableScrollContentUiSate(
         loadLastChapter = ::loadLastChapter,
         loadNextChapter = ::loadNextChapter,
         changeChapter = { changeChapter(it) },
-        setLazyColumnSize = {
-            lazyColumnSize = it
+        setLazyColumnSize = { size ->
+            if (lazyColumnSize != size) {
+                val oldSize = lazyColumnSize
+                lazyColumnSize = size
+                if (oldSize.width > 0 && oldSize.width != size.width) {
+                    componentHeightsByChapterId.clear()
+                    imageHeightPreloadedKeys.clear()
+                }
+            }
         },
         writeProgressRightNow = ::writeProgressRightNow,
         completeProgressRestore = ::completeProgressRestore,
@@ -111,10 +124,67 @@ class ScrollContentViewModel(
     private fun updateVisibleComponentHeights(items: List<LazyListItemInfo>) {
         items.forEach { item ->
             val key = item.key.scrollContentItemKeyOrNull() ?: return@forEach
-            if (key.type != ScrollContentItemType.Component || item.size <= 0) return@forEach
+            if (key.type != ScrollContentItemType.Component || key.index < 0 || item.size <= 0) return@forEach
             if (contentByChapterId(key.chapterId) == null) return@forEach
-            componentHeightsByChapterId
-                .getOrPut(key.chapterId) { mutableMapOf() }[key.index] = item.size
+            val heights = componentHeightsByChapterId.getOrPut(key.chapterId) { mutableMapOf() }
+            val component = uiState.contentComponentsMap[key.chapterId]?.getOrNull(key.index)
+            heights[key.index] = if (component?.data is ImageComponentData) {
+                maxOf(heights[key.index] ?: item.size, item.size)
+            } else {
+                item.size
+            }
+        }
+    }
+
+    private fun imagePreloadWidthPx(): Int = lazyColumnSize.width
+        .takeIf { it > 0 }
+        ?: imagePreloadWidth().coerceAtLeast(0)
+
+    private fun chapterImageHeightPreloadKey(chapterId: String, widthPx: Int): String? {
+        if (uiState.bookId.isBlank() || chapterId.isBlank() || widthPx <= 0) return null
+        return "${uiState.bookId}/$chapterId/$widthPx"
+    }
+
+    private suspend fun preloadChapterComponentHeights(
+        chapterId: String,
+        components: List<AbstractContentComponent<*>>
+    ) {
+        val widthPx = imagePreloadWidthPx()
+        val preloadKey = chapterImageHeightPreloadKey(chapterId, widthPx) ?: return
+        if (preloadKey in imageHeightPreloadedKeys) return
+        val loadedHeights = mutableMapOf<Int, Int>()
+        var imageCount = 0
+        var loadedImageCount = 0
+        debugLog {
+            "componentHeightPreloadStart book=${uiState.bookId} chapter=$chapterId count=${components.size} width=$widthPx"
+        }
+        components.forEachIndexed { index, component ->
+            when (component) {
+                is SimpleTextComponent -> {
+                    val height = component.measureHeight(widthPx).coerceAtLeast(1)
+                    loadedHeights[index] = height
+                }
+                else -> {
+                    val data = component.data as? ImageComponentData ?: return@forEachIndexed
+                    imageCount++
+                    val height = preloadImageComponentHeight(data, widthPx)
+                        ?.coerceAtLeast(1)
+                        ?: return@forEachIndexed
+                    loadedHeights[index] = height
+                    loadedImageCount++
+                }
+            }
+        }
+        if (loadedHeights.isNotEmpty()) {
+            val heights = componentHeightsByChapterId.getOrPut(chapterId) { mutableMapOf() }
+            loadedHeights.forEach { (index, height) ->
+                heights[index] = maxOf(heights[index] ?: height, height)
+            }
+        }
+        imageHeightPreloadedKeys.add(preloadKey)
+        debugLog {
+            "componentHeightPreloadComplete book=${uiState.bookId} chapter=$chapterId loaded=${loadedHeights.size}/${components.size} " +
+                    "images=$loadedImageCount/$imageCount width=$widthPx"
         }
     }
 
@@ -331,7 +401,7 @@ class ScrollContentViewModel(
                 val componentHeights = componentHeightsByChapterId[visible.content.id]
                     .orEmpty()
                     .toMutableMap()
-                    .apply { this[it.index] = item.size }
+                    .apply { this[it.index] = maxOf(this[it.index] ?: item.size, item.size) }
                 val componentCount = uiState.contentComponentsMap[visible.content.id]?.size ?: 0
                 encodeScrollReadingAnchor(
                     ScrollReadingAnchor(
@@ -572,6 +642,7 @@ class ScrollContentViewModel(
         collectingLastChapterId = ""
         collectingNextChapterId = ""
         componentHeightsByChapterId.clear()
+        imageHeightPreloadedKeys.clear()
         resetScrollTracking()
     }
 
@@ -678,6 +749,8 @@ class ScrollContentViewModel(
                 } else 0f
                 val savedAnchor = savedRestoreAnchor(id, restoreProgress)
                 val components = contentComponentRepository.getContentDataFromJson(content.content).components
+                preloadChapterComponentHeights(content.id, components)
+                if (content.id != id || requestedChapterId != id) return@collect
                 debugLog {
                     "currentLoaded mode=single book=${uiState.bookId} chapter=${content.id} restoreArg=$restoreProgress " +
                             "savedProgress=$savedProgress requested=$requestedChapterId readingBefore=${uiState.readingContentId} " +
@@ -724,6 +797,8 @@ class ScrollContentViewModel(
                 } else 0f
                 val savedAnchor = savedRestoreAnchor(id, restoreProgress)
                 val components = contentComponentRepository.getContentDataFromJson(content.content).components
+                preloadChapterComponentHeights(content.id, components)
+                if (content.id != id || requestedChapterId != id) return@collect
                 debugLog {
                     "currentLoaded mode=continuous book=${uiState.bookId} chapter=${content.id} restoreArg=$restoreProgress " +
                             "savedProgress=$savedProgress requested=$requestedChapterId readingBefore=${uiState.readingContentId} " +
@@ -811,6 +886,8 @@ class ScrollContentViewModel(
                         return@collect
                     }
                     val components = contentComponentRepository.getContentDataFromJson(content.content).components
+                    preloadChapterComponentHeights(content.id, components)
+                    if (content.id != chapterId || !isExpectedChapter(index, chapterId)) return@collect
                     debugLog {
                         "adjacentCollect accepted book=${uiState.bookId} slot=$index requestedChapter=$chapterId " +
                                 "emitted=${content.id} componentCount=${components.size} currentSlot1=${uiState.contentList.getOrNull(1)?.id} " +

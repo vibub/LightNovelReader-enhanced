@@ -1,5 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.components
 
+import android.content.Context
 import android.net.Uri
 import android.util.Log
 import android.util.LruCache
@@ -43,35 +44,98 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImagePainter
 import coil3.compose.rememberAsyncImagePainter
+import coil3.imageLoader
 import coil3.network.NetworkHeaders
 import coil3.network.httpHeaders
+import coil3.request.ErrorResult
 import coil3.request.ImageRequest
+import coil3.request.SuccessResult
 import coil3.request.crossfade
 import coil3.size.Dimension
 import coil3.size.Size
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import indi.dmzz_yyhyy.lightnovelreader.BuildConfig
 import indi.dmzz_yyhyy.lightnovelreader.R
 
 private const val DEBUG_READER_IMAGE = false
 private const val READER_IMAGE_LOG_TAG = "ReaderImageDbg"
-private const val MAX_READER_IMAGE_HEIGHT_CACHE_SIZE = 512
-private val readerImageHeightCache = LruCache<String, Int>(MAX_READER_IMAGE_HEIGHT_CACHE_SIZE)
+
+internal object ReaderImageHeightCache {
+    private const val MAX_READER_IMAGE_HEIGHT_CACHE_SIZE = 512
+    private val cache = LruCache<String, Int>(MAX_READER_IMAGE_HEIGHT_CACHE_SIZE)
+
+    private fun key(imageUri: String, widthPx: Int): String = "$widthPx:$imageUri"
+
+    fun get(imageUri: String, widthPx: Int): Int? = synchronized(cache) {
+        cache.get(key(imageUri, widthPx.coerceAtLeast(1)))
+    }
+
+    fun put(imageUri: String, widthPx: Int, heightPx: Int) {
+        if (heightPx <= 0) return
+        val key = key(imageUri, widthPx.coerceAtLeast(1))
+        synchronized(cache) {
+            if (cache.get(key) != heightPx) {
+                cache.put(key, heightPx)
+            }
+        }
+    }
+}
 
 @Suppress("SimplifyBooleanWithConstants")
 private inline fun debugImageLog(message: () -> String) {
     if (BuildConfig.DEBUG && DEBUG_READER_IMAGE) Log.d(READER_IMAGE_LOG_TAG, message())
 }
 
-private fun cachedReaderImageHeight(imageUri: String): Int? = synchronized(readerImageHeightCache) {
-    readerImageHeightCache.get(imageUri)
+private fun scaledReaderImageHeightPx(targetWidthPx: Int, sourceWidthPx: Int, sourceHeightPx: Int): Int? {
+    if (targetWidthPx <= 0 || sourceWidthPx <= 0 || sourceHeightPx <= 0) return null
+    return (targetWidthPx.toLong() * sourceHeightPx / sourceWidthPx)
+        .toInt()
+        .coerceAtLeast(1)
 }
 
-private fun cacheReaderImageHeight(imageUri: String, heightPx: Int) {
-    if (heightPx <= 0) return
-    synchronized(readerImageHeightCache) {
-        if (readerImageHeightCache.get(imageUri) != heightPx) {
-            readerImageHeightCache.put(imageUri, heightPx)
+internal suspend fun preloadReaderImageHeight(
+    context: Context,
+    imageUri: Uri,
+    widthPx: Int,
+    header: Map<String, String> = emptyMap()
+): Int? = withContext(Dispatchers.IO) {
+    val targetWidthPx = widthPx.coerceAtLeast(1)
+    val imageUriString = imageUri.toString()
+    ReaderImageHeightCache.get(imageUriString, targetWidthPx)?.let { return@withContext it }
+
+    val result = runCatching {
+        val request = ImageRequest.Builder(context)
+            .data(imageUri)
+            .size(Size(targetWidthPx, Dimension.Undefined))
+            .crossfade(false)
+            .interceptorCoroutineContext(Dispatchers.IO)
+            .httpHeaders(
+                NetworkHeaders.Builder().apply {
+                    header.forEach { (key, value) -> add(key, value) }
+                }.build()
+            )
+            .build()
+        context.imageLoader.execute(request)
+    }.getOrElse { throwable ->
+        debugImageLog { "preloadFailed uri=${imageUri.shortForLog()} error=${throwable.localizedMessage}" }
+        return@withContext null
+    }
+
+    when (result) {
+        is SuccessResult -> {
+            val heightPx = scaledReaderImageHeightPx(
+                targetWidthPx = targetWidthPx,
+                sourceWidthPx = result.image.width,
+                sourceHeightPx = result.image.height
+            ) ?: return@withContext null
+            ReaderImageHeightCache.put(imageUriString, targetWidthPx, heightPx)
+            debugImageLog { "preloadSuccess uri=${imageUri.shortForLog()} height=$heightPx" }
+            heightPx
+        }
+        is ErrorResult -> {
+            debugImageLog { "preloadError uri=${imageUri.shortForLog()} error=${result.throwable.localizedMessage}" }
+            null
         }
     }
 }
@@ -96,7 +160,7 @@ fun ZoomableImage(
     val imageUriString = remember(imageUri) { imageUri.toString() }
     var retryKey by remember { mutableIntStateOf(0) }
     var lastError by remember { mutableStateOf<String?>(null) }
-    val cachedImageHeightPx = remember(imageUriString) { cachedReaderImageHeight(imageUriString) }
+    val cachedImageHeightPx = remember(imageUriString, screenWidthPx) { ReaderImageHeightCache.get(imageUriString, screenWidthPx) }
     val reservedImageHeight = cachedImageHeightPx
         ?.takeIf { it > 0 }
         ?.let { with(density) { it.toDp() } }
@@ -183,13 +247,18 @@ fun ZoomableImage(
 
                 is AsyncImagePainter.State.Success -> {
                     val successPainter = (state as AsyncImagePainter.State.Success).painter
+                    val reservedHeightModifier = if (cachedImageHeightPx != null) {
+                        Modifier.height(reservedImageHeight)
+                    } else {
+                        Modifier.heightIn(min = reservedImageHeight)
+                    }
                     Image(
                         painter = successPainter,
                         contentDescription = null,
                         contentScale = ContentScale.FillWidth,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = reservedImageHeight)
+                            .then(reservedHeightModifier)
                             .align(Alignment.Center)
                             .pointerInput(onViewImage) {
                                 awaitPointerEventScope {
@@ -261,10 +330,10 @@ fun ZoomableImage(
                             .onGloballyPositioned {
                                 val heightPx = it.size.height
                                 if (heightPx <= 0 || lastMeasuredHeightPx[0] == heightPx) return@onGloballyPositioned
-                                val previousCachedHeight = if (DEBUG_READER_IMAGE) cachedReaderImageHeight(imageUriString) else null
+                                val previousCachedHeight = if (DEBUG_READER_IMAGE) ReaderImageHeightCache.get(imageUriString, screenWidthPx) else null
                                 val previousHeightPx = lastMeasuredHeightPx[0]
                                 lastMeasuredHeightPx[0] = heightPx
-                                cacheReaderImageHeight(imageUriString, heightPx)
+                                ReaderImageHeightCache.put(imageUriString, screenWidthPx, heightPx)
                                 debugImageLog {
                                     "successContentSize uri=${imageUri.shortForLog()} retry=$retryKey " +
                                             "new=${it.size.width}x${it.size.height} placeholder=$placeholderHeight " +

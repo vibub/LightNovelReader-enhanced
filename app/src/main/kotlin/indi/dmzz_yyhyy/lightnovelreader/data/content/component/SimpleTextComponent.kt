@@ -40,8 +40,6 @@ class SimpleTextComponent(
     val fontSizeUserData = userDataRepositoryApi.floatUserData(UserDataPath.Reader.FontSize.path)
     val fontLineHeightUserData = userDataRepositoryApi.floatUserData(UserDataPath.Reader.FontLineHeight.path)
     val fontWeightUserData = userDataRepositoryApi.floatUserData(UserDataPath.Reader.FontWeigh.path)
-    val textColorUserData = userDataRepositoryApi.colorUserData(UserDataPath.Reader.TextColor.path)
-    val textDarkColorUserData = userDataRepositoryApi.colorUserData(UserDataPath.Reader.TextDarkColor.path)
     val fontFamilyUriUserData = userDataRepositoryApi.uriUserData(UserDataPath.Reader.FontFamilyUri.path)
     val textMeasurer = TextMeasurer(
         createFontFamilyResolver(context),
@@ -88,6 +86,23 @@ class SimpleTextComponent(
         }
 
         return color
+    }
+
+    fun measureHeight(width: Int): Int {
+        if (width <= 0) return 0
+        val fontSize = fontSizeUserData.getOrDefault(15f)
+        val fontLineHeight = fontLineHeightUserData.getOrDefault(7f)
+        val fontWeigh = fontWeightUserData.getOrDefault(500f)
+        return textMeasurer.measure(
+            text = data.text,
+            style = AppTypography.bodyMedium.copy(
+                fontSize = fontSize.sp,
+                lineHeight = (fontLineHeight + fontSize).sp,
+                fontWeight = FontWeight(fontWeigh.toInt()),
+                fontFamily = readerFontFamily(fontFamilyUriUserData),
+            ),
+            constraints = Constraints(maxWidth = width),
+        ).size.height.coerceAtLeast(1)
     }
 
     override fun split(

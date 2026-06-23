@@ -1,5 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader
 
+import android.content.Context
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -7,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.content.ContentComponentRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.statistics.ReadingStatsUpdate
@@ -19,6 +21,8 @@ import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.sync.LinovelibBo
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentViewModel
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip.FlipPageContentViewModel
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.scroll.ScrollContentViewModel
+import indi.dmzz_yyhyy.lightnovelreader.ui.components.preloadReaderImageHeight
+import io.nightfish.lightnovelreader.api.content.component.ImageComponentData
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +30,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import javax.inject.Inject
+import kotlin.math.roundToInt
 
 data class ReadingProgressSnapshot(
     val bookId: String,
@@ -45,7 +50,8 @@ class ReaderViewModel @Inject constructor(
     private val userDataRepository: UserDataRepository,
     val contentComponentRepository: ContentComponentRepository,
     private val linovelibBookmarkRepository: LinovelibBookmarkRepository,
-    private val webBookDataSourceProvider: WebBookDataSourceProvider
+    private val webBookDataSourceProvider: WebBookDataSourceProvider,
+    @param:ApplicationContext private val applicationContext: Context
 ) : ViewModel() {
     val settingState = SettingState(userDataRepository, viewModelScope)
     private var contentViewModel: ContentViewModel by mutableStateOf(ContentViewModel.empty)
@@ -94,6 +100,20 @@ class ReaderViewModel @Inject constructor(
     private var chapterId = ""
     val coroutineScope = CoroutineScope(Dispatchers.IO)
 
+    private fun scrollImagePreloadWidthPx(): Int = applicationContext.resources.displayMetrics.widthPixels.coerceAtLeast(1)
+
+    private suspend fun preloadScrollImageComponentHeight(data: ImageComponentData, widthPx: Int): Int? {
+        val imageHeightPx = preloadReaderImageHeight(
+            context = applicationContext,
+            imageUri = data.uri,
+            widthPx = widthPx,
+            header = webBookDataSourceProvider.default.imageHeader
+        ) ?: return null
+        val density = applicationContext.resources.displayMetrics.density
+        val verticalPaddingPx = ((data.topPaddingDp + data.bottomPaddingDp) * density).roundToInt()
+        return imageHeightPx + verticalPaddingPx
+    }
+
     init {
         viewModelScope.launch {
             settingState.isUsingFlipPageUserData.getFlowWithDefault(false).collect {
@@ -115,7 +135,9 @@ class ReaderViewModel @Inject constructor(
                         settingState = settingState,
                         updateReadingProgress = ::saveReadingProgress,
                         contentComponentRepository = contentComponentRepository,
-                        loadReadingAnchor = ::loadScrollReadingAnchor
+                        loadReadingAnchor = ::loadScrollReadingAnchor,
+                        imagePreloadWidth = ::scrollImagePreloadWidthPx,
+                        preloadImageComponentHeight = ::preloadScrollImageComponentHeight
                     )
                     contentViewModel.changeBookId(bookId)
                     contentViewModel.changeChapter(chapterId, restoreProgress = true)

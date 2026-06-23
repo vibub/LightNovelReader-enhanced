@@ -155,7 +155,8 @@ private fun scrollContentComponentWeights(
         .mapValues { it.value.coerceAtLeast(1) }
         .toMutableMap()
     if (currentComponentIndex != null && currentComponentIndex in 0 until componentCount && currentComponentHeight != null) {
-        validHeights[currentComponentIndex] = currentComponentHeight.coerceAtLeast(1)
+        val measuredHeight = currentComponentHeight.coerceAtLeast(1)
+        validHeights[currentComponentIndex] = maxOf(validHeights[currentComponentIndex] ?: measuredHeight, measuredHeight)
     }
     val fallback = viewportHeight.coerceAtLeast(1)
     return List(componentCount) { index -> validHeights[index] ?: fallback }

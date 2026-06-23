@@ -75,6 +75,24 @@ class ScrollReadingProgressTest {
     }
 
     @Test
+    fun currentComponentKeepsLargerKnownHeightForConsistentWeights() {
+        val progress = scrollContentChapterProgress(
+            key = ParsedScrollContentItemKey("chapter", ScrollContentItemType.Component, index = 1),
+            itemOffset = 0,
+            itemSize = 100,
+            viewportHeight = 100,
+            componentCount = 3,
+            componentHeights = mapOf(
+                0 to 100,
+                1 to 1000,
+                2 to 100
+            )
+        )
+
+        assertEquals(1100f / 1200f, progress, 0.0001f)
+    }
+
+    @Test
     fun unknownComponentHeightsUseStableViewportFallback() {
         val progress = scrollContentChapterProgress(
             key = ParsedScrollContentItemKey("chapter", ScrollContentItemType.Component, index = 1),
