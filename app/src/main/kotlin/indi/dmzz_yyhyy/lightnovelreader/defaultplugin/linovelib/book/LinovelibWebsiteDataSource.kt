@@ -25,6 +25,7 @@ import org.jsoup.nodes.Element
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import kotlin.coroutines.cancellation.CancellationException
 
 class LinovelibWebsiteDataSource(
     private val jsoup: LinovelibJsoup
@@ -83,6 +84,7 @@ class LinovelibWebsiteDataSource(
             isComplete = statusText.contains("完结") || statusText.contains("已完成")
         )
     }.getOrElse {
+        if (it is CancellationException) throw it
         it.printStackTrace()
         BookInformation.empty(id)
     }
@@ -94,6 +96,7 @@ class LinovelibWebsiteDataSource(
         val volumes = parseVolumes(document, bookId)
         if (volumes.isEmpty()) BookVolumes.empty(bookId) else BookVolumes(bookId, volumes)
     }.getOrElse {
+        if (it is CancellationException) throw it
         it.printStackTrace()
         BookVolumes.empty(id)
     }
@@ -195,6 +198,7 @@ class LinovelibWebsiteDataSource(
             nextChapter = nextChapterId.ifBlank { navigation.nextChapterId }
         ).takeIf { !it.isEmpty() } ?: ChapterContent.empty(normalizedChapterId)
     }.getOrElse {
+        if (it is CancellationException) throw it
         it.printStackTrace()
         ChapterContent.empty(chapterId)
     }
@@ -241,26 +245,137 @@ class LinovelibWebsiteDataSource(
         }
         .distinctBy { it.id }
 
-    private fun parseVolumes(document: Document, bookId: String): List<Volume> {
-        val volumeElements = document.select("#volume-list .volume, .volume-list .volume, .catalog-volume, .chapter-list .volume")
+    internal suspend fun parseVolumes(
+        document: Document,
+        bookId: String,
+        missingChapterIdResolver: suspend (previousChapterId: String?, nextChapterId: String?) -> String? = { previousChapterId, nextChapterId ->
+            resolveMissingCatalogChapterId(bookId, previousChapterId, nextChapterId)
+        }
+    ): List<Volume> {
+        val volumeElements = document.select(
+            "#volume-list .volume, .volume-list .volume, .catalog-volume, .chapter-list .volume, .volume-item"
+        )
         if (volumeElements.isNotEmpty()) {
-            val volumes = volumeElements.mapIndexedNotNull { index, element ->
-                val chapters = element.select("a[href]")
-                    .mapNotNull { it.toChapterInformation(bookId) }
-                    .distinctBy { it.id }
+            val volumeCandidates = volumeElements.map { element ->
+                element to element.select("a[href]").mapNotNull { it.toCatalogChapterCandidate(bookId) }
+            }
+            val resolvedChaptersByVolume = volumeCandidates
+                .map { it.second }
+                .resolveMissingCatalogChapters(missingChapterIdResolver)
+            val volumes = volumeCandidates.zip(resolvedChaptersByVolume).mapIndexedNotNull { index, (volume, chapters) ->
                 if (chapters.isEmpty()) return@mapIndexedNotNull null
                 Volume(
                     volumeId = "${bookId}_$index",
-                    volumeTitle = element.volumeTitle() ?: "第 ${index + 1} 卷",
+                    volumeTitle = volume.first.volumeTitle() ?: "第 ${index + 1} 卷",
                     chapters = chapters
                 )
             }
             if (volumes.isNotEmpty()) return volumes
         }
-        val chapters = document.select("#volume-list a[href], #chapter-list a[href], .chapter-list a[href], .catalog a[href], a[href]")
-            .mapNotNull { it.toChapterInformation(bookId) }
-            .distinctBy { it.id }
+        val chapters = listOf(
+            document.select("#volume-list a[href], #chapter-list a[href], .chapter-list a[href], .catalog a[href], a[href]")
+                .mapNotNull { it.toCatalogChapterCandidate(bookId) }
+        ).resolveMissingCatalogChapters(missingChapterIdResolver).single()
         return if (chapters.isEmpty()) emptyList() else listOf(Volume(bookId, "正文", chapters))
+    }
+
+    private suspend fun resolveMissingCatalogChapterId(
+        bookId: String,
+        previousChapterId: String?,
+        nextChapterId: String?
+    ): String? {
+        nextChapterId?.let { id ->
+            resolveMissingCatalogChapterIdFromNext(bookId, id)?.let { return it }
+        }
+        return previousChapterId?.let { resolveMissingCatalogChapterIdFromPrevious(bookId, it) }
+    }
+
+    private suspend fun resolveMissingCatalogChapterIdFromNext(bookId: String, nextChapterId: String): String? =
+        runCatching {
+            val document = jsoup.getDocument(
+                LinovelibConstants.chapterUrl(bookId, nextChapterId),
+                referer = LinovelibConstants.catalogUrl(bookId),
+                retryTime = 1
+            )
+            extractLinovelibScriptPage(document, "prevpage")
+                ?.let { extractLinovelibChapterPageId(bookId, it) }
+                ?.toLinovelibAdjacentChapterId(nextChapterId.substringBefore('_'))
+        }.getOrElse { error ->
+            if (error is CancellationException) throw error
+            null
+        }
+
+    private suspend fun resolveMissingCatalogChapterIdFromPrevious(bookId: String, previousChapterId: String): String? =
+        runCatching {
+            val baseChapterId = previousChapterId.substringBefore('_')
+            var page = 1
+            var pageChapterId = previousChapterId
+            while (page <= MAX_CHAPTER_PAGE) {
+                val document = jsoup.getDocument(
+                    LinovelibConstants.chapterUrl(bookId, pageChapterId),
+                    referer = LinovelibConstants.catalogUrl(bookId),
+                    retryTime = if (page == 1) 2 else 1
+                )
+                val scriptNextPageId = extractLinovelibScriptPage(document, "nextpage")
+                    ?.let { extractLinovelibChapterPageId(bookId, it) }
+                val nextPageChapterId = document.nextLinovelibChapterPageId(bookId, baseChapterId, page + 1)
+                if (nextPageChapterId == null) {
+                    return@runCatching scriptNextPageId?.toLinovelibAdjacentChapterId(baseChapterId)
+                }
+                pageChapterId = nextPageChapterId
+                page++
+            }
+            null
+        }.getOrElse { error ->
+            if (error is CancellationException) throw error
+            null
+        }
+
+    private suspend fun List<List<LinovelibCatalogChapterCandidate>>.resolveMissingCatalogChapters(
+        missingChapterIdResolver: suspend (previousChapterId: String?, nextChapterId: String?) -> String?
+    ): List<List<ChapterInformation>> {
+        val sizes = map { it.size }
+        val resolved = flatten().resolveMissingCatalogCandidates(missingChapterIdResolver)
+        var start = 0
+        return sizes.map { size ->
+            val chapters = resolved
+                .subList(start, start + size)
+                .mapNotNull { it.toChapterInformation() }
+                .distinctBy { it.id }
+            start += size
+            chapters
+        }
+    }
+
+    private suspend fun List<LinovelibCatalogChapterCandidate>.resolveMissingCatalogCandidates(
+        missingChapterIdResolver: suspend (previousChapterId: String?, nextChapterId: String?) -> String?
+    ): List<LinovelibCatalogChapterCandidate> {
+        val resolved = toMutableList()
+
+        suspend fun resolveAt(index: Int): Boolean {
+            val candidate = resolved[index]
+            if (candidate.id != null) return false
+            val previousChapterId = resolved.getOrNull(index - 1)?.id
+            val nextChapterId = resolved.getOrNull(index + 1)?.id
+            if (previousChapterId == null && nextChapterId == null) return false
+            val resolvedId = missingChapterIdResolver(previousChapterId, nextChapterId)
+                ?.normalizeChapterId()
+                ?.substringBefore('_')
+                ?.takeIf { id -> id.isNotBlank() && id.all { it.isDigit() } }
+                ?.takeIf { id -> id != previousChapterId && id != nextChapterId }
+                ?.takeIf { id -> resolved.none { it.id == id } }
+                ?: return false
+            resolved[index] = candidate.copy(id = resolvedId)
+            return true
+        }
+
+        do {
+            var changed = false
+            for (index in resolved.indices.reversed()) changed = resolveAt(index) || changed
+            for (index in resolved.indices) changed = resolveAt(index) || changed
+        } while (changed)
+
+        return resolved
     }
 
     private suspend fun getChapterNavigation(bookId: String, chapterId: String): ChapterNavigation {
@@ -282,14 +397,17 @@ class LinovelibWebsiteDataSource(
         }
     }
 
-    private fun Element.toChapterInformation(bookId: String): ChapterInformation? {
+    private fun Element.toCatalogChapterCandidate(bookId: String): LinovelibCatalogChapterCandidate? {
         val href = attr("href")
-        if (href.startsWith("javascript:") || "cid(0)" in href || "vol_" in href) return null
-        if (Regex("/novel/${Regex.escape(bookId)}/\\d+_\\d+\\.html").containsMatchIn(href)) return null
-        val id = href.extractChapterId(bookId) ?: return null
+        if (href.isLinovelibVolumeHref()) return null
         val title = text().cleanText().ifBlank { attr("title").cleanText() }
         if (title.isBlank()) return null
-        return ChapterInformation(id, title)
+        if (href.contains("cid(0)", ignoreCase = true)) {
+            return LinovelibCatalogChapterCandidate(id = null, title = title)
+        }
+        if (href.startsWith("javascript:", ignoreCase = true)) return null
+        val id = extractLinovelibChapterPageId(bookId, href)?.takeUnless { '_' in it } ?: return null
+        return LinovelibCatalogChapterCandidate(id, title)
     }
 
     private fun Document.metaContent(name: String): String? =
@@ -345,8 +463,16 @@ class LinovelibWebsiteDataSource(
 
     private fun String.extractBookId(): String? = Regex("/novel/(\\d+)(?:\\.html|/|$)").find(this)?.groups?.get(1)?.value
 
-    private fun String.extractChapterId(bookId: String): String? =
-        Regex("/novel/${Regex.escape(bookId)}/(\\d+)\\.html").find(this)?.groups?.get(1)?.value
+    private fun String.isLinovelibVolumeHref(): Boolean {
+        val fileName = trim()
+            .replace("\\/", "/")
+            .substringBefore('#')
+            .substringBefore('?')
+            .replace('\\', '/')
+            .substringAfterLast('/')
+            .lowercase()
+        return fileName.startsWith("vol_") && fileName.endsWith(".html")
+    }
 
     private fun String.normalizeBookId(): String = trim().substringBefore('.').substringAfterLast('/').filter { it.isDigit() }
 
@@ -382,6 +508,13 @@ class LinovelibWebsiteDataSource(
         val lastChapterId: String = "",
         val nextChapterId: String = ""
     )
+
+    private data class LinovelibCatalogChapterCandidate(
+        val id: String?,
+        val title: String
+    ) {
+        fun toChapterInformation(): ChapterInformation? = id?.let { ChapterInformation(it, title) }
+    }
 
     data class LinovelibExploreBook(
         val id: String,

@@ -1,7 +1,9 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book
 
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibJsoup
 import io.nightfish.lightnovelreader.api.content.component.ImageComponentData
 import io.nightfish.lightnovelreader.api.content.component.SimpleTextStyleRange
+import kotlinx.coroutines.runBlocking
 import org.jsoup.Jsoup
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -10,6 +12,170 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class LinovelibWebsiteDataSourceTest {
+    @Test
+    fun parseVolumesResolvesJavascriptCidChapterFromNextChapter() = runBlocking {
+        val document = Jsoup.parse(
+            """
+            <html><body>
+            <div class="volume-item clearfix">
+              <a href="/novel/2890/vol_186486.html" class="volume-cover">封面</a>
+              <div class="volume-info"><h2><a href="/novel/2890/vol_186486.html">义妹生活 8</a></h2></div>
+              <ul class="chapter-list clearfix">
+                <li><a href="/novel/2890/186487.html">插图</a></li>
+                <li><a href="javascript:cid(0)">序幕 浅村悠太</a></li>
+                <li><a href="/novel/2890/186489.html">4月19日（星期一）浅村悠太</a></li>
+              </ul>
+            </div>
+            </body></html>
+            """.trimIndent(),
+            "https://www.linovelib.com/novel/2890/catalog"
+        )
+        val dataSource = LinovelibWebsiteDataSource(LinovelibJsoup())
+
+        val volumes = dataSource.parseVolumes(document, "2890") { previousChapterId, nextChapterId ->
+            assertEquals("186487", previousChapterId)
+            assertEquals("186489", nextChapterId)
+            "186488"
+        }
+
+        assertEquals("义妹生活 8", volumes.single().volumeTitle)
+        assertEquals(listOf("186487", "186488", "186489"), volumes.single().chapters.map { it.id })
+        assertEquals("序幕 浅村悠太", volumes.single().chapters[1].title)
+    }
+
+    @Test
+    fun parseVolumesDropsUnresolvedJavascriptCidChapter() = runBlocking {
+        val document = Jsoup.parse(
+            """
+            <html><body>
+            <ul class="chapter-list clearfix">
+              <li><a href="/novel/2890/186487.html">插图</a></li>
+              <li><a href="javascript:cid(0)">序幕 浅村悠太</a></li>
+              <li><a href="/novel/2890/186489.html">4月19日（星期一）浅村悠太</a></li>
+            </ul>
+            </body></html>
+            """.trimIndent(),
+            "https://www.linovelib.com/novel/2890/catalog"
+        )
+        val dataSource = LinovelibWebsiteDataSource(LinovelibJsoup())
+
+        val volumes = dataSource.parseVolumes(document, "2890") { _, _ -> null }
+
+        assertEquals(listOf("186487", "186489"), volumes.single().chapters.map { it.id })
+    }
+
+    @Test
+    fun parseVolumesResolvesJavascriptCidChapterFromPreviousWhenNoNextChapter() = runBlocking {
+        val document = Jsoup.parse(
+            """
+            <html><body>
+            <ul class="chapter-list clearfix">
+              <li><a href="/novel/2890/186489.html">后记</a></li>
+              <li><a href="javascript:cid(0)">尾声 浅村悠太</a></li>
+            </ul>
+            </body></html>
+            """.trimIndent(),
+            "https://www.linovelib.com/novel/2890/catalog"
+        )
+        val dataSource = LinovelibWebsiteDataSource(LinovelibJsoup())
+
+        val volumes = dataSource.parseVolumes(document, "2890") { previousChapterId, nextChapterId ->
+            assertEquals("186489", previousChapterId)
+            assertNull(nextChapterId)
+            "186490"
+        }
+
+        assertEquals(listOf("186489", "186490"), volumes.single().chapters.map { it.id })
+        assertEquals("尾声 浅村悠太", volumes.single().chapters[1].title)
+    }
+
+    @Test
+    fun parseVolumesIgnoresVolumeAndPagedLinks() = runBlocking {
+        val document = Jsoup.parse(
+            """
+            <html><body>
+            <div class="volume-item clearfix">
+              <a href="/novel/2890/vol_186486.html">义妹生活 8</a>
+              <ul class="chapter-list clearfix">
+                <li><a href="/novel/2890/186487.html">插图</a></li>
+                <li><a href="/novel/2890/186487_2.html">插图 第二页</a></li>
+                <li><a href="/novel/2890/186489.html">4月19日（星期一）浅村悠太</a></li>
+              </ul>
+            </div>
+            </body></html>
+            """.trimIndent(),
+            "https://www.linovelib.com/novel/2890/catalog"
+        )
+        val dataSource = LinovelibWebsiteDataSource(LinovelibJsoup())
+
+        val volumes = dataSource.parseVolumes(document, "2890") { _, _ -> error("不应解析缺失章节") }
+
+        assertEquals(listOf("186487", "186489"), volumes.single().chapters.map { it.id })
+    }
+
+    @Test
+    fun parseVolumesResolvesJavascriptCidChapterAcrossVolumeBoundary() = runBlocking {
+        val document = Jsoup.parse(
+            """
+            <html><body>
+            <div class="volume-item clearfix">
+              <h2>义妹生活 8</h2>
+              <ul class="chapter-list clearfix">
+                <li><a href="/novel/2890/186487.html">后记</a></li>
+                <li><a href="javascript:cid(0)">尾声 浅村悠太</a></li>
+              </ul>
+            </div>
+            <div class="volume-item clearfix">
+              <h2>义妹生活 9</h2>
+              <ul class="chapter-list clearfix">
+                <li><a href="/novel/2890/186489.html">序章 绫濑沙季</a></li>
+              </ul>
+            </div>
+            </body></html>
+            """.trimIndent(),
+            "https://www.linovelib.com/novel/2890/catalog"
+        )
+        val dataSource = LinovelibWebsiteDataSource(LinovelibJsoup())
+
+        val volumes = dataSource.parseVolumes(document, "2890") { previousChapterId, nextChapterId ->
+            assertEquals("186487", previousChapterId)
+            assertEquals("186489", nextChapterId)
+            "186488"
+        }
+
+        assertEquals(listOf("186487", "186488"), volumes[0].chapters.map { it.id })
+        assertEquals(listOf("186489"), volumes[1].chapters.map { it.id })
+    }
+
+    @Test
+    fun parseVolumesResolvesLeadingConsecutiveJavascriptCidChaptersFromNextChapter() = runBlocking {
+        val document = Jsoup.parse(
+            """
+            <html><body>
+            <ul class="chapter-list clearfix">
+              <li><a href="javascript:cid(0)">序幕 浅村悠太</a></li>
+              <li><a href="javascript:cid(0)">序幕 绫濑沙季</a></li>
+              <li><a href="/novel/2890/186489.html">4月19日（星期一）浅村悠太</a></li>
+            </ul>
+            </body></html>
+            """.trimIndent(),
+            "https://www.linovelib.com/novel/2890/catalog"
+        )
+        val dataSource = LinovelibWebsiteDataSource(LinovelibJsoup())
+
+        val volumes = dataSource.parseVolumes(document, "2890") { previousChapterId, nextChapterId ->
+            when {
+                previousChapterId == null && nextChapterId == "186489" -> "186488"
+                previousChapterId == null && nextChapterId == "186488" -> "186487"
+                else -> null
+            }
+        }
+
+        assertEquals(listOf("186487", "186488", "186489"), volumes.single().chapters.map { it.id })
+        assertEquals("序幕 浅村悠太", volumes.single().chapters[0].title)
+        assertEquals("序幕 绫濑沙季", volumes.single().chapters[1].title)
+    }
+
     @Test
     fun nextLinovelibChapterPageIdUsesScriptNextPageForSameChapterPage() {
         val document = Jsoup.parse(
