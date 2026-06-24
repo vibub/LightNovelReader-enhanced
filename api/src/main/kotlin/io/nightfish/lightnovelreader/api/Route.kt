@@ -106,13 +106,11 @@ object Route {
              *
              * @param bookId 书籍 ID
              * @param chapterId 章节 ID（可选，提供则打开章节页）
-             * @param autoBookmark 是否在章节页加载后自动尝试同步站点书签
              */
             @Serializable
             data class LinovelibWebBook(
                 val bookId: String,
-                val chapterId: String = "",
-                val autoBookmark: Boolean = false
+                val chapterId: String = ""
             )
             /**
              * 探索展开页界面路由

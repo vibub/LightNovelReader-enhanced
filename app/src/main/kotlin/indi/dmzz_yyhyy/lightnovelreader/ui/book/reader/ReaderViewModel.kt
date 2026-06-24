@@ -30,8 +30,11 @@ import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import java.time.LocalDateTime
+import kotlin.time.Duration.Companion.seconds
 import javax.inject.Inject
 import kotlin.math.roundToInt
 
@@ -176,13 +179,20 @@ class ReaderViewModel @Inject constructor(
         }
         val currentBookId = bookId
         val targetWebChapterId = currentLinovelibWebChapterId().ifBlank { chapter.id }
+        showToast("正在添加书签…")
         viewModelScope.launch(Dispatchers.IO) {
             val result = runCatching {
-                linovelibSyncRepository.syncBookmarkToRemote(
-                    bookId = currentBookId,
-                    chapterPageId = targetWebChapterId
-                )
+                withTimeout(8.seconds) {
+                    linovelibSyncRepository.syncBookmarkToRemote(
+                        bookId = currentBookId,
+                        chapterPageId = targetWebChapterId
+                    )
+                }
             }.getOrElse { throwable ->
+                if (throwable is TimeoutCancellationException) {
+                    showToast("添加书签超时，请稍后重试")
+                    return@launch
+                }
                 LinovelibRemoteBookmarkResult(
                     success = false,
                     message = throwable.message ?: throwable.javaClass.simpleName
@@ -202,13 +212,17 @@ class ReaderViewModel @Inject constructor(
     }
 
     private fun showBookmarkToast(success: Boolean, message: String = "") {
+        val toastMessage = if (success) {
+            "添加书签成功"
+        } else {
+            "添加书签失败" + message.takeIf { it.isNotBlank() }?.let { "：$it" }.orEmpty()
+        }
+        showToast(toastMessage)
+    }
+
+    private fun showToast(message: String) {
         viewModelScope.launch(Dispatchers.Main) {
-            val toastMessage = if (success) {
-                "添加书签成功"
-            } else {
-                "添加书签失败" + message.takeIf { it.isNotBlank() }?.let { "：$it" }.orEmpty()
-            }
-            Toast.makeText(applicationContext, toastMessage, Toast.LENGTH_SHORT).show()
+            Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
         }
     }
 
