@@ -2,6 +2,7 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader
 
 import android.content.Context
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -18,6 +19,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book.targetLinovelibChapterPageId
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.sync.LinovelibBookmarkRepository
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.sync.LinovelibRemoteBookmarkResult
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.sync.LinovelibSyncRepository
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentViewModel
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip.FlipPageContentViewModel
@@ -163,24 +165,51 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun bookmarkCurrentChapter(): Boolean {
-        if (!_uiState.bookmarkUiState.isAvailable || bookId.isBlank()) return false
+        if (!_uiState.bookmarkUiState.isAvailable || bookId.isBlank()) {
+            showBookmarkToast(success = false, message = "当前数据源不可添加书签")
+            return false
+        }
         val chapter = _uiState.contentUiState.readingChapterContent
-        if (chapter.id.isBlank()) return false
+        if (chapter.id.isBlank()) {
+            showBookmarkToast(success = false, message = "当前章节不可添加书签")
+            return false
+        }
         val currentBookId = bookId
         val targetWebChapterId = currentLinovelibWebChapterId().ifBlank { chapter.id }
         viewModelScope.launch(Dispatchers.IO) {
-            linovelibBookmarkRepository.upsertLocalBookmark(
-                bookId = currentBookId,
-                chapterId = targetWebChapterId,
-                chapterTitle = chapter.title
-            )
-            linovelibSyncRepository.syncBookmarkToRemote(
-                bookId = currentBookId,
-                chapterPageId = targetWebChapterId,
-                chapterTitle = chapter.title
-            )
+            val result = runCatching {
+                linovelibSyncRepository.syncBookmarkToRemote(
+                    bookId = currentBookId,
+                    chapterPageId = targetWebChapterId
+                )
+            }.getOrElse { throwable ->
+                LinovelibRemoteBookmarkResult(
+                    success = false,
+                    message = throwable.message ?: throwable.javaClass.simpleName
+                )
+            }
+            if (result.success) {
+                linovelibBookmarkRepository.upsertRemoteBookmark(
+                    bookId = currentBookId,
+                    chapterId = targetWebChapterId,
+                    chapterTitle = chapter.title,
+                    resolved = true
+                )
+            }
+            showBookmarkToast(result.success, result.message)
         }
         return true
+    }
+
+    private fun showBookmarkToast(success: Boolean, message: String = "") {
+        viewModelScope.launch(Dispatchers.Main) {
+            val toastMessage = if (success) {
+                "添加书签成功"
+            } else {
+                "添加书签失败" + message.takeIf { it.isNotBlank() }?.let { "：$it" }.orEmpty()
+            }
+            Toast.makeText(applicationContext, toastMessage, Toast.LENGTH_SHORT).show()
+        }
     }
 
     fun currentLinovelibWebChapterId(): String {

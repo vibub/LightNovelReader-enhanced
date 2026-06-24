@@ -26,13 +26,7 @@ class LinovelibWebBookViewModel @Inject constructor(
         if (synced) {
             syncRepository.syncRemoteToLocal()
             bookmarkRepository.markSynced(bookId)
-        } else {
-            bookmarkRepository.markFailed(bookId)
         }
         synced
-    }
-
-    fun markBookmarkSyncFailed(bookId: String) {
-        bookmarkRepository.markFailed(bookId)
     }
 }

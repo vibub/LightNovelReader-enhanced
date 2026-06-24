@@ -118,7 +118,6 @@ fun LinovelibWebBookScreen(
                                     }
                                 }
                             } else {
-                                viewModel.markBookmarkSyncFailed(bookId)
                                 autoBookmarkMessage = "未找到网页书签按钮，请在网页中手动点击星星"
                             }
                         }

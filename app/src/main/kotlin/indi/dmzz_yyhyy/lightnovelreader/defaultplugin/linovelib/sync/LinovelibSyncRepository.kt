@@ -35,22 +35,18 @@ class LinovelibSyncRepository @Inject constructor(
 
     suspend fun syncBookmarkToRemote(
         bookId: String,
-        chapterPageId: String,
-        chapterTitle: String
+        chapterPageId: String
     ): LinovelibRemoteBookmarkResult = withContext(Dispatchers.IO) {
         if (webBookDataSourceProvider.default.id != LinovelibConstants.SOURCE_ID) {
             val message = "请先切换到 Linovelib 数据源后再同步"
-            bookmarkRepository.markFailed(bookId)
             return@withContext LinovelibRemoteBookmarkResult(success = false, message = message)
         }
         if (!accountStore.hasCookie()) {
             val message = "尚未保存 Linovelib 登录 Cookie"
-            bookmarkRepository.markFailed(bookId)
             return@withContext LinovelibRemoteBookmarkResult(success = false, message = message)
         }
         val target = LinovelibRemoteBookmarkTarget.from(bookId, chapterPageId)
         if (target == null) {
-            bookmarkRepository.markFailed(bookId)
             return@withContext LinovelibRemoteBookmarkResult(success = false, message = "章节书签参数无效")
         }
 
@@ -65,30 +61,18 @@ class LinovelibSyncRepository @Inject constructor(
             if (responseMessage.isLoginRequiredBookmarkMessage()) {
                 error("Linovelib Cookie 可能已失效，请重新登录并保存 Cookie")
             }
-            val responseSuccess = responseMessage.isSuccessfulBookmarkMessage()
-            delay(1_500.milliseconds)
-            val synced = runCatching {
-                isRemoteBookmarkAt(
-                    bookId = target.bookId,
-                    chapterId = target.chapterPageId,
-                    chapterTitle = chapterTitle
-                )
-            }.getOrDefault(false)
-            if (synced || responseSuccess) {
-                bookmarkRepository.markSynced(target.bookId)
+            if (responseMessage.isSuccessfulBookmarkMessage()) {
                 LinovelibRemoteBookmarkResult(
                     success = true,
                     message = responseMessage.ifBlank { "章节书签已同步到 Linovelib" }
                 )
             } else {
-                bookmarkRepository.markFailed(target.bookId)
                 LinovelibRemoteBookmarkResult(
                     success = false,
-                    message = responseMessage.ifBlank { "已发送章节书签请求，但未能确认远端状态" }
+                    message = responseMessage.ifBlank { "Linovelib 未返回添加书签成功信息" }
                 )
             }
         }.getOrElse { throwable ->
-            bookmarkRepository.markFailed(target.bookId)
             LinovelibRemoteBookmarkResult(
                 success = false,
                 message = throwable.message ?: throwable.javaClass.simpleName
