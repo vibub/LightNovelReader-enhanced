@@ -2,7 +2,9 @@ package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.sync
 
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.LinovelibChapterBookmarkDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.LinovelibChapterBookmarkEntity
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import java.time.LocalDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -12,28 +14,7 @@ class LinovelibBookmarkRepository @Inject constructor(
     private val bookmarkDao: LinovelibChapterBookmarkDao
 ) {
     fun getBookmarkFlow(bookId: String): Flow<LinovelibChapterBookmarkEntity?> =
-        bookmarkDao.getFlow(bookId)
-
-    fun getBookmark(bookId: String): LinovelibChapterBookmarkEntity? =
-        bookmarkDao.get(bookId)
-
-    fun upsertLocalBookmark(
-        bookId: String,
-        chapterId: String,
-        chapterTitle: String
-    ) {
-        val now = LocalDateTime.now()
-        bookmarkDao.upsert(
-            LinovelibChapterBookmarkEntity(
-                bookId = bookId,
-                chapterId = chapterId,
-                chapterTitle = chapterTitle,
-                updatedAt = now,
-                remoteUpdatedAt = bookmarkDao.get(bookId)?.remoteUpdatedAt,
-                syncState = LinovelibBookmarkSyncState.Pending.value
-            )
-        )
-    }
+        bookmarkDao.getFlow(bookId).map { it?.toLocalBookmark() }
 
     fun upsertRemoteBookmark(
         bookId: String,
@@ -45,7 +26,7 @@ class LinovelibBookmarkRepository @Inject constructor(
         bookmarkDao.upsert(
             LinovelibChapterBookmarkEntity(
                 bookId = bookId,
-                chapterId = chapterId,
+                chapterId = chapterId.toLocalBookmarkChapterId(),
                 chapterTitle = chapterTitle,
                 updatedAt = now,
                 remoteUpdatedAt = now,
@@ -63,7 +44,7 @@ class LinovelibBookmarkRepository @Inject constructor(
         val local = bookmarkDao.get(bookId) ?: return
         bookmarkDao.upsert(
             local.copy(
-                chapterId = chapterId,
+                chapterId = chapterId.toLocalBookmarkChapterId(),
                 chapterTitle = chapterTitle,
                 updatedAt = now,
                 remoteUpdatedAt = local.remoteUpdatedAt ?: now,
@@ -72,32 +53,15 @@ class LinovelibBookmarkRepository @Inject constructor(
         )
     }
 
-    fun markSynced(bookId: String) {
-        val local = bookmarkDao.get(bookId) ?: return
-        val now = LocalDateTime.now()
-        bookmarkDao.upsert(
-            local.copy(
-                updatedAt = now,
-                remoteUpdatedAt = now,
-                syncState = LinovelibBookmarkSyncState.Synced.value
-            )
-        )
-    }
-
-    fun markFailed(bookId: String) {
-        val local = bookmarkDao.get(bookId) ?: return
-        bookmarkDao.upsert(
-            local.copy(
-                updatedAt = LocalDateTime.now(),
-                syncState = LinovelibBookmarkSyncState.Failed.value
-            )
-        )
-    }
 }
+
+private fun LinovelibChapterBookmarkEntity.toLocalBookmark(): LinovelibChapterBookmarkEntity =
+    copy(chapterId = chapterId.toLocalBookmarkChapterId())
+
+private fun String.toLocalBookmarkChapterId(): String =
+    LinovelibConstants.run { this@toLocalBookmarkChapterId.normalizeChapterId().substringBefore('_') }
 
 enum class LinovelibBookmarkSyncState(val value: String) {
     Synced("SYNCED"),
-    Pending("PENDING"),
-    Failed("FAILED"),
     Unresolved("UNRESOLVED")
 }

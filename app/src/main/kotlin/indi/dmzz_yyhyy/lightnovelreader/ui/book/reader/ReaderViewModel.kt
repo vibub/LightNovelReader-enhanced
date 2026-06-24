@@ -178,6 +178,8 @@ class ReaderViewModel @Inject constructor(
             return false
         }
         val currentBookId = bookId
+        val localChapterId = chapter.id.substringBefore('_')
+        val localReadingProgress = _uiState.contentUiState.readingProgress
         val targetWebChapterId = currentLinovelibWebChapterId().ifBlank { chapter.id }
         showToast("正在添加书签…")
         viewModelScope.launch(Dispatchers.IO) {
@@ -201,9 +203,17 @@ class ReaderViewModel @Inject constructor(
             if (result.success) {
                 linovelibBookmarkRepository.upsertRemoteBookmark(
                     bookId = currentBookId,
-                    chapterId = targetWebChapterId,
+                    chapterId = localChapterId,
                     chapterTitle = chapter.title,
                     resolved = true
+                )
+                saveReadingProgress(
+                    ReadingProgressSnapshot(
+                        bookId = currentBookId,
+                        chapterId = localChapterId,
+                        chapterTitle = chapter.title,
+                        progress = localReadingProgress
+                    )
                 )
             }
             showBookmarkToast(result.success, result.message)
