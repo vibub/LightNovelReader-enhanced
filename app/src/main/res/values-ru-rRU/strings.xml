@@ -583,6 +583,36 @@
     <string name="plugin_info_version_label">Version</string>
     <string name="plugin_info_author_label">Author</string>
     <string name="plugin_app_conflict_message">Conflicts with installed plugin app; app plugin is preferred.</string>
+    <!-- Linovelib -->
+    <string name="linovelib_settings_title">Аккаунт Linovelib</string>
+    <string name="linovelib_account_menu">Действия аккаунта и синхронизации</string>
+    <string name="linovelib_login_status_saved">Cookie входа сохранён</string>
+    <string name="linovelib_login_status_missing">Cookie входа не сохранён</string>
+    <string name="linovelib_cookie_storage_warning">В этой версии Cookie Linovelib временно сохраняется только в локальных пользовательских данных. Не сохраняйте его на общих устройствах.</string>
+    <string name="linovelib_last_sync_time">Последнее действие: %1$s</string>
+    <string name="linovelib_last_sync_error">Последняя ошибка: %1$s</string>
+    <string name="linovelib_save_cookie">Сохранить текущий Cookie</string>
+    <string name="linovelib_clear_cookie">Очистить сохранённый Cookie</string>
+    <string name="linovelib_sync_now">Синхронизировать книжную полку и закладки глав</string>
+    <string name="linovelib_sync_requires_source">Перед синхронизацией переключитесь на источник данных Linovelib, чтобы импортированные книги и закладки глав были сохранены в правильный источник данных.</string>
+    <string name="linovelib_webview_hint">Войдите ниже и пройдите проверку сайта, затем нажмите «Сохранить текущий Cookie». Текущая страница: %1$s</string>
+    <string name="linovelib_web_search_title">Веб-поиск Linovelib</string>
+    <string name="linovelib_web_back">Назад</string>
+    <string name="linovelib_web_forward">Вперёд</string>
+    <string name="linovelib_refresh">Обновить</string>
+    <string name="linovelib_sync_bookcase">Синхронизировать книжную полку и закладки глав</string>
+    <string name="linovelib_web_book_title">Веб-просмотр</string>
+    <string name="linovelib_bookmark_current_chapter">Отметить закладку текущей главы</string>
+    <string name="linovelib_saved_bookmark">Закладка главы Bilinovel</string>
+    <string name="linovelib_bookmark_unresolved">Название удалённой закладки сохранено, но локальная глава пока не найдена</string>
+    <string name="linovelib_bookmark_manual_match">Сопоставить главу вручную</string>
+    <string name="linovelib_bookmark_manual_match_hint">Нажмите, чтобы выбрать локальную главу для сопоставления</string>
+    <string name="linovelib_bookmark_match_title">Сопоставить закладку главы Bilinovel</string>
+    <string name="linovelib_bookmark_match_remote_title">Удалённая закладка: %1$s</string>
+    <string name="linovelib_bookmark_match_empty_catalog">Ручное сопоставление доступно после загрузки каталога</string>
+    <string name="linovelib_bookmark_match_success">Закладка главы Bilinovel сопоставлена</string>
+    <string name="linovelib_parser_warning_title">Порядок абзацев Linovelib может быть неверным</string>
+    <string name="action_webview">Веб-страница</string>
     <!-- Notifications -->
     <string name="epub_export_notification_channel_name">EPUB export progress</string>
     <string name="epub_export_notification_preparing">Preparing…</string>

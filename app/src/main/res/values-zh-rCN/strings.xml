@@ -582,6 +582,36 @@
     <string name="plugin_info_version_label">版本</string>
     <string name="plugin_info_author_label">作者</string>
     <string name="plugin_app_conflict_message">与已安装的插件应用发生冲突，首选应用程序插件。</string>
+    <!-- Linovelib -->
+    <string name="linovelib_settings_title">Linovelib 账号</string>
+    <string name="linovelib_account_menu">账号与同步操作</string>
+    <string name="linovelib_login_status_saved">已保存登录 Cookie</string>
+    <string name="linovelib_login_status_missing">未保存登录 Cookie</string>
+    <string name="linovelib_cookie_storage_warning">当前版本只会把 Linovelib Cookie 临时保存到本地用户数据中，请勿在共享设备上保存。</string>
+    <string name="linovelib_last_sync_time">上次操作：%1$s</string>
+    <string name="linovelib_last_sync_error">上次错误：%1$s</string>
+    <string name="linovelib_save_cookie">保存当前 Cookie</string>
+    <string name="linovelib_clear_cookie">清除已保存 Cookie</string>
+    <string name="linovelib_sync_now">同步书架和章节书签</string>
+    <string name="linovelib_sync_requires_source">请先切换到 Linovelib 数据源再同步，以确保导入的书籍和章节书签保存到正确的数据源。</string>
+    <string name="linovelib_webview_hint">请在下方登录并通过站点检查，然后点击“保存当前 Cookie”。当前页面：%1$s</string>
+    <string name="linovelib_web_search_title">Linovelib 网页搜索</string>
+    <string name="linovelib_web_back">后退</string>
+    <string name="linovelib_web_forward">前进</string>
+    <string name="linovelib_refresh">刷新</string>
+    <string name="linovelib_sync_bookcase">同步书架和章节书签</string>
+    <string name="linovelib_web_book_title">网页浏览</string>
+    <string name="linovelib_bookmark_current_chapter">标记当前章节书签</string>
+    <string name="linovelib_saved_bookmark">Bilinovel 章节书签</string>
+    <string name="linovelib_bookmark_unresolved">已保存远端书签标题，暂未匹配到本地章节</string>
+    <string name="linovelib_bookmark_manual_match">手动匹配章节</string>
+    <string name="linovelib_bookmark_manual_match_hint">点击选择本地章节进行匹配</string>
+    <string name="linovelib_bookmark_match_title">匹配 Bilinovel 章节书签</string>
+    <string name="linovelib_bookmark_match_remote_title">远端书签：%1$s</string>
+    <string name="linovelib_bookmark_match_empty_catalog">目录加载后可手动匹配</string>
+    <string name="linovelib_bookmark_match_success">已匹配 Bilinovel 章节书签</string>
+    <string name="linovelib_parser_warning_title">Linovelib 段落顺序可能异常</string>
+    <string name="action_webview">网页</string>
     <!-- Notifications -->
     <string name="epub_export_notification_channel_name">EPUB 导出进度</string>
     <string name="epub_export_notification_preparing">准备中…</string>
