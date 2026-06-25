@@ -105,6 +105,7 @@ class ReaderViewModel @Inject constructor(
             }
         }
     private var chapterId = ""
+    private var restoreProgressOnNextContentViewModelChange = true
     val coroutineScope = CoroutineScope(Dispatchers.IO)
 
     private fun scrollImagePreloadWidthPx(): Int = applicationContext.resources.displayMetrics.widthPixels.coerceAtLeast(1)
@@ -132,7 +133,11 @@ class ReaderViewModel @Inject constructor(
                         contentComponentRepository = contentComponentRepository
                     )
                     contentViewModel.changeBookId(bookId)
-                    contentViewModel.changeChapter(chapterId, restoreProgress = true)
+                    contentViewModel.changeChapter(
+                        chapterId,
+                        restoreProgress = restoreProgressOnNextContentViewModelChange
+                    )
+                    restoreProgressOnNextContentViewModelChange = true
                     _uiState.contentUiState = contentViewModel.uiState
                 }
                 else if (!it && contentViewModel !is ScrollContentViewModel) {
@@ -147,7 +152,11 @@ class ReaderViewModel @Inject constructor(
                         preloadImageComponentHeight = ::preloadScrollImageComponentHeight
                     )
                     contentViewModel.changeBookId(bookId)
-                    contentViewModel.changeChapter(chapterId, restoreProgress = true)
+                    contentViewModel.changeChapter(
+                        chapterId,
+                        restoreProgress = restoreProgressOnNextContentViewModelChange
+                    )
+                    restoreProgressOnNextContentViewModelChange = true
                     _uiState.contentUiState = contentViewModel.uiState
                 }
             }
@@ -160,11 +169,14 @@ class ReaderViewModel @Inject constructor(
 
     fun changeChapter(chapterId: String, restoreProgress: Boolean = true) {
         this.chapterId = chapterId
+        restoreProgressOnNextContentViewModelChange = restoreProgress
+        val hasContentViewModel = contentViewModel !== ContentViewModel.empty
         contentViewModel.changeChapter(chapterId, restoreProgress)
+        if (hasContentViewModel) restoreProgressOnNextContentViewModelChange = true
     }
 
     fun selectChapterFromReaderCatalog(chapterId: String) {
-        changeChapter(chapterId, restoreProgress = false)
+        changeChapter(chapterId, restoreProgress = true)
     }
 
     fun bookmarkCurrentChapter(): Boolean {

@@ -77,17 +77,17 @@ fun NavGraphBuilder.bookDetailDestination() {
             },
             onClickBackButton = navController::popBackStackIfResumed,
             onClickChapter = {
-                navController.navigateToBookReaderDestination(bookId, it, context)
+                navController.navigateToBookReaderDestination(bookId, it, context, restoreProgress = false)
             },
             onClickReadFromStart = {
                 viewModel.uiState.bookVolumes.volumes.firstOrNull()?.chapters?.firstOrNull()?.id?.let {
-                    navController.navigateToBookReaderDestination(bookId, it, context)
+                    navController.navigateToBookReaderDestination(bookId, it, context, restoreProgress = false)
                 }
             },
             onClickContinueReading = {
                 if (viewModel.uiState.userReadingData.lastReadChapterId.isBlank())
                     viewModel.uiState.bookVolumes.volumes.firstOrNull()?.chapters?.firstOrNull()?.id?.let {
-                        navController.navigateToBookReaderDestination(bookId, it, context)
+                        navController.navigateToBookReaderDestination(bookId, it, context, restoreProgress = false)
                     }
                 else {
                     navController.navigateToBookReaderDestination(bookId, viewModel.uiState.userReadingData.lastReadChapterId, context)

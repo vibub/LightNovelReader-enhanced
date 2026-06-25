@@ -77,7 +77,12 @@ fun NavGraphBuilder.bookReaderDestination() {
     imageViewerDialog()
 }
 
-fun NavController.navigateToBookReaderDestination(bookId: String, chapterId: String, context: Context) {
+fun NavController.navigateToBookReaderDestination(
+    bookId: String,
+    chapterId: String,
+    context: Context,
+    restoreProgress: Boolean = true
+) {
     val entry = this.getBackStackEntry<Route.Book>()
     val viewModel = ViewModelProvider.create(
         entry,
@@ -87,7 +92,7 @@ fun NavController.navigateToBookReaderDestination(bookId: String, chapterId: Str
         ),
     )[ReaderViewModel::class.java]
     viewModel.bookId = bookId
-    viewModel.changeChapter(chapterId)
+    viewModel.changeChapter(chapterId, restoreProgress)
     this.navigate(Route.Book.Reader)
 }
 
