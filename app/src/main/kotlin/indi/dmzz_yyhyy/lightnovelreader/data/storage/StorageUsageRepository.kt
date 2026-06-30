@@ -68,7 +68,7 @@ class StorageUsageRepository @Inject constructor(
         var orphanChapterContentBytes = 0L
         val bookChapterContentBytesMap = mutableMapOf<String, Long>()
         storageStatsDao.getChapterContentBytes().forEach { row ->
-            val bookId = chapterToBookMap[row.id]
+            val bookId = row.bookId.takeIf { it.isNotBlank() } ?: chapterToBookMap[row.id]
             if (bookId == null) {
                 orphanChapterContentBytes += row.bytes
             } else {

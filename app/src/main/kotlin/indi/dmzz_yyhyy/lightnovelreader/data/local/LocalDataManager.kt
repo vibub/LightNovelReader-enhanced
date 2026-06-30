@@ -194,7 +194,7 @@ class LocalDataManager @Inject constructor(
             *localData.bookshelfBookMetadataEntities.map { Pair(it.id, it) }.toTypedArray()
         )
         val newChapterContentEntitiesMap = mapOf(
-            *localData.chapterContentEntities.map { Pair(it.id, it) }.toTypedArray()
+            *localData.chapterContentEntities.map { Pair(Triple(it.sourceId, it.bookId, it.id), it) }.toTypedArray()
         )
         val newChapterInformationEntitiesMap = mapOf(
             *localData.chapterInformationEntities.map { Pair(it.id, it) }.toTypedArray()
@@ -238,7 +238,7 @@ class LocalDataManager @Inject constructor(
                 } ?: old
             },
             chapterContentEntities = oldLocalData.chapterContentEntities.map { old ->
-                newChapterContentEntitiesMap[old.id]?.let {
+                newChapterContentEntitiesMap[Triple(old.sourceId, old.bookId, old.id)]?.let {
                     old.merge(it)
                 } ?: old
             },
@@ -309,7 +309,9 @@ class LocalDataManager @Inject constructor(
             )
         }
         for (entity in localData.chapterContentEntities) {
-            chapterContentDao.update(chapterContentDao.get(entity.id)?.let(entity::merge) ?: entity)
+            chapterContentDao.update(
+                chapterContentDao.get(entity.sourceId, entity.bookId, entity.id)?.let(entity::merge) ?: entity
+            )
         }
         for (entity in localData.chapterInformationEntities) {
             bookVolumesDao.insertChapterInformationEntities(

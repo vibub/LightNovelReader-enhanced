@@ -56,7 +56,7 @@ import io.nightfish.lightnovelreader.api.content.builder.simpleText
         FormattingRuleEntity::class,
         LinovelibChapterBookmarkEntity::class
     ],
-    version = 18,
+    version = 19,
     exportSchema = false
 )
 abstract class LightNovelReaderDatabase : RoomDatabase() {
@@ -97,7 +97,8 @@ abstract class LightNovelReaderDatabase : RoomDatabase() {
                             MIGRATION_14_15,
                             MIGRATION_15_16,
                             MIGRATION_16_17,
-                            MIGRATION_17_18
+                            MIGRATION_17_18,
+                            MIGRATION_18_19
                         )
                         .allowMainThreadQueries()
                         .build()
@@ -907,6 +908,35 @@ abstract class LightNovelReaderDatabase : RoomDatabase() {
                     )
                     """
                 )
+            }
+        }
+
+        private val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE chapter_content RENAME TO chapter_content_legacy")
+                db.execSQL(
+                    """
+                    CREATE TABLE chapter_content (
+                        source_id INTEGER NOT NULL,
+                        book_id TEXT NOT NULL,
+                        id TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        lastChapter TEXT NOT NULL,
+                        nextChapter TEXT NOT NULL,
+                        PRIMARY KEY(source_id, book_id, id)
+                    )
+                    """
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO chapter_content(source_id, book_id, id, title, content, lastChapter, nextChapter)
+                    SELECT -1, '', id, title, content, lastChapter, nextChapter FROM chapter_content_legacy
+                    """
+                )
+                db.execSQL("DROP TABLE chapter_content_legacy")
+                db.execSQL("CREATE INDEX index_chapter_content_id ON chapter_content(id)")
+                db.execSQL("CREATE INDEX index_chapter_content_source_id_book_id ON chapter_content(source_id, book_id)")
             }
         }
     }

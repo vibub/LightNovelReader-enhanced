@@ -4,6 +4,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookInformationDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookVolumesDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.ChapterContentDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.UserReadingDataDao
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.ChapterContentEntity
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.BookVolumes
 import io.nightfish.lightnovelreader.api.book.ChapterContent
@@ -28,17 +29,19 @@ class LocalBookDataSource @Inject constructor(
     override fun updateBookVolumes(bookVolumes: BookVolumes) =
         bookVolumesDao.insertVolume(bookVolumes.bookId, bookVolumes)
 
-    override suspend fun getChapterContent(id: String) = chapterContentDao.get(id)?.let {
-        MutableChapterContent(
-            it.id,
-            it.title,
-            it.content,
-            it.lastChapter,
-            it.nextChapter
-        )
-    }
+    override suspend fun getChapterContent(id: String) = chapterContentDao.get(id)?.toChapterContent()
+
+    suspend fun getChapterContent(sourceId: Int, bookId: String, id: String): MutableChapterContent? =
+        chapterContentDao.getScoped(sourceId, bookId, id)?.toChapterContent()
+
+    suspend fun getExactChapterContent(sourceId: Int, bookId: String, id: String): MutableChapterContent? =
+        chapterContentDao.get(sourceId, bookId, id)?.toChapterContent()
+
     override fun updateChapterContent(chapterContent: ChapterContent) =
         chapterContentDao.update(chapterContent)
+
+    fun updateChapterContent(sourceId: Int, bookId: String, chapterContent: ChapterContent) =
+        chapterContentDao.update(sourceId, bookId, chapterContent)
 
     override fun getUserReadingData(id: String) = userReadingDataDao.getEntity(id).let {
         it ?: return@let MutableUserReadingData.empty().apply { this.id = id }
@@ -112,10 +115,21 @@ class LocalBookDataSource @Inject constructor(
     override suspend fun isChapterContentExists(id: String): Boolean =
         chapterContentDao.getId(id) != null
 
+    suspend fun isChapterContentExists(sourceId: Int, bookId: String, id: String): Boolean =
+        chapterContentDao.getScoped(sourceId, bookId, id) != null
+
     override fun clear() {
         userReadingDataDao.clear()
         bookInformationDao.clear()
         bookVolumesDao.clear()
         chapterContentDao.clear()
     }
+
+    private fun ChapterContentEntity.toChapterContent() = MutableChapterContent(
+        id,
+        title,
+        content,
+        lastChapter,
+        nextChapter
+    )
 }

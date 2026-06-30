@@ -8,6 +8,12 @@ data class StorageBytes(
     val bytes: Long
 )
 
+data class ChapterContentStorageBytes(
+    val id: String,
+    val bookId: String,
+    val bytes: Long
+)
+
 data class VolumeStorageRow(
     val bookId: String,
     val chapterIdList: String,
@@ -72,7 +78,10 @@ interface StorageStatsDao {
         """
         select
             id as id,
+            book_id as bookId,
             (
+                ifnull(length(cast(source_id as blob)), 0) +
+                ifnull(length(cast(book_id as blob)), 0) +
                 ifnull(length(cast(id as blob)), 0) +
                 ifnull(length(cast(title as blob)), 0) +
                 ifnull(length(cast(content as blob)), 0) +
@@ -82,7 +91,7 @@ interface StorageStatsDao {
         from chapter_content
         """
     )
-    suspend fun getChapterContentBytes(): List<StorageBytes>
+    suspend fun getChapterContentBytes(): List<ChapterContentStorageBytes>
 
     @Query(
         """

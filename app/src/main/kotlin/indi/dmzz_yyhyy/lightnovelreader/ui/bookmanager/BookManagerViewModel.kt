@@ -12,6 +12,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadItem
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadProgressRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadType
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.LightNovelReaderDatabase
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.ChapterContentEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.storage.StorageUsageRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.storage.StorageUsageSnapshot
 import indi.dmzz_yyhyy.lightnovelreader.data.work.CacheBookWork
@@ -156,14 +157,17 @@ class BookManagerViewModel @Inject constructor(
     suspend fun deleteSelectedLocalBooks(): Int {
         val ids = localBookManagerUiState.selectedIds.toList()
         if (ids.isEmpty()) return 0
-        localBookManagerUiState.isDeleting = true
         val chapterIds = database.bookVolumesDao()
             .getVolumeEntitiesByBookIds(ids)
             .flatMap { it.chapterIds }
             .distinct()
+        localBookManagerUiState.isDeleting = true
         database.runInTransaction {
+            if (ids.isNotEmpty()) {
+                database.chapterContentDao().deleteByBookIds(ids)
+            }
             if (chapterIds.isNotEmpty()) {
-                database.chapterContentDao().deleteByIds(chapterIds)
+                database.chapterContentDao().deleteLegacyByIds(chapterIds)
             }
             database.bookInformationDao().deleteByIds(ids)
         }
@@ -178,30 +182,35 @@ class BookManagerViewModel @Inject constructor(
     }
 
     suspend fun clearOrphanedDataItems(): Int {
-        val linkedChapterIds = database.bookVolumesDao()
-            .getAllVolumeEntities()
+        val volumeEntities = database.bookVolumesDao().getAllVolumeEntities()
+        val linkedChapterIds = volumeEntities
             .flatMap { it.chapterIds }
+            .toSet()
+        val linkedChapterKeys = volumeEntities
+            .flatMap { volume -> volume.chapterIds.map { volume.bookId to it } }
             .toSet()
         val orphanChapterInfoIds = database.bookVolumesDao()
             .getAllChapterInformationEntities()
             .map { it.id }
             .filterNot(linkedChapterIds::contains)
-        val orphanChapterContentIds = database.chapterContentDao()
+        val orphanChapterContentEntities = database.chapterContentDao()
             .getAllEntities()
-            .map { it.id }
-            .filterNot(linkedChapterIds::contains)
+            .filter { entity ->
+                if (entity.bookId.isBlank()) entity.id !in linkedChapterIds
+                else entity.bookId to entity.id !in linkedChapterKeys
+            }
 
         database.runInTransaction {
             if (orphanChapterInfoIds.isNotEmpty()) {
                 database.bookVolumesDao().deleteChapterInformationByIds(orphanChapterInfoIds)
             }
-            if (orphanChapterContentIds.isNotEmpty()) {
-                database.chapterContentDao().deleteByIds(orphanChapterContentIds)
+            orphanChapterContentEntities.forEach { entity ->
+                database.chapterContentDao().delete(entity.sourceId, entity.bookId, entity.id)
             }
         }
         storageUsageRepository.invalidateSnapshot()
         refreshLocalBooks()
-        return orphanChapterInfoIds.size + orphanChapterContentIds.size
+        return orphanChapterInfoIds.size + orphanChapterContentEntities.size
     }
 
     suspend fun clearBookDataItems(bookId: String, targets: List<LocalBookClearTarget>): Int {
@@ -213,10 +222,15 @@ class BookManagerViewModel @Inject constructor(
             .distinct()
         val targetSet = targets.toSet()
         val hasReadingRecord = database.userReadingDataDao().getEntityWithoutFlow(bookId) != null
-        val chapterContentIds = if (LocalBookClearTarget.ChapterContent in targetSet && chapterIds.isNotEmpty()) {
-            chapterIds.filter { database.chapterContentDao().getId(it) != null }
+        val chapterContentCount = if (LocalBookClearTarget.ChapterContent in targetSet) {
+            database.chapterContentDao().getAllEntities().count { entity ->
+                entity.bookId == bookId ||
+                        (entity.sourceId == ChapterContentEntity.LEGACY_SOURCE_ID &&
+                                entity.bookId == ChapterContentEntity.LEGACY_BOOK_ID &&
+                                entity.id in chapterIds)
+            }
         } else {
-            emptyList()
+            0
         }
 
         database.runInTransaction {
@@ -226,8 +240,11 @@ class BookManagerViewModel @Inject constructor(
                 }
                 database.bookVolumesDao().deleteByBookIds(listOf(bookId))
             }
-            if (chapterContentIds.isNotEmpty()) {
-                database.chapterContentDao().deleteByIds(chapterContentIds)
+            if (LocalBookClearTarget.ChapterContent in targetSet) {
+                database.chapterContentDao().deleteByBookIds(listOf(bookId))
+                if (chapterIds.isNotEmpty()) {
+                    database.chapterContentDao().deleteLegacyByIds(chapterIds)
+                }
             }
             if (LocalBookClearTarget.ReadingRecord in targetSet && hasReadingRecord) {
                 database.userReadingDataDao().deleteByIds(listOf(bookId))
@@ -241,7 +258,7 @@ class BookManagerViewModel @Inject constructor(
         if (LocalBookClearTarget.VolumeAndChapterIndex in targetSet) {
             clearedCount += volumeEntities.size + chapterIds.size
         }
-        clearedCount += chapterContentIds.size
+        clearedCount += chapterContentCount
         if (LocalBookClearTarget.ReadingRecord in targetSet && hasReadingRecord) {
             clearedCount += 1
         }

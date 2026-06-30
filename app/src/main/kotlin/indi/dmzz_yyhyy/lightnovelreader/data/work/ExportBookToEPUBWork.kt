@@ -163,7 +163,9 @@ class ExportBookToEPUBWork @AssistedInject constructor(
             return@withContext Result.failure()
         }
         val tasks = mutableListOf<ImageDownloader.Task>()
-        var bookInformation = webBookDataSourceProvider.lowPriority.getBookInformation(bookId)
+        val webBookDataSource = webBookDataSourceProvider.lowPriority
+        val sourceId = webBookDataSource.id
+        var bookInformation = webBookDataSource.getBookInformation(bookId)
         if (bookInformation.isEmpty()) {
             val localData = localBookDataSource.getBookInformation(bookId)
             if (localData.isNullOrEmpty()) {
@@ -173,7 +175,7 @@ class ExportBookToEPUBWork @AssistedInject constructor(
             }
             else bookInformation = localBookDataSource.getBookInformation(bookId)!!
         }
-        var bookVolumes = webBookDataSourceProvider.lowPriority.getBookVolumes(bookId)
+        var bookVolumes = webBookDataSource.getBookVolumes(bookId)
         if (bookVolumes.isEmpty()) {
             val localData = localBookDataSource.getBookVolumes(bookId)
             if (localData.isNullOrEmpty()) {
@@ -207,9 +209,9 @@ class ExportBookToEPUBWork @AssistedInject constructor(
                 currentChapterTitle = it.title
                 Log.d(TAG, " - load chapter=${it.title} id=${it.id}")
 
-                var chapterContent = webBookDataSourceProvider.lowPriority.getChapterContent(it.id, bookId)
+                var chapterContent = webBookDataSource.getChapterContent(it.id, bookId)
                 if (chapterContent.isEmpty()) {
-                    val localData = localBookDataSource.getChapterContent(it.id)
+                    val localData = localBookDataSource.getChapterContent(sourceId, bookId, it.id)
                     if (localData.isNullOrEmpty()) {
                         downloadItem.progress = -1f
                         updateFailureNotification(bookId)

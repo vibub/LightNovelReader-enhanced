@@ -128,7 +128,9 @@ class BookRepository @Inject constructor(
             val chapterContent = MutableChapterContent.empty()
             chapterContent.id = chapterId
             coroutineScope.launch(Dispatchers.IO) {
-                localBookDataSource.getChapterContent(chapterId)?.let {
+                val webDataSource = priority.get()
+                val sourceId = webDataSource.id
+                localBookDataSource.getChapterContent(sourceId, bookId, chapterId)?.let {
                     if (it.isEmpty()) return@launch
                     chapterContent.update(
                         it.toMutable().apply {
@@ -137,9 +139,9 @@ class BookRepository @Inject constructor(
                                 .content
                         })
                 }
-                priority.get().getChapterContent(chapterId, bookId).let {
+                webDataSource.getChapterContent(chapterId, bookId).let {
                     if (it.isEmpty()) return@launch
-                    localBookDataSource.updateChapterContent(it)
+                    localBookDataSource.updateChapterContent(sourceId, bookId, it)
                     markChapterRemoteFetched(bookId, chapterId)
                     chapterContent.update(
                         it.toMutable().apply {
@@ -159,13 +161,16 @@ class BookRepository @Inject constructor(
     ): ChapterContent =
         withContext(Dispatchers.IO) {
             textProcessingRepository.coroutineProcessChapterContent(bookId) {
-                val webChapterContent = priority.get().getChapterContent(chapterId, bookId)
+                val webDataSource = priority.get()
+                val sourceId = webDataSource.id
+                val webChapterContent = webDataSource.getChapterContent(chapterId, bookId)
                 if (!webChapterContent.isEmpty()) {
-                    localBookDataSource.updateChapterContent(webChapterContent)
+                    localBookDataSource.updateChapterContent(sourceId, bookId, webChapterContent)
                     markChapterRemoteFetched(bookId, chapterId)
                     return@coroutineProcessChapterContent webChapterContent
                 }
-                return@coroutineProcessChapterContent localBookDataSource.getChapterContent(chapterId) ?: MutableChapterContent.empty().apply { id = chapterId }
+                return@coroutineProcessChapterContent localBookDataSource.getChapterContent(sourceId, bookId, chapterId)
+                    ?: MutableChapterContent.empty().apply { id = chapterId }
             }
         }
 
@@ -176,15 +181,18 @@ class BookRepository @Inject constructor(
     ): ChapterContent =
         withContext(Dispatchers.IO) {
             textProcessingRepository.coroutineProcessChapterContent(bookId) {
-                val localChapter = localBookDataSource.getChapterContent(chapterId)
+                val webDataSource = priority.get()
+                val sourceId = webDataSource.id
+                val localChapter = localBookDataSource.getExactChapterContent(sourceId, bookId, chapterId)
                 if (localChapter != null && !localChapter.isEmpty()) return@coroutineProcessChapterContent localChapter
-                val webChapterContent = priority.get().getChapterContent(chapterId, bookId)
+                val webChapterContent = webDataSource.getChapterContent(chapterId, bookId)
                 if (!webChapterContent.isEmpty()) {
-                    localBookDataSource.updateChapterContent(webChapterContent)
+                    localBookDataSource.updateChapterContent(sourceId, bookId, webChapterContent)
                     markChapterRemoteFetched(bookId, chapterId)
                     return@coroutineProcessChapterContent webChapterContent
                 }
-                return@coroutineProcessChapterContent MutableChapterContent.empty().apply { id = chapterId }
+                return@coroutineProcessChapterContent localBookDataSource.getChapterContent(sourceId, bookId, chapterId)
+                    ?: MutableChapterContent.empty().apply { id = chapterId }
             }
         }
 
@@ -193,16 +201,18 @@ class BookRepository @Inject constructor(
         bookId: String,
         priority: WebDataSourcePriority
     ): Flow<ChapterContent> = flow {
-        val localChapter = localBookDataSource.getChapterContent(chapterId) ?: MutableChapterContent.empty()
-                .apply { id = chapterId }
+        val webDataSource = priority.get()
+        val sourceId = webDataSource.id
+        val localChapter = localBookDataSource.getChapterContent(sourceId, bookId, chapterId)
+            ?: MutableChapterContent.empty().apply { id = chapterId }
         emit(localChapter)
         if (!localChapter.isEmpty() && isChapterRecentlyFetched(bookId, chapterId)) return@flow
-        val remoteChapter = priority.get().getChapterContent(
+        val remoteChapter = webDataSource.getChapterContent(
             chapterId = chapterId,
             bookId = bookId
         )
         if (remoteChapter.isEmpty()) return@flow
-        localBookDataSource.updateChapterContent(remoteChapter)
+        localBookDataSource.updateChapterContent(sourceId, bookId, remoteChapter)
         markChapterRemoteFetched(bookId, chapterId)
         emit(remoteChapter)
     }.map { textProcessingRepository.processChapterContent(bookId) { it } }
@@ -271,12 +281,13 @@ class BookRepository @Inject constructor(
     }
 
     override suspend fun getIsBookCached(bookId: String): Boolean {
+        val sourceId = webBookDataSourceProvider.default.id
         localBookDataSource.getBookVolumes(bookId)?.let { bookVolumes ->
             if (bookVolumes.volumes.isEmpty())
                 return false
             bookVolumes.volumes.forEach { bookVolume ->
                 bookVolume.chapters.forEach {
-                    if (!localBookDataSource.isChapterContentExists(it.id))
+                    if (!localBookDataSource.isChapterContentExists(sourceId, bookId, it.id))
                         return false
                 }
             }

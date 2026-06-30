@@ -1,6 +1,7 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.work
 
 import android.content.Context
+import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
 import androidx.hilt.work.HiltWorker
@@ -32,6 +33,7 @@ class CacheBookWork @AssistedInject constructor(
         val bookId = inputData.getString(KEY_BOOK_ID) ?: return Result.failure()
         if (bookId.isBlank()) return Result.failure()
         val webBookDataSource = webBookDataSourceProvider.lowPriority
+        val sourceId = webBookDataSource.id
         val downloadItem = MutableDownloadItem(DownloadType.CACHE, bookId)
         downloadProgressRepository.addExportItem(downloadItem)
         var count = 0
@@ -39,6 +41,13 @@ class CacheBookWork @AssistedInject constructor(
         val total = bookVolumes.volumes.sumOf { it.chapters.size } + 1
         if (bookVolumes.volumes.isEmpty()) return Result.failure()
         localBookDataSource.updateBookVolumes(bookVolumes)
+        val orderedChapters = bookVolumes.volumes.flatMap { it.chapters }
+        val navigationByChapterId = orderedChapters.mapIndexed { index, chapter ->
+            chapter.id to Pair(
+                orderedChapters.getOrNull(index - 1)?.id ?: "",
+                orderedChapters.getOrNull(index + 1)?.id ?: ""
+            )
+        }.toMap()
         fun updateProgress() {
             count++
             downloadItem.progress = count.toFloat() / total
@@ -46,16 +55,33 @@ class CacheBookWork @AssistedInject constructor(
         for (volume in bookVolumes.volumes) {
             for (chapterInformation in volume.chapters) {
                 val chapterId = chapterInformation.id
+                val cachedChapter = localBookDataSource.getExactChapterContent(sourceId, bookId, chapterId)
+                if (cachedChapter != null && !cachedChapter.isEmpty()) {
+                    val (lastChapterId, nextChapterId) = navigationByChapterId[chapterId] ?: Pair("", "")
+                    if (cachedChapter.lastChapter != lastChapterId || cachedChapter.nextChapter != nextChapterId) {
+                        localBookDataSource.updateChapterContent(
+                            sourceId,
+                            bookId,
+                            cachedChapter.toMutable().apply {
+                                lastChapter = lastChapterId
+                                nextChapter = nextChapterId
+                            }
+                        )
+                    }
+                    updateProgress()
+                    continue
+                }
                 val chapter = webBookDataSource.getChapterContent(
                     chapterId = chapterId,
                     bookId = bookId
                 )
-                if (chapter.isEmpty()) return Result.failure().also {
-                    Looper.prepare()
-                    Toast.makeText(applicationContext, "缓存失败，请检查网络环境", Toast.LENGTH_SHORT).show()
-                    Looper.loop()
+                if (chapter.isEmpty()) {
+                    Handler(Looper.getMainLooper()).post {
+                        Toast.makeText(applicationContext, "缓存失败，请检查网络环境", Toast.LENGTH_SHORT).show()
+                    }
+                    return Result.failure()
                 }
-                localBookDataSource.updateChapterContent(chapter)
+                localBookDataSource.updateChapterContent(sourceId, bookId, chapter)
                 updateProgress()
             }
         }
