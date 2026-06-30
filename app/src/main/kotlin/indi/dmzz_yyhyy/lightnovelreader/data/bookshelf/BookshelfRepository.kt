@@ -130,8 +130,8 @@ class BookshelfRepository @Inject constructor(
             val workRequest = OneTimeWorkRequestBuilder<CacheBookWork>()
                 .setInputData(
                     workDataOf(
-                    "bookId" to bookInformation.id
-                )
+                        CacheBookWork.KEY_BOOK_ID to bookInformation.id
+                    )
                 )
                 .build()
             workManager.enqueueUniqueWork(

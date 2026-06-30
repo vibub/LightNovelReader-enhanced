@@ -23,22 +23,30 @@ class CacheBookWork @AssistedInject constructor(
     private val downloadProgressRepository: DownloadProgressRepository
 ) : CoroutineWorker(appContext, workerParams) {
     companion object {
+        const val KEY_BOOK_ID = "bookId"
+
         fun ofId(id: String): String = "cache:$id"
     }
 
     override suspend fun doWork(): Result {
-        val bookId = inputData.getString("bookId") ?: return Result.failure()
+        val bookId = inputData.getString(KEY_BOOK_ID) ?: return Result.failure()
         if (bookId.isBlank()) return Result.failure()
+        val webBookDataSource = webBookDataSourceProvider.lowPriority
         val downloadItem = MutableDownloadItem(DownloadType.CACHE, bookId)
         downloadProgressRepository.addExportItem(downloadItem)
         var count = 0
-        val bookVolumes = webBookDataSourceProvider.default.getBookVolumes(bookId)
+        val bookVolumes = webBookDataSource.getBookVolumes(bookId)
         val total = bookVolumes.volumes.sumOf { it.chapters.size } + 1
         if (bookVolumes.volumes.isEmpty()) return Result.failure()
         localBookDataSource.updateBookVolumes(bookVolumes)
-        bookVolumes.volumes.forEach { volume ->
-            volume.chapters.map { it.id }.forEach { chapterId ->
-                val chapter = webBookDataSourceProvider.default.getChapterContent(
+        fun updateProgress() {
+            count++
+            downloadItem.progress = count.toFloat() / total
+        }
+        for (volume in bookVolumes.volumes) {
+            for (chapterInformation in volume.chapters) {
+                val chapterId = chapterInformation.id
+                val chapter = webBookDataSource.getChapterContent(
                     chapterId = chapterId,
                     bookId = bookId
                 )
@@ -48,11 +56,10 @@ class CacheBookWork @AssistedInject constructor(
                     Looper.loop()
                 }
                 localBookDataSource.updateChapterContent(chapter)
-                count ++
-                downloadItem.progress = count.toFloat() / total
+                updateProgress()
             }
         }
-        webBookDataSourceProvider.default.getBookInformation(bookId)
+        webBookDataSource.getBookInformation(bookId)
             .let {
                 if (it.isEmpty()) return Result.failure()
                 localBookDataSource.updateBookInformation(it)

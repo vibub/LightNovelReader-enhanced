@@ -2,8 +2,8 @@ package indi.dmzz_yyhyy.lightnovelreader.data.book
 
 import androidx.navigation.NavController
 import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
@@ -27,7 +27,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -250,13 +249,17 @@ class BookRepository @Inject constructor(
 
     private fun chapterRefreshKey(bookId: String, chapterId: String): String = "$bookId/$chapterId"
 
-    fun isCacheBookWorkFlow(workId: UUID) = workManager.getWorkInfoByIdFlow(workId)
+    fun isCacheBookWorkFlow(bookId: String): Flow<WorkInfo?> =
+        workManager.getWorkInfosForUniqueWorkFlow(CacheBookWork.ofId(bookId))
+            .map { workInfos ->
+                workInfos.firstOrNull { !it.state.isFinished } ?: workInfos.firstOrNull()
+            }
 
-    fun cacheBook(bookId: String): OneTimeWorkRequest {
+    fun cacheBook(bookId: String) {
         val workRequest = OneTimeWorkRequestBuilder<CacheBookWork>()
             .setInputData(
                 workDataOf(
-                    "bookId" to bookId
+                    CacheBookWork.KEY_BOOK_ID to bookId
                 )
             )
             .build()
@@ -265,7 +268,6 @@ class BookRepository @Inject constructor(
             ExistingWorkPolicy.KEEP,
             workRequest
         )
-        return workRequest
     }
 
     override suspend fun getIsBookCached(bookId: String): Boolean {

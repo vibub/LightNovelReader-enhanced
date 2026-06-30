@@ -104,8 +104,8 @@ class DetailViewModel @Inject constructor(
     }
 
     fun cacheBook(bookId: String): Flow<WorkInfo?> {
-        val work = bookRepository.cacheBook(bookId)
-        val isCachedFlow = bookRepository.isCacheBookWorkFlow(work.id)
+        bookRepository.cacheBook(bookId)
+        val isCachedFlow = bookRepository.isCacheBookWorkFlow(bookId)
         viewModelScope.launch(Dispatchers.IO) {
             isCachedFlow.collect { workInfo ->
                 if (workInfo?.state == WorkInfo.State.SUCCEEDED) {
