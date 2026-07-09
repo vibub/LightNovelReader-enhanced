@@ -71,7 +71,8 @@ LightNovelReader Enhanced 是 [LightNovelReader](https://github.com/dmzz-yyhyy/L
 
 - 增强分支相关 Bug 或功能请求，请在 [本仓库 Issues](https://github.com/vibub/LightNovelReader-enhanced/issues/new/choose) 提交。
 - 与上游通用功能、社区交流或插件生态相关的问题，也可以参考 [上游仓库](https://github.com/dmzz-yyhyy/LightNovelReader) 与下列社区渠道。
-  - 欢迎加入 QQ 讨论群：`867785526` | [**邀请链接**](http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=P__gXIArh5UDBsEq7ttd4WhIYnNh3y1t&authKey=GAsRKEZ%2FwHpzRv19hNJsDnknOc86lYzNIHMPy2Jxt3S3U8f90qestOd760IAj%2F3l&noverify=0&group_code=867785526)
+  - ~~欢迎加入 QQ 讨论群：`867785526` | [**邀请链接**](http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=P__gXIArh5UDBsEq7ttd4WhIYnNh3y1t&authKey=GAsRKEZ%2FwHpzRv19hNJsDnknOc86lYzNIHMPy2Jxt3S3U8f90qestOd760IAj%2F3l&noverify=0&group_code=867785526)~~
+  - 由于上游大群暂时被封，请先加入 QQ 讨论群：`1044272064` | [**邀请链接**](https://qm.qq.com/q/VLu11qDvgs)
   - 欢迎加入 Discord 服务器：[**邀请链接**](https://discord.gg/pnf4ABmDJt)
   - 欢迎加入 Telegram 讨论群组：[**邀请链接**](https://t.me/lightnoble)
 
