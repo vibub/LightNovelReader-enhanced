@@ -31,19 +31,27 @@ class LinovelibHttpException(
 class LinovelibJsoup(
     private val accountStore: LinovelibAccountStore? = null
 ) {
-    private val userAgent = UserAgentGenerator.generate()
+    enum class UserAgentMode {
+        Desktop,
+        Mobile
+    }
+
+    private val desktopUserAgent = UserAgentGenerator.generateDesktop()
+    private val mobileUserAgent = UserAgentGenerator.generate()
 
     suspend fun getDocument(
         url: String,
         referer: String = LinovelibConstants.BASE_URL,
         useCookie: Boolean = true,
-        retryTime: Int = 2
+        retryTime: Int = 2,
+        userAgentMode: UserAgentMode = UserAgentMode.Desktop
     ): Document = fetch(
         url = url,
         referer = referer,
         accept = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         useCookie = useCookie,
-        retryTime = retryTime
+        retryTime = retryTime,
+        userAgentMode = userAgentMode
     ).let { body ->
         Jsoup.parse(body, url).apply {
             outputSettings().prettyPrint(false)
@@ -55,14 +63,16 @@ class LinovelibJsoup(
         referer: String = LinovelibConstants.BASE_URL,
         accept: String = "application/json,text/plain,*/*",
         useCookie: Boolean = true,
-        retryTime: Int = 2
-    ): String = fetch(url, referer, accept, useCookie, retryTime)
+        retryTime: Int = 2,
+        userAgentMode: UserAgentMode = UserAgentMode.Desktop
+    ): String = fetch(url, referer, accept, useCookie, retryTime, userAgentMode)
 
     fun defaultHeaders(
         referer: String = LinovelibConstants.BASE_URL,
-        useCookie: Boolean = true
+        useCookie: Boolean = true,
+        userAgentMode: UserAgentMode = UserAgentMode.Desktop
     ): Map<String, String> = buildMap {
-        put("User-Agent", userAgent)
+        put("User-Agent", userAgentMode.userAgent())
         put("Accept", "image/webp,image/jpeg,image/png,image/gif,image/*,*/*;q=0.8")
         put("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
         put("Referer", referer)
@@ -74,12 +84,18 @@ class LinovelibJsoup(
         }
     }
 
+    private fun UserAgentMode.userAgent(): String = when (this) {
+        UserAgentMode.Desktop -> desktopUserAgent
+        UserAgentMode.Mobile -> mobileUserAgent
+    }
+
     private suspend fun fetch(
         url: String,
         referer: String,
         accept: String,
         useCookie: Boolean,
-        retryTime: Int
+        retryTime: Int,
+        userAgentMode: UserAgentMode
     ): String = withContext(Dispatchers.IO) {
         var lastError: Throwable? = null
         var delayMillis = 1_500L
@@ -91,7 +107,7 @@ class LinovelibJsoup(
                         .ignoreHttpErrors(true)
                         .followRedirects(true)
                         .timeout(15_000)
-                        .headers(defaultHeaders(referer, useCookie) + ("Accept" to accept))
+                        .headers(defaultHeaders(referer, useCookie, userAgentMode) + ("Accept" to accept))
                         .execute()
                     val body = response.bodyAsBytes().toString(Charsets.UTF_8)
                     val statusCode = response.statusCode()

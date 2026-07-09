@@ -10,8 +10,6 @@ class LinovelibAccountDataSource(
     private val jsoup: LinovelibJsoup,
     private val accountStore: LinovelibAccountStore
 ) {
-    suspend fun getRemoteBookshelf(): List<LinovelibRemoteBook> = getRemoteBookshelfResult().books
-
     suspend fun addBookcaseBookmark(
         bookId: String,
         chapterId: String,
@@ -46,7 +44,8 @@ class LinovelibAccountDataSource(
                         url = url,
                         referer = LinovelibConstants.MOBILE_BASE_URL,
                         accept = HTML_ACCEPT,
-                        useCookie = true
+                        useCookie = true,
+                        userAgentMode = LinovelibJsoup.UserAgentMode.Mobile
                     )
                 )
             }.onFailure { lastError = it }.getOrNull() ?: break

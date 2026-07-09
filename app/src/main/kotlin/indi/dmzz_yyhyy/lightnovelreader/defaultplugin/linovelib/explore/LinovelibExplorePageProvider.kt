@@ -30,7 +30,11 @@ private class LinovelibHomeExploreTapPage(
 
     override fun getRowsFlow(): Flow<List<ExploreBooksRow>> = flow {
         val books = runCatching {
-            val document = jsoup.getDocument(LinovelibConstants.BASE_URL, retryTime = 0)
+            val document = jsoup.getDocument(
+                url = LinovelibConstants.BASE_URL,
+                retryTime = 0,
+                userAgentMode = LinovelibJsoup.UserAgentMode.Mobile
+            )
             websiteDataSource.parseExploreBooks(document)
                 .take(12)
                 .map {

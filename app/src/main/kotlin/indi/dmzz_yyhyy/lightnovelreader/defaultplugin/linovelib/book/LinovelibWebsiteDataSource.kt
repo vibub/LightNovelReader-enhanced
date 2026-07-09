@@ -231,16 +231,19 @@ class LinovelibWebsiteDataSource(
     fun parseExploreBooks(document: Document): List<LinovelibExploreBook> = document
         .select("a[href~=/novel/\\d+\\.html]")
         .mapNotNull { a ->
-            val bookId = a.attr("href").extractBookId() ?: return@mapNotNull null
-            val container = a.parents().firstOrNull { it.selectFirst("img") != null } ?: a.parent() ?: a
-            val title = a.text().cleanText().ifBlank { a.attr("title").cleanText() }
+            val href = a.attr("href")
+            val bookId = href.extractBookId() ?: return@mapNotNull null
+            val image = a.selectFirst("img") ?: a.parentBookCard(bookId)?.selectFirst("img")
+            val container = image?.parents()?.firstOrNull { it.hasSingleExploreBook(bookId) } ?: a.parent() ?: a
+            val title = a.text().cleanText()
+                .ifBlank { a.attr("title").cleanText() }
+                .ifBlank { image?.attr("alt")?.cleanText().orEmpty() }
             if (title.isBlank()) return@mapNotNull null
-            val cover = container.selectFirst("img")?.imageUrl().orEmpty()
             LinovelibExploreBook(
                 id = bookId,
                 title = title,
                 author = container.textAfterLabel("作者") ?: "",
-                coverUrl = cover
+                coverUrl = image?.imageUrl().orEmpty()
             )
         }
         .distinctBy { it.id }
@@ -408,6 +411,16 @@ class LinovelibWebsiteDataSource(
         if (href.startsWith("javascript:", ignoreCase = true)) return null
         val id = extractLinovelibChapterPageId(bookId, href)?.takeUnless { '_' in it } ?: return null
         return LinovelibCatalogChapterCandidate(id, title)
+    }
+
+    private fun Element.parentBookCard(bookId: String): Element? = parents().firstOrNull { it.hasSingleExploreBook(bookId) }
+
+    private fun Element.hasSingleExploreBook(bookId: String): Boolean {
+        if (selectFirst("img") == null) return false
+        val bookIds = select("a[href~=/novel/\\d+\\.html]")
+            .mapNotNull { it.attr("href").extractBookId() }
+            .distinct()
+        return bookIds.size == 1 && bookIds.single() == bookId
     }
 
     private fun Document.metaContent(name: String): String? =

@@ -37,7 +37,8 @@ class LinovelibSearchProvider(
                 val document = jsoup.getDocument(
                     url = searchUrl.url(encodedKeyword),
                     referer = searchUrl.referer,
-                    retryTime = 0
+                    retryTime = 0,
+                    userAgentMode = LinovelibJsoup.UserAgentMode.Mobile
                 )
                 val books = websiteDataSource.parseSearchBooks(document)
                 if (books.isNotEmpty()) {

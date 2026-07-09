@@ -177,6 +177,32 @@ class LinovelibWebsiteDataSourceTest {
     }
 
     @Test
+    fun parseExploreBooksUsesCoverFromMatchingImageAnchor() {
+        val document = Jsoup.parse(
+            """
+            <html><body>
+            <div id="index_tpic">
+              <div id="index_tpic_big">
+                <a href="/novel/4800.html"><img src="/files/article/image/4/4800/4800s.jpg" alt="在贞操逆转的世界中为所欲为"></a>
+                <a href="/novel/2906.html"><img src="/files/article/image/2/2906/2906s.jpg" alt="让声称女性之间不可能的女孩，在百日内彻底沦陷的百合故事。"></a>
+              </div>
+              <div id="index_tpic_binfo">
+                <div class="index_tpic_info"><h3><a class="title" href="/novel/4800.html">在贞操逆转的世界中为所欲为</a></h3></div>
+                <div class="index_tpic_info"><h3><a class="title" href="/novel/2906.html">让声称女性之间不可能的女孩，在百日内彻底沦陷的百合故事。</a></h3></div>
+              </div>
+            </div>
+            </body></html>
+            """.trimIndent(),
+            "https://www.linovelib.com"
+        )
+        val books = LinovelibWebsiteDataSource(LinovelibJsoup()).parseExploreBooks(document)
+
+        assertEquals(listOf("4800", "2906"), books.map { it.id })
+        assertEquals("https://www.linovelib.com/files/article/image/4/4800/4800s.jpg", books[0].coverUrl)
+        assertEquals("https://www.linovelib.com/files/article/image/2/2906/2906s.jpg", books[1].coverUrl)
+    }
+
+    @Test
     fun nextLinovelibChapterPageIdUsesScriptNextPageForSameChapterPage() {
         val document = Jsoup.parse(
             """

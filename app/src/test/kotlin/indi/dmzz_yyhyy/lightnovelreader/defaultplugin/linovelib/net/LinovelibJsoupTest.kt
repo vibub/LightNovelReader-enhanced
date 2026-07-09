@@ -10,6 +10,24 @@ import java.time.format.DateTimeFormatter
 
 class LinovelibJsoupTest {
     @Test
+    fun defaultHeadersUseDesktopUserAgentForWebsiteRequests() {
+        val userAgent = LinovelibJsoup().defaultHeaders()["User-Agent"].orEmpty()
+
+        assertTrue(Regex("Windows NT|Macintosh|X11; Linux").containsMatchIn(userAgent))
+        assertFalse(userAgent.contains("Mobile"))
+    }
+
+    @Test
+    fun defaultHeadersCanUseMobileUserAgentForMobileWebsiteRequests() {
+        val userAgent = LinovelibJsoup()
+            .defaultHeaders(userAgentMode = LinovelibJsoup.UserAgentMode.Mobile)["User-Agent"]
+            .orEmpty()
+
+        assertTrue(userAgent.contains("Android"))
+        assertTrue(userAgent.contains("Mobile"))
+    }
+
+    @Test
     fun parseRetryAfterMillisSupportsSeconds() {
         assertEquals(60_000L, LinovelibJsoup.parseRetryAfterMillis("60", nowMillis = 0L))
     }
