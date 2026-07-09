@@ -24,6 +24,7 @@ local.properties
 .claude/
 CLAUDE.md
 .codegraph/
+docs/superpowers/
 .idea/studiobot.xml
 
 proxy/build/

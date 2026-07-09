@@ -28,6 +28,57 @@ object GithubParser {
     private const val PROXY_HOST = "https://dgithub.xyz"
     private var host = RAW_HOST
 
+    internal fun rawGithubUrlCandidatesForTest(ref: String, path: String): List<String> =
+        rawGithubUrlCandidates(ref, path)
+
+    internal fun githubAssetUrlCandidatesForTest(href: String): List<String> =
+        githubAssetUrlCandidates(href)
+
+    private fun rawGithubUrlCandidates(ref: String, path: String): List<String> {
+        val normalizedPath = path.trimStart('/')
+        return listOf(
+            "https://raw.githubusercontent.com/$REPOSITORY_SLUG/$ref/$normalizedPath",
+            "https://gh-proxy.com/raw.githubusercontent.com/$REPOSITORY_SLUG/$ref/$normalizedPath"
+        )
+    }
+
+    private fun githubAssetUrlCandidates(href: String): List<String> {
+        val normalizedHref = when {
+            href.startsWith("https://github.com") -> href.removePrefix("https://github.com")
+            href.startsWith("/") -> href
+            else -> "/$href"
+        }
+        return listOf(
+            "https://github.com$normalizedHref",
+            "https://gh-proxy.com/github.com$normalizedHref"
+        )
+    }
+
+    private fun fetchTextFromCandidates(urls: List<String>): String {
+        var lastError: Exception? = null
+        urls.forEach { url ->
+            try {
+                return Jsoup
+                    .connect(url)
+                    .ignoreContentType(true)
+                    .get()
+                    .outputSettings(
+                        Document.OutputSettings()
+                            .prettyPrint(false)
+                            .syntax(Document.OutputSettings.Syntax.xml)
+                    )
+                    .toString()
+            } catch (e: Exception) {
+                lastError = e
+                Log.w("GithubParser", "failed to fetch $url: ${e.message}")
+            }
+        }
+        throw lastError ?: IOException("No URL candidates provided")
+    }
+
+    private fun fetchRawGithubText(ref: String, path: String): String =
+        fetchTextFromCandidates(rawGithubUrlCandidates(ref, path))
+
     private fun updateHost(): String {
         try {
             Jsoup.connect(host).timeout(1500).get()
@@ -42,16 +93,12 @@ object GithubParser {
             return PROXY_HOST
         } catch (_: Exception) {}
         try {
-            Jsoup
-                .connect("https://gh-proxy.com/raw.githubusercontent.com/frankwuzp/github-host/main/hosts")
-                .ignoreContentType(true)
-                .get()
-                .outputSettings(
-                    Document.OutputSettings()
-                        .prettyPrint(false)
-                        .syntax(Document.OutputSettings.Syntax.xml)
+            fetchTextFromCandidates(
+                listOf(
+                    "https://raw.githubusercontent.com/frankwuzp/github-host/main/hosts",
+                    "https://gh-proxy.com/raw.githubusercontent.com/frankwuzp/github-host/main/hosts"
                 )
-                .toString()
+            )
                 .let(regex::find)
                 ?.groups
                 ?.get(1)
@@ -68,6 +115,7 @@ object GithubParser {
         override val versionName: String,
         override val releaseNotes: String,
         override val downloadUrl: String,
+        override val downloadUrls: List<String> = listOf(downloadUrl),
         override val downloadFileProgress: ((File, File) -> Unit)? = null
     ): Release
 
@@ -146,34 +194,29 @@ object GithubParser {
             .get()
             .let { releaseDocument ->
                 updatePhase.tryEmit("GitHub步骤: 获取apk下载链接")
-                val downloadUrl = releaseDocument
+                val downloadHref = releaseDocument
                     .select("include-fragment")
                     .fastFilter { it.attr("src").contains("releases") }
                     .first()
                     .attr("src")
                     .replace("https://github.com", host)
                     .let(Jsoup::connect)
-                    .header("Host", "github.com")
+                    .also {
+                        if (host.startsWith("http://")) it.header("Host", "github.com")
+                    }
                     .get()
                     .select("""a[href^="$REPOSITORY_PATH/releases/download/"]""")
                     .map { it.attr("href") }
                     .firstOrNull { it.endsWith("apk") }
-                    ?.let { "https://gh-proxy.com/github.com$it" }?: Log.e("GithubParser", "failed to get downloadUrl").let { return null }
+                    ?: Log.e("GithubParser", "failed to get downloadUrl").let { return null }
+                val downloadUrls = githubAssetUrlCandidates(downloadHref)
+                val downloadUrl = downloadUrls.first()
                 updatePhase.tryEmit("GitHub步骤: 拉取远程分支版本号")
-                val gradle = releaseDocument
+                val tag = releaseDocument
                     .select("""a[href^="$REPOSITORY_PATH/tree/"]""")
                     .attr("href")
                     .replace("$REPOSITORY_PATH/tree/", "")
-                    .let { "https://gh-proxy.com/raw.githubusercontent.com/$REPOSITORY_SLUG/refs/tags/$it/app/build.gradle.kts" }
-                    .let(Jsoup::connect)
-                    .ignoreContentType(true)
-                    .get()
-                    .outputSettings(
-                        Document.OutputSettings()
-                            .prettyPrint(false)
-                            .syntax(Document.OutputSettings.Syntax.xml)
-                    )
-                    .toString()
+                val gradle = fetchRawGithubText("refs/tags/$tag", "app/build.gradle.kts")
                 val versionCode = versionCodeRegex.find(gradle)?.groups?.get(1)?.value?.replace("_", "")?.toIntOrNull() ?: Log.e("GithubParser", "failed to get versionCode").also { return null }
                 val versionName = versionNameRegex.find(gradle)?.groups?.get(1)?.value?.replace("\"", "") ?: Log.e("GithubParser", "failed to get versionName").also { return null }
                 updatePhase.tryEmit("GitHub步骤: 解析更新日志")
@@ -185,7 +228,8 @@ object GithubParser {
                     versionCode,
                     versionName.toString(),
                     releaseNotes,
-                    downloadUrl
+                    downloadUrl,
+                    downloadUrls
                 )
             }
     }
@@ -235,16 +279,7 @@ object GithubParser {
             updatePhase.tryEmit("GitHub步骤: 获取最新Release")
             val downloadUrl: String?
             updatePhase.tryEmit("GitHub步骤: 拉取远程分支版本号")
-            val gradle = Jsoup
-                .connect("https://gh-proxy.com/raw.githubusercontent.com/$REPOSITORY_SLUG/refs/heads/$DEFAULT_BRANCH/app/build.gradle.kts")
-                .ignoreContentType(true)
-                .get()
-                .outputSettings(
-                    Document.OutputSettings()
-                        .prettyPrint(false)
-                        .syntax(Document.OutputSettings.Syntax.xml)
-                )
-                .toString()
+            val gradle = fetchRawGithubText("refs/heads/$DEFAULT_BRANCH", "app/build.gradle.kts")
             val fallbackVersionCode = versionCodeRegex.find(gradle)?.groups?.get(1)?.value?.replace("_", "")?.toIntOrNull() ?: Log.e("GithubParser", "failed to get versionCode").also { return null }
             val fallbackVersionName = versionNameRegex.find(gradle)?.groups?.get(1)?.value?.replace("\"", "") ?: Log.e("GithubParser", "failed to get versionName").also { return null }
             val connection = Jsoup.connect(host + URL)
@@ -272,7 +307,8 @@ object GithubParser {
                 ?: artifactNameRegex.find(artifactFileName)
             val versionCode = artifactMatch?.groups?.get(2)?.value?.toIntOrNull() ?: fallbackVersionCode
             val versionName = artifactMatch?.groups?.get(1)?.value ?: fallbackVersionName
-            downloadUrl = apkDownloadHref
+            val downloadUrls = listOf(apkDownloadHref)
+            downloadUrl = downloadUrls.first()
             val downloadFileProgress: ((File, File) -> Unit) = { zipFile, targetApk ->
                 try {
 
@@ -344,6 +380,7 @@ object GithubParser {
                     versionName.toString() ,
                     releaseNotes,
                     downloadUrl,
+                    downloadUrls,
                     downloadFileProgress
                 )
             else lastReleaseRelease

@@ -7,6 +7,8 @@ interface Release {
     val versionName: String
     val releaseNotes: String
     val downloadUrl: String
+    val downloadUrls: List<String>
+        get() = listOf(downloadUrl)
 
     /***
      * 第一个File是需要处理的文件

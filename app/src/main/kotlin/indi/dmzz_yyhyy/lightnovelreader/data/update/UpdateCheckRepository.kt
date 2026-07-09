@@ -142,48 +142,72 @@ class UpdateCheckRepository @Inject constructor(
                     .readTimeout(120, TimeUnit.SECONDS)
                     .build()
 
-                val request = Request.Builder()
-                    .url(release.downloadUrl)
-                    .get()
-                    .build()
+                val downloadUrls = release.downloadUrls.distinct()
+                var downloaded = false
+                var lastFailureMessage = "未知错误"
+                for ((index, downloadUrl) in downloadUrls.withIndex()) {
+                    if (tempFile.exists()) tempFile.delete()
+                    try {
+                        val request = Request.Builder()
+                            .url(downloadUrl)
+                            .get()
+                            .build()
 
-                client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        Log.e("UpdateChecker", "Failed to download update: ${response.code}")
-                        _updatePhase.emit("下载失败 (${response.code})")
-                        showDownloadFailedNotification("HTTP ${response.code}")
-                        return@use
-                    }
+                        client.newCall(request).execute().use { response ->
+                            if (!response.isSuccessful) {
+                                lastFailureMessage = "HTTP ${response.code}"
+                                Log.e("UpdateChecker", "Failed to download update from $downloadUrl: ${response.code}")
+                                if (index < downloadUrls.lastIndex) {
+                                    _updatePhase.emit("下载失败 (${response.code})，尝试备用链接…")
+                                }
+                                return@use
+                            }
 
-                    response.body.let { body ->
-                        val total = body.contentLength()
-                        val input = body.byteStream()
-                        FileOutputStream(tempFile).use { output ->
-                            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                            var bytesCopied = 0L
-                            var bytes = input.read(buffer)
-                            var lastNotificationUpdate = 0L
+                            response.body.let { body ->
+                                val total = body.contentLength()
+                                val input = body.byteStream()
+                                FileOutputStream(tempFile).use { output ->
+                                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                                    var bytesCopied = 0L
+                                    var bytes = input.read(buffer)
+                                    var lastNotificationUpdate = 0L
 
-                            while (bytes >= 0) {
-                                output.write(buffer, 0, bytes)
-                                bytesCopied += bytes
-                                bytes = input.read(buffer)
+                                    while (bytes >= 0) {
+                                        output.write(buffer, 0, bytes)
+                                        bytesCopied += bytes
+                                        bytes = input.read(buffer)
 
-                                if (total > 0) {
-                                    val progress = bytesCopied.toFloat() / total.toFloat()
-                                    _downloadProgress.emit(progress)
-                                    val progressPercent = (progress * 100).toInt()
-                                    _updatePhase.emit("下载中... $progressPercent%")
+                                        if (total > 0) {
+                                            val progress = bytesCopied.toFloat() / total.toFloat()
+                                            _downloadProgress.emit(progress)
+                                            val progressPercent = (progress * 100).toInt()
+                                            _updatePhase.emit("下载中... $progressPercent%")
 
-                                    val now = System.currentTimeMillis()
-                                    if (now - lastNotificationUpdate > 500) {
-                                        showDownloadNotification(progressPercent, release.versionName)
-                                        lastNotificationUpdate = now
+                                            val now = System.currentTimeMillis()
+                                            if (now - lastNotificationUpdate > 500) {
+                                                showDownloadNotification(progressPercent, release.versionName)
+                                                lastNotificationUpdate = now
+                                            }
+                                        }
                                     }
                                 }
                             }
+                            downloaded = true
+                        }
+                    } catch (e: Exception) {
+                        lastFailureMessage = e.localizedMessage ?: e.javaClass.simpleName
+                        Log.e("UpdateChecker", "Failed to download update from $downloadUrl", e)
+                        if (index < downloadUrls.lastIndex) {
+                            _updatePhase.emit("下载失败 ($lastFailureMessage)，尝试备用链接…")
                         }
                     }
+                    if (downloaded) break
+                }
+
+                if (!downloaded) {
+                    _updatePhase.emit("下载失败 ($lastFailureMessage)")
+                    showDownloadFailedNotification(lastFailureMessage)
+                    return@launch
                 }
 
                 release.downloadFileProgress?.let { transform ->
