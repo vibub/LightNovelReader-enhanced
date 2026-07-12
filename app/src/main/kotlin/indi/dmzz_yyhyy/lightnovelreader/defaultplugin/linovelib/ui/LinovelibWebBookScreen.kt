@@ -1,6 +1,7 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.ui
 
 import android.webkit.WebView
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -33,6 +34,14 @@ fun LinovelibWebBookScreen(
     val updateNavigationState: (WebView?) -> Unit = { view ->
         canGoBack = view?.canGoBack() == true
         canGoForward = view?.canGoForward() == true
+    }
+
+    BackHandler {
+        handleLinovelibWebViewBack(
+            webView = webView,
+            onNoHistory = onClickBack,
+            updateNavigationState = updateNavigationState
+        )
     }
 
     val initialUrl = remember(bookId, chapterId) {

@@ -2,10 +2,12 @@ package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.ui
 
 import android.annotation.SuppressLint
 import android.os.Build
+import android.os.Bundle
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -38,6 +40,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import java.net.URLEncoder
@@ -64,6 +67,14 @@ fun LinovelibSourceSettingsScreen(
     val updateNavigationState: (WebView?) -> Unit = { view ->
         canGoBack = view?.canGoBack() == true
         canGoForward = view?.canGoForward() == true
+    }
+
+    BackHandler {
+        handleLinovelibWebViewBack(
+            webView = webViewHolder.webView,
+            onNoHistory = onClickBack,
+            updateNavigationState = updateNavigationState
+        )
     }
 
     DisposableEffect(Unit) {
@@ -200,6 +211,19 @@ fun LinovelibWebNavigationActions(
     }
 }
 
+internal fun handleLinovelibWebViewBack(
+    webView: WebView?,
+    onNoHistory: () -> Unit,
+    updateNavigationState: (WebView?) -> Unit
+) {
+    if (webView?.canGoBack() == true) {
+        webView.goBack()
+        updateNavigationState(webView)
+    } else {
+        onNoHistory()
+    }
+}
+
 @Composable
 private fun LinovelibAccountMenuContent(
     uiState: LinovelibSourceSettingsUiState,
@@ -292,16 +316,25 @@ private fun LinovelibAccountMenuContent(
 fun LinovelibWebSearchScreen(
     keyword: String,
     onClickBack: () -> Unit,
-    onBookDetected: (String) -> Unit
+    onBookDetected: (String) -> Unit,
+    viewModel: LinovelibWebSearchViewModel = hiltViewModel()
 ) {
     var webView: WebView? by remember { mutableStateOf(null) }
-    var detectedBookId by remember { mutableStateOf<String?>(null) }
     var canGoBack by remember { mutableStateOf(false) }
     var canGoForward by remember { mutableStateOf(false) }
     val updateNavigationState: (WebView?) -> Unit = { view ->
         canGoBack = view?.canGoBack() == true
         canGoForward = view?.canGoForward() == true
     }
+
+    BackHandler {
+        handleLinovelibWebViewBack(
+            webView = webView,
+            onNoHistory = onClickBack,
+            updateNavigationState = updateNavigationState
+        )
+    }
+
     val searchUrl = remember(keyword) {
         keyword.trim().takeIf { it.isNotBlank() }
             ?.let { LinovelibConstants.searchUrl(URLEncoder.encode(it, Charsets.UTF_8.name())) }
@@ -310,7 +343,12 @@ fun LinovelibWebSearchScreen(
 
     DisposableEffect(Unit) {
         onDispose {
-            webView?.destroy()
+            webView?.run {
+                val state = Bundle()
+                viewModel.saveWebViewState(state.takeIf { saveState(it) != null })
+                stopLoading()
+                destroy()
+            }
             webView = null
         }
     }
@@ -338,15 +376,14 @@ fun LinovelibWebSearchScreen(
                 .padding(innerPadding)
                 .fillMaxSize(),
             initialUrl = searchUrl,
+            restoredState = viewModel.getWebViewState(),
             onWebViewCreated = {
                 webView = it
                 updateNavigationState(it)
             },
             onUrlChanged = { url ->
-                val bookId = LinovelibConstants.extractBookIdFromUrl(url)
-                if (bookId != null && detectedBookId != bookId) {
-                    detectedBookId = bookId
-                    onBookDetected(bookId)
+                if (viewModel.hasUrlChanged(url)) {
+                    LinovelibConstants.extractBookIdFromUrl(url)?.let(onBookDetected)
                 }
             },
             onPageFinished = { view, _ ->
@@ -438,6 +475,7 @@ enum class LinovelibWebViewMode {
 fun LinovelibWebView(
     modifier: Modifier,
     initialUrl: String,
+    restoredState: Bundle? = null,
     initialCookies: String = "",
     mode: LinovelibWebViewMode = LinovelibWebViewMode.Browsing,
     onWebViewCreated: (WebView) -> Unit = {},
@@ -478,6 +516,11 @@ fun LinovelibWebView(
                 isFocusableInTouchMode = true
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                 webViewClient = object : WebViewClient() {
+                    override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
+                        super.doUpdateVisitedHistory(view, url, isReload)
+                        currentOnUrlChanged(url)
+                    }
+
                     override fun onPageFinished(view: WebView, url: String) {
                         super.onPageFinished(view, url)
                         CookieManager.getInstance().flush()
@@ -488,8 +531,11 @@ fun LinovelibWebView(
                         currentOnPageFinished(view, url)
                     }
                 }
+                val restored = restoredState?.let { restoreState(it) } != null
                 currentOnWebViewCreated(this)
-                loadUrl(initialUrl)
+                if (!restored) {
+                    loadUrl(initialUrl)
+                }
             }
         },
         update = {}
