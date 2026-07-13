@@ -11,6 +11,7 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.io.IOException
 import java.net.SocketTimeoutException
+import java.net.URI
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.random.Random
@@ -44,14 +45,16 @@ class LinovelibJsoup(
         referer: String = LinovelibConstants.BASE_URL,
         useCookie: Boolean = true,
         retryTime: Int = 2,
-        userAgentMode: UserAgentMode = UserAgentMode.Desktop
+        userAgentMode: UserAgentMode = UserAgentMode.Desktop,
+        coolDownOnCloudflare: Boolean = true
     ): Document = fetch(
         url = url,
         referer = referer,
         accept = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         useCookie = useCookie,
         retryTime = retryTime,
-        userAgentMode = userAgentMode
+        userAgentMode = userAgentMode,
+        coolDownOnCloudflare = coolDownOnCloudflare
     ).let { body ->
         Jsoup.parse(body, url).apply {
             outputSettings().prettyPrint(false)
@@ -65,7 +68,15 @@ class LinovelibJsoup(
         useCookie: Boolean = true,
         retryTime: Int = 2,
         userAgentMode: UserAgentMode = UserAgentMode.Desktop
-    ): String = fetch(url, referer, accept, useCookie, retryTime, userAgentMode)
+    ): String = fetch(
+        url = url,
+        referer = referer,
+        accept = accept,
+        useCookie = useCookie,
+        retryTime = retryTime,
+        userAgentMode = userAgentMode,
+        coolDownOnCloudflare = true
+    )
 
     fun defaultHeaders(
         referer: String = LinovelibConstants.BASE_URL,
@@ -95,7 +106,8 @@ class LinovelibJsoup(
         accept: String,
         useCookie: Boolean,
         retryTime: Int,
-        userAgentMode: UserAgentMode
+        userAgentMode: UserAgentMode,
+        coolDownOnCloudflare: Boolean
     ): String = withContext(Dispatchers.IO) {
         var lastError: Throwable? = null
         var delayMillis = 1_500L
@@ -120,10 +132,12 @@ class LinovelibJsoup(
                         throw LinovelibHttpException(statusCode, url, retryAfterMillis)
                     }
                     if (isCloudflareBlocked(statusCode, body)) {
-                        LinovelibRateLimiter.coolDown(
-                            reason = "Cloudflare blocked $url",
-                            delayMillis = LinovelibRateLimiter.CLOUDFLARE_COOLDOWN_MILLIS
-                        )
+                        if (coolDownOnCloudflare) {
+                            LinovelibRateLimiter.coolDown(
+                                reason = "Cloudflare blocked $url",
+                                delayMillis = LinovelibRateLimiter.CLOUDFLARE_COOLDOWN_MILLIS
+                            )
+                        }
                         throw LinovelibBlockedException("Linovelib request was blocked by Cloudflare: $url")
                     }
                     if (statusCode !in 200..299) throw LinovelibHttpException(statusCode, url)
@@ -212,6 +226,30 @@ class LinovelibJsoup(
                 trimmedUrl.startsWith("http://") || trimmedUrl.startsWith("https://") -> trimmedUrl
                 trimmedUrl.startsWith("/") -> LinovelibConstants.BASE_URL + trimmedUrl
                 else -> "${LinovelibConstants.BASE_URL}/$trimmedUrl"
+            }
+        }
+
+        fun normalizeCoverUrl(url: String): String {
+            val normalizedUrl = normalizeUrl(url)
+            if (normalizedUrl.isBlank()) return ""
+            val uri = runCatching { URI(normalizedUrl) }.getOrNull() ?: return normalizedUrl
+            val host = uri.host?.lowercase() ?: return normalizedUrl
+            val path = uri.rawPath.orEmpty()
+            if (!path.startsWith("/files/article/image/")) return normalizedUrl
+
+            val desktopHost = URI(LinovelibConstants.BASE_URL).host.lowercase()
+            val mobileHost = URI(LinovelibConstants.MOBILE_BASE_URL).host.lowercase()
+            val mobileRootDomain = mobileHost.substringAfter('.')
+            val isLinovelibHost = host == desktopHost ||
+                host == mobileHost ||
+                host.endsWith(".$mobileRootDomain")
+            if (!isLinovelibHost) return normalizedUrl
+
+            return buildString {
+                append(LinovelibConstants.BASE_URL)
+                append(path)
+                uri.rawQuery?.let { append('?').append(it) }
+                uri.rawFragment?.let { append('#').append(it) }
             }
         }
     }

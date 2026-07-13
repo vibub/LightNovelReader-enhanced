@@ -12,6 +12,39 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlin.coroutines.cancellation.CancellationException
+
+internal enum class LinovelibExploreSource {
+    Desktop,
+    Mobile
+}
+
+internal suspend fun loadLinovelibExploreBooks(
+    limit: Int = 12,
+    onError: (Throwable) -> Unit = { it.printStackTrace() },
+    loadBooks: suspend (LinovelibExploreSource) -> List<LinovelibWebsiteDataSource.LinovelibExploreBook>
+): List<LinovelibWebsiteDataSource.LinovelibExploreBook> {
+    if (limit <= 0) return emptyList()
+
+    suspend fun load(source: LinovelibExploreSource): List<LinovelibWebsiteDataSource.LinovelibExploreBook> = try {
+        loadBooks(source)
+            .filter { it.id.isNotBlank() }
+            .distinctBy { it.id }
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Throwable) {
+        onError(error)
+        emptyList()
+    }
+
+    val desktopBooks = load(LinovelibExploreSource.Desktop)
+    if (desktopBooks.size >= limit) return desktopBooks.take(limit)
+
+    val mobileBooks = load(LinovelibExploreSource.Mobile)
+    return (desktopBooks + mobileBooks)
+        .distinctBy { it.id }
+        .take(limit)
+}
 
 class LinovelibExplorePageProvider(
     jsoup: LinovelibJsoup,
@@ -29,26 +62,31 @@ private class LinovelibHomeExploreTapPage(
     override val title: String = "首页"
 
     override fun getRowsFlow(): Flow<List<ExploreBooksRow>> = flow {
-        val books = runCatching {
-            val document = jsoup.getDocument(
-                url = LinovelibConstants.BASE_URL,
-                retryTime = 0,
-                userAgentMode = LinovelibJsoup.UserAgentMode.Mobile
-            )
+        val books = loadLinovelibExploreBooks { source ->
+            val document = when (source) {
+                LinovelibExploreSource.Desktop -> jsoup.getDocument(
+                    url = LinovelibConstants.BASE_URL,
+                    referer = LinovelibConstants.BASE_URL,
+                    retryTime = 0,
+                    userAgentMode = LinovelibJsoup.UserAgentMode.Desktop,
+                    coolDownOnCloudflare = false
+                )
+                LinovelibExploreSource.Mobile -> jsoup.getDocument(
+                    url = LinovelibConstants.MOBILE_BASE_URL,
+                    referer = LinovelibConstants.MOBILE_BASE_URL,
+                    retryTime = 0,
+                    userAgentMode = LinovelibJsoup.UserAgentMode.Mobile
+                )
+            }
             websiteDataSource.parseExploreBooks(document)
-                .take(12)
-                .map {
-                    ExploreDisplayBook(
-                        id = it.id,
-                        title = it.title,
-                        author = it.author,
-                        coverUri = LinovelibJsoup.normalizeUrl(it.coverUrl).takeIf { url -> url.isNotBlank() }?.toUri()
-                            ?: android.net.Uri.EMPTY
-                    )
-                }
-        }.getOrElse {
-            it.printStackTrace()
-            emptyList()
+        }.map {
+            ExploreDisplayBook(
+                id = it.id,
+                title = it.title,
+                author = it.author,
+                coverUri = LinovelibJsoup.normalizeCoverUrl(it.coverUrl).takeIf { url -> url.isNotBlank() }?.toUri()
+                    ?: android.net.Uri.EMPTY
+            )
         }
         emit(
             if (books.isEmpty()) emptyList()

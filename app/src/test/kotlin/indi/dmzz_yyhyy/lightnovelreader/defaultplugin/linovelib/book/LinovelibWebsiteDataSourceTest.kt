@@ -1,5 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book
 
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibJsoup
 import io.nightfish.lightnovelreader.api.content.component.ImageComponentData
 import io.nightfish.lightnovelreader.api.content.component.SimpleTextStyleRange
@@ -200,6 +201,41 @@ class LinovelibWebsiteDataSourceTest {
         assertEquals(listOf("4800", "2906"), books.map { it.id })
         assertEquals("https://www.linovelib.com/files/article/image/4/4800/4800s.jpg", books[0].coverUrl)
         assertEquals("https://www.linovelib.com/files/article/image/2/2906/2906s.jpg", books[1].coverUrl)
+    }
+
+    @Test
+    fun parseExploreBooksSupportsMobileBannerAndNormalizesCoverHosts() {
+        val mobileHost = LinovelibConstants.MOBILE_BASE_URL.substringAfter("://")
+        val rootDomain = mobileHost.substringAfter('.')
+        val thirdPartyCover = "https://img3.readpai.com/cover/2211/2211l.jpg"
+        val document = Jsoup.parse(
+            """
+            <html><body>
+              <ul class="slide-ul">
+                <li class="slide-li">
+                  <a href="/novel/3080.html">
+                    <img src="https://legacy.$rootDomain/files/article/image/3/3080/3080l.jpg?v=2" alt="我当备胎女友也没关系。">
+                  </a>
+                </li>
+                <li class="slide-li">
+                  <a href="/novel/2211.html">
+                    <img src="$thirdPartyCover" alt="精灵幻想记">
+                  </a>
+                </li>
+              </ul>
+            </body></html>
+            """.trimIndent(),
+            LinovelibConstants.MOBILE_BASE_URL
+        )
+        val books = LinovelibWebsiteDataSource(LinovelibJsoup()).parseExploreBooks(document)
+
+        assertEquals(listOf("3080", "2211"), books.map { it.id })
+        assertEquals(listOf("我当备胎女友也没关系。", "精灵幻想记"), books.map { it.title })
+        assertEquals(
+            "${LinovelibConstants.BASE_URL}/files/article/image/3/3080/3080l.jpg?v=2",
+            LinovelibJsoup.normalizeCoverUrl(books[0].coverUrl)
+        )
+        assertEquals(thirdPartyCover, LinovelibJsoup.normalizeCoverUrl(books[1].coverUrl))
     }
 
     @Test

@@ -1,5 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net
 
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -59,5 +60,63 @@ class LinovelibJsoupTest {
         assertTrue(LinovelibJsoup.isCloudflareBlocked(200, "Cloudflare cf-chl just a moment"))
         assertTrue(LinovelibJsoup.isCloudflareBlocked(200, "请稍候，正在检查您的浏览器"))
         assertFalse(LinovelibJsoup.isCloudflareBlocked(200, "normal page"))
+    }
+
+    @Test
+    fun normalizeCoverUrlResolvesRelativeBookCoverToDesktopHost() {
+        assertEquals(
+            "${LinovelibConstants.BASE_URL}/files/article/image/3/3080/3080s.jpg",
+            LinovelibJsoup.normalizeCoverUrl("/files/article/image/3/3080/3080s.jpg")
+        )
+    }
+
+    @Test
+    fun normalizeCoverUrlKeepsDesktopBookCover() {
+        val url = "${LinovelibConstants.BASE_URL}/files/article/image/3/3080/3080s.jpg"
+
+        assertEquals(url, LinovelibJsoup.normalizeCoverUrl(url))
+    }
+
+    @Test
+    fun normalizeCoverUrlRewritesMobileBookCoverToDesktopHost() {
+        assertEquals(
+            "${LinovelibConstants.BASE_URL}/files/article/image/3/3080/3080l.jpg",
+            LinovelibJsoup.normalizeCoverUrl(
+                "${LinovelibConstants.MOBILE_BASE_URL}/files/article/image/3/3080/3080l.jpg"
+            )
+        )
+    }
+
+    @Test
+    fun normalizeCoverUrlRewritesSameRootSubdomainAndKeepsSuffix() {
+        val mobileHost = LinovelibConstants.MOBILE_BASE_URL.substringAfter("://")
+        val rootDomain = mobileHost.substringAfter('.')
+
+        assertEquals(
+            "${LinovelibConstants.BASE_URL}/files/article/image/3/3080/3080l.jpg?v=2#cover",
+            LinovelibJsoup.normalizeCoverUrl(
+                "https://legacy.$rootDomain/files/article/image/3/3080/3080l.jpg?v=2#cover"
+            )
+        )
+    }
+
+    @Test
+    fun normalizeCoverUrlKeepsThirdPartyCdn() {
+        val url = "https://img3.readpai.com/cover/3080/309000.jpg"
+
+        assertEquals(url, LinovelibJsoup.normalizeCoverUrl(url))
+    }
+
+    @Test
+    fun normalizeCoverUrlDoesNotRewriteOtherSitePaths() {
+        val url = "${LinovelibConstants.MOBILE_BASE_URL}/themes/zhmb/images/book-cover-no.svg"
+
+        assertEquals(url, LinovelibJsoup.normalizeCoverUrl(url))
+    }
+
+    @Test
+    fun normalizeCoverUrlRejectsUnsupportedUrlsAndKeepsMalformedAbsoluteUrl() {
+        assertEquals("", LinovelibJsoup.normalizeCoverUrl("data:image/png;base64,abc"))
+        assertEquals("https://[", LinovelibJsoup.normalizeCoverUrl("https://["))
     }
 }

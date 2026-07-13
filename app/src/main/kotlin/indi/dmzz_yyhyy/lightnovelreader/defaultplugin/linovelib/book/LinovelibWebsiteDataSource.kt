@@ -74,7 +74,7 @@ class LinovelibWebsiteDataSource(
             id = bookId,
             title = title.cleanText(),
             subtitle = "",
-            coverUrl = LinovelibJsoup.normalizeUrl(cover).takeIf { it.isNotBlank() }?.toUri() ?: Uri.EMPTY,
+            coverUrl = LinovelibJsoup.normalizeCoverUrl(cover).takeIf { it.isNotBlank() }?.toUri() ?: Uri.EMPTY,
             author = author.cleanText(),
             description = description.cleanDescription(),
             tags = tags,
