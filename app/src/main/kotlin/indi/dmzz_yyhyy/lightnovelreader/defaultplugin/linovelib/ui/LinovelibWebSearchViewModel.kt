@@ -9,6 +9,7 @@ import javax.inject.Inject
 class LinovelibWebSearchViewModel @Inject constructor() : ViewModel() {
     private var webViewState: Bundle? = null
     private var lastObservedUrl: String? = null
+    private var isBackNavigationInProgress = false
 
     fun getWebViewState(): Bundle? = webViewState?.let(::Bundle)
 
@@ -16,9 +17,17 @@ class LinovelibWebSearchViewModel @Inject constructor() : ViewModel() {
         webViewState = state?.let(::Bundle)
     }
 
-    fun hasUrlChanged(url: String): Boolean {
+    fun beginBackNavigation() {
+        isBackNavigationInProgress = true
+    }
+
+    fun finishBackNavigation() {
+        isBackNavigationInProgress = false
+    }
+
+    fun shouldDetectBookAtUrl(url: String): Boolean {
         if (url == lastObservedUrl) return false
         lastObservedUrl = url
-        return true
+        return !isBackNavigationInProgress
     }
 }

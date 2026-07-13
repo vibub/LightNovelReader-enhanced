@@ -173,13 +173,18 @@ fun LinovelibWebNavigationActions(
     webView: WebView?,
     canGoBack: Boolean,
     canGoForward: Boolean,
-    updateNavigationState: (WebView?) -> Unit
+    updateNavigationState: (WebView?) -> Unit,
+    onBeforeGoBack: () -> Unit = {},
+    onBeforeGoForward: () -> Unit = {}
 ) {
     IconButton(
         enabled = canGoBack,
         onClick = {
             webView?.run {
-                goBack()
+                if (this.canGoBack()) {
+                    onBeforeGoBack()
+                    goBack()
+                }
                 updateNavigationState(this)
             }
         }
@@ -193,7 +198,10 @@ fun LinovelibWebNavigationActions(
         enabled = canGoForward,
         onClick = {
             webView?.run {
-                goForward()
+                if (this.canGoForward()) {
+                    onBeforeGoForward()
+                    goForward()
+                }
                 updateNavigationState(this)
             }
         }
@@ -214,9 +222,11 @@ fun LinovelibWebNavigationActions(
 internal fun handleLinovelibWebViewBack(
     webView: WebView?,
     onNoHistory: () -> Unit,
-    updateNavigationState: (WebView?) -> Unit
+    updateNavigationState: (WebView?) -> Unit,
+    onBeforeGoBack: () -> Unit = {}
 ) {
     if (webView?.canGoBack() == true) {
+        onBeforeGoBack()
         webView.goBack()
         updateNavigationState(webView)
     } else {
@@ -331,7 +341,8 @@ fun LinovelibWebSearchScreen(
         handleLinovelibWebViewBack(
             webView = webView,
             onNoHistory = onClickBack,
-            updateNavigationState = updateNavigationState
+            updateNavigationState = updateNavigationState,
+            onBeforeGoBack = viewModel::beginBackNavigation
         )
     }
 
@@ -343,6 +354,7 @@ fun LinovelibWebSearchScreen(
 
     DisposableEffect(Unit) {
         onDispose {
+            viewModel.finishBackNavigation()
             webView?.run {
                 val state = Bundle()
                 viewModel.saveWebViewState(state.takeIf { saveState(it) != null })
@@ -365,7 +377,9 @@ fun LinovelibWebSearchScreen(
                         webView = webView,
                         canGoBack = canGoBack,
                         canGoForward = canGoForward,
-                        updateNavigationState = updateNavigationState
+                        updateNavigationState = updateNavigationState,
+                        onBeforeGoBack = viewModel::beginBackNavigation,
+                        onBeforeGoForward = viewModel::finishBackNavigation
                     )
                 }
             )
@@ -378,16 +392,18 @@ fun LinovelibWebSearchScreen(
             initialUrl = searchUrl,
             restoredState = viewModel.getWebViewState(),
             onWebViewCreated = {
+                viewModel.finishBackNavigation()
                 webView = it
                 updateNavigationState(it)
             },
             onUrlChanged = { url ->
-                if (viewModel.hasUrlChanged(url)) {
+                if (viewModel.shouldDetectBookAtUrl(url)) {
                     LinovelibConstants.extractBookIdFromUrl(url)?.let(onBookDetected)
                 }
             },
             onPageFinished = { view, _ ->
                 updateNavigationState(view)
+                viewModel.finishBackNavigation()
             }
         )
     }

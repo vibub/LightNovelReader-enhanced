@@ -6,36 +6,93 @@ import org.junit.Test
 
 class LinovelibWebSearchViewModelTest {
     @Test
-    fun firstUrlIsTreatedAsChanged() {
+    fun firstUrlIsAllowedForBookDetection() {
         val viewModel = LinovelibWebSearchViewModel()
 
-        assertTrue(viewModel.hasUrlChanged("https://m.bilinovel.com/novel/123.html"))
+        assertTrue(viewModel.shouldDetectBookAtUrl("https://m.bilinovel.com/novel/123.html"))
     }
 
     @Test
-    fun repeatedUrlIsNotTreatedAsChanged() {
+    fun repeatedUrlIsNotAllowedForBookDetection() {
         val viewModel = LinovelibWebSearchViewModel()
         val url = "https://m.bilinovel.com/novel/123.html"
 
-        assertTrue(viewModel.hasUrlChanged(url))
-        assertFalse(viewModel.hasUrlChanged(url))
+        assertTrue(viewModel.shouldDetectBookAtUrl(url))
+        assertFalse(viewModel.shouldDetectBookAtUrl(url))
     }
 
     @Test
-    fun returningToUrlAfterAnotherUrlIsTreatedAsChanged() {
+    fun returningToUrlAfterAnotherUrlIsAllowedForBookDetection() {
         val viewModel = LinovelibWebSearchViewModel()
         val detailUrl = "https://m.bilinovel.com/novel/123.html"
 
-        assertTrue(viewModel.hasUrlChanged(detailUrl))
-        assertTrue(viewModel.hasUrlChanged("https://m.bilinovel.com/search.php?q=test"))
-        assertTrue(viewModel.hasUrlChanged(detailUrl))
+        assertTrue(viewModel.shouldDetectBookAtUrl(detailUrl))
+        assertTrue(viewModel.shouldDetectBookAtUrl("https://m.bilinovel.com/search.php?q=test"))
+        assertTrue(viewModel.shouldDetectBookAtUrl(detailUrl))
     }
 
     @Test
-    fun switchingBetweenBookUrlsTreatsEachUrlAsChanged() {
+    fun switchingBetweenBookUrlsAllowsEachForBookDetection() {
         val viewModel = LinovelibWebSearchViewModel()
 
-        assertTrue(viewModel.hasUrlChanged("https://m.bilinovel.com/novel/123.html"))
-        assertTrue(viewModel.hasUrlChanged("https://m.bilinovel.com/novel/456.html"))
+        assertTrue(viewModel.shouldDetectBookAtUrl("https://m.bilinovel.com/novel/123.html"))
+        assertTrue(viewModel.shouldDetectBookAtUrl("https://m.bilinovel.com/novel/456.html"))
+    }
+
+    @Test
+    fun backNavigationSuppressesChangedUrlUntilFinished() {
+        val viewModel = LinovelibWebSearchViewModel()
+
+        assertTrue(viewModel.shouldDetectBookAtUrl("https://m.bilinovel.com/novel/123.html"))
+        viewModel.beginBackNavigation()
+        assertFalse(viewModel.shouldDetectBookAtUrl("https://m.bilinovel.com/novel/456.html"))
+        viewModel.finishBackNavigation()
+        assertTrue(viewModel.shouldDetectBookAtUrl("https://m.bilinovel.com/novel/789.html"))
+    }
+
+    @Test
+    fun repeatedCurrentUrlDoesNotEndBackNavigation() {
+        val viewModel = LinovelibWebSearchViewModel()
+        val currentUrl = "https://m.bilinovel.com/novel/123.html"
+
+        assertTrue(viewModel.shouldDetectBookAtUrl(currentUrl))
+        viewModel.beginBackNavigation()
+        assertFalse(viewModel.shouldDetectBookAtUrl(currentUrl))
+        assertFalse(viewModel.shouldDetectBookAtUrl("https://m.bilinovel.com/novel/456.html"))
+    }
+
+    @Test
+    fun backNavigationSuppressesMultipleChangedUrlsUntilFinished() {
+        val viewModel = LinovelibWebSearchViewModel()
+
+        assertTrue(viewModel.shouldDetectBookAtUrl("https://m.bilinovel.com/novel/123.html"))
+        viewModel.beginBackNavigation()
+        assertFalse(viewModel.shouldDetectBookAtUrl("https://m.bilinovel.com/novel/456.html"))
+        assertFalse(viewModel.shouldDetectBookAtUrl("https://m.bilinovel.com/novel/789.html"))
+        viewModel.finishBackNavigation()
+        assertTrue(viewModel.shouldDetectBookAtUrl("https://m.bilinovel.com/novel/1011.html"))
+    }
+
+    @Test
+    fun forwardAfterBackNavigationCanDetectPreviousDetailAgain() {
+        val viewModel = LinovelibWebSearchViewModel()
+        val detailUrl = "https://m.bilinovel.com/novel/123.html"
+        val searchUrl = "https://m.bilinovel.com/search.php?q=test"
+
+        assertTrue(viewModel.shouldDetectBookAtUrl(detailUrl))
+        viewModel.beginBackNavigation()
+        assertFalse(viewModel.shouldDetectBookAtUrl(searchUrl))
+        viewModel.finishBackNavigation()
+        assertTrue(viewModel.shouldDetectBookAtUrl(detailUrl))
+    }
+
+    @Test
+    fun finishingBackNavigationWithoutUrlChangeRestoresDetection() {
+        val viewModel = LinovelibWebSearchViewModel()
+
+        assertTrue(viewModel.shouldDetectBookAtUrl("https://m.bilinovel.com/novel/123.html"))
+        viewModel.beginBackNavigation()
+        viewModel.finishBackNavigation()
+        assertTrue(viewModel.shouldDetectBookAtUrl("https://m.bilinovel.com/novel/456.html"))
     }
 }
