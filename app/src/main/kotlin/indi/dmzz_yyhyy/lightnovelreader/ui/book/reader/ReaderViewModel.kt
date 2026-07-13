@@ -1,6 +1,7 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.runtime.getValue
@@ -18,6 +19,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book.targetLinovelibChapterPageId
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.comment.LinovelibChapterCommentRepository
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.sync.LinovelibBookmarkRepository
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.sync.LinovelibRemoteBookmarkResult
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.sync.LinovelibSyncRepository
@@ -57,6 +59,7 @@ class ReaderViewModel @Inject constructor(
     val contentComponentRepository: ContentComponentRepository,
     private val linovelibBookmarkRepository: LinovelibBookmarkRepository,
     private val linovelibSyncRepository: LinovelibSyncRepository,
+    linovelibChapterCommentRepository: LinovelibChapterCommentRepository,
     private val webBookDataSourceProvider: WebBookDataSourceProvider,
     @param:ApplicationContext private val applicationContext: Context
 ) : ViewModel() {
@@ -64,6 +67,14 @@ class ReaderViewModel @Inject constructor(
     private var contentViewModel: ContentViewModel by mutableStateOf(ContentViewModel.empty)
     private val _uiState = MutableReaderScreenUiState(contentViewModel.uiState)
     val uiState: ReaderScreenUiState = _uiState
+    val imageHeader: Map<String, String>
+        get() = webBookDataSourceProvider.default.imageHeader
+    private val chapterCommentsController = ChapterCommentsController(
+        coroutineScope = viewModelScope,
+        dataSource = linovelibChapterCommentRepository,
+        nowMillis = SystemClock::elapsedRealtime,
+        onStateChanged = { _uiState.chapterCommentsUiState = it }
+    )
     private val readingBookListUserData =
         userDataRepository.stringListUserData(UserDataPath.ReadingBooks.path)
     private var bookVolumesJob: Job? = null
@@ -90,6 +101,9 @@ class ReaderViewModel @Inject constructor(
             bookmarkJob?.cancel()
             val isLinovelib = webBookDataSourceProvider.default.id == LinovelibConstants.SOURCE_ID
             _uiState.isLinovelibSource = isLinovelib
+            if (!isLinovelib || chapterCommentsController.state.context?.bookId != value) {
+                chapterCommentsController.dismiss()
+            }
             _uiState.bookmarkUiState = ReaderBookmarkUiState(isAvailable = isLinovelib)
             if (isLinovelib) {
                 bookmarkJob = viewModelScope.launch(Dispatchers.IO) {
@@ -123,6 +137,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     init {
+        _uiState.chapterCommentsUiState = chapterCommentsController.state
         viewModelScope.launch {
             settingState.isUsingFlipPageUserData.getFlowWithDefault(false).collect {
                 if (it && contentViewModel !is FlipPageContentViewModel) {
@@ -177,6 +192,30 @@ class ReaderViewModel @Inject constructor(
 
     fun selectChapterFromReaderCatalog(chapterId: String) {
         changeChapter(chapterId, restoreProgress = true)
+    }
+
+    fun openChapterComments(context: ChapterEndContext) {
+        if (!_uiState.isLinovelibSource || context.bookId != bookId) return
+        chapterCommentsController.open(context)
+    }
+
+    fun dismissChapterComments() {
+        chapterCommentsController.dismiss()
+    }
+
+    fun selectChapterCommentTab(tab: ChapterCommentTab) {
+        chapterCommentsController.selectTab(tab)
+    }
+
+    fun loadNextChapterComments() {
+        chapterCommentsController.loadNextPage()
+    }
+
+    fun retryChapterComments(tab: ChapterCommentTab) {
+        when (tab) {
+            ChapterCommentTab.Hot -> chapterCommentsController.retryHot()
+            ChapterCommentTab.All -> chapterCommentsController.retryAll()
+        }
     }
 
     fun bookmarkCurrentChapter(): Boolean {

@@ -28,6 +28,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.paint
 import androidx.compose.ui.focus.FocusRequester
@@ -45,10 +46,14 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import indi.dmzz_yyhyy.lightnovelreader.R
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ChapterEndContext
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderChapterEnd
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.toChapterEndContext
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.Loading
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data.MenuOptions
 import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
+import indi.dmzz_yyhyy.lightnovelreader.utils.readerTextColor
 import indi.dmzz_yyhyy.lightnovelreader.utils.rememberReaderBackgroundPainter
 import indi.dmzz_yyhyy.lightnovelreader.utils.showSnackbar
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
@@ -58,6 +63,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun FlipPageContentComponent(
@@ -68,6 +74,9 @@ fun FlipPageContentComponent(
     changeIsImmersive: () -> Unit,
     onClickPrevChapter: () -> Unit,
     onClickNextChapter: () -> Unit,
+    bookId: String,
+    chapterTitleById: Map<String, String>,
+    onClickChapterComments: ((ChapterEndContext) -> Unit)?,
 ) {
     SimpleFlipPageTextComponent(
         modifier = modifier,
@@ -77,6 +86,9 @@ fun FlipPageContentComponent(
         changeIsImmersive = changeIsImmersive,
         onClickNextChapter = onClickNextChapter,
         onClickPrevChapter = onClickPrevChapter,
+        bookId = bookId,
+        chapterTitleById = chapterTitleById,
+        onClickChapterComments = onClickChapterComments
     )
 }
 
@@ -89,13 +101,22 @@ private fun SimpleFlipPageTextComponent(
     changeIsImmersive: () -> Unit,
     onClickPrevChapter: () -> Unit,
     onClickNextChapter: () -> Unit,
+    bookId: String,
+    chapterTitleById: Map<String, String>,
+    onClickChapterComments: ((ChapterEndContext) -> Unit)?,
 ) {
     val scope = rememberCoroutineScope()
     val resources = LocalResources.current
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
     var contentKey by remember { mutableIntStateOf(0) }
-    val slippedContentComponentList = remember(uiState.readingChapterContent.content, resources, density) {
+    val hasChapterEndPage = onClickChapterComments != null
+    val slippedContentComponentList = remember(
+        uiState.readingChapterContent.content,
+        resources,
+        density,
+        hasChapterEndPage
+    ) {
         val width = resources.displayMetrics
             .widthPixels
             .minus(
@@ -120,13 +141,18 @@ private fun SimpleFlipPageTextComponent(
                 result.add(it)
             }
         }
-        uiState.updatePageState(PagerState { result.size })
+        val pagerPageCount = result.size + if (hasChapterEndPage) 1 else 0
+        uiState.updatePageState(
+            PagerState { pagerPageCount },
+            result.size
+        )
         return@remember result
     }
     val focusRequester = remember { FocusRequester() }
     val snackbarHostState = LocalSnackbarHost.current
 
     val painter = rememberReaderBackgroundPainter(settingState)
+    val textColor = readerTextColor(settingState)
     val bgPainter = remember(settingState.enableBackgroundImage, settingState.backgroundImageDisplayMode) {
         if (settingState.enableBackgroundImage &&
             settingState.backgroundImageDisplayMode == MenuOptions.ReaderBgImageDisplayModeOptions.Loop
@@ -243,7 +269,7 @@ private fun SimpleFlipPageTextComponent(
                                             volumeJob?.cancel()
                                             volumeJob = scope.launch {
                                                 while (isActive) {
-                                                    delay(intervalMs)
+                                                    delay(intervalMs.milliseconds)
                                                     if (event.key == Key.VolumeUp) lastPage(uiState.pagerState)
                                                     else nextPage(uiState.pagerState)
                                                 }
@@ -300,11 +326,29 @@ private fun SimpleFlipPageTextComponent(
                             contentScale = ContentScale.Crop
                         )
                     }
-                    slippedContentComponentList.getOrNull(it)?.Content(
-                        modifier
-                            .fillMaxSize()
-                            .padding(paddingValues)
-                    )
+                    val chapterEndCallback = onClickChapterComments
+                    if (chapterEndCallback != null && it == slippedContentComponentList.size) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(paddingValues),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val content = uiState.readingChapterContent
+                            ReaderChapterEnd(
+                                context = content.toChapterEndContext(bookId),
+                                nextChapterTitle = chapterTitleById[content.nextChapter],
+                                contentColor = textColor,
+                                onClickComments = chapterEndCallback
+                            )
+                        }
+                    } else {
+                        slippedContentComponentList.getOrNull(it)?.Content(
+                            modifier
+                                .fillMaxSize()
+                                .padding(paddingValues)
+                        )
+                    }
                 }
             }
         }

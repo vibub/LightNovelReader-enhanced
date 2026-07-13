@@ -8,8 +8,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -21,7 +19,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme.colorScheme
 import androidx.compose.material3.MaterialTheme.typography
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
@@ -79,138 +76,122 @@ fun ChapterSelectionBottomSheet(
         autoScrolled = true
     }
 
-    ModalBottomSheet(
+    ReaderBottomSheet(
         onDismissRequest = onDismissRequest,
-        sheetState = sheetState
+        sheetState = sheetState,
+        titleIcon = {
+            Icon(
+                painter = painterResource(R.drawable.read_more_24px),
+                contentDescription = null
+            )
+        },
+        title = {
+            Text(
+                text = stringResource(R.string.select_chapter),
+                style = typography.displayMedium,
+                fontWeight = FontWeight.W600
+            )
+        }
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.75f)
-        ) {
-            Column(
+        Spacer(Modifier.height(8.dp))
+
+        val isEmpty = bookVolumes.volumes.all { it.chapters.isEmpty() }
+
+        if (isEmpty) {
+            Box(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
+                    .height(200.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.read_more_24px),
-                        contentDescription = null
-                    )
-                    Text(
-                        modifier = Modifier.padding(start = 8.dp),
-                        text = stringResource(R.string.select_chapter),
-                        style = typography.displayMedium,
-                        fontWeight = FontWeight.W600
-                    )
-                }
+                Loading()
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                state = lazyColumnState
+            ) {
+                items(
+                    items = bookVolumes.volumes,
+                    key = { it.volumeId }
+                ) { volume ->
+                    val expanded = selectedVolumeId == volume.volumeId
 
-                Spacer(Modifier.height(8.dp))
-
-                val isEmpty = bookVolumes.volumes.all { it.chapters.isEmpty() }
-
-                if (isEmpty) {
-                    Box(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(200.dp),
-                        contentAlignment = Alignment.Center
+                            .animateContentSize(animationSpec = tween(durationMillis = 200))
                     ) {
-                        Loading()
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        state = lazyColumnState
-                    ) {
-                        items(
-                            items = bookVolumes.volumes,
-                            key = { it.volumeId }
-                        ) { volume ->
-                            val expanded = selectedVolumeId == volume.volumeId
-
-                            Column(
+                        Box(
+                            modifier = Modifier
+                                .clickable {
+                                    onChangeSelectedVolumeId(
+                                        if (selectedVolumeId == volume.volumeId) ""
+                                        else volume.volumeId
+                                    )
+                                }
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .animateContentSize(animationSpec = tween(durationMillis = 200))
+                                    .padding(vertical = 4.dp, horizontal = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
+                                Column {
+                                    Text(text = volume.volumeTitle, fontWeight = FontWeight.W600, style = typography.titleMedium, color = colorScheme.onSurface)
+                                    Text(
+                                        text = stringResource(
+                                            R.string.info_volume_chapters_count,
+                                            volume.chapters.size
+                                        ),
+                                        color = colorScheme.secondary,
+                                        style = typography.labelMedium
+                                    )
+                                }
+                                Spacer(Modifier.weight(2f))
+                                Icon(
+                                    modifier = Modifier
+                                        .scale(0.75f)
+                                        .rotate(if (expanded) -90f else 90f),
+                                    painter = painterResource(R.drawable.arrow_forward_ios_24px),
+                                    tint = colorScheme.onSurface,
+                                    contentDescription = null
+                                )
+                            }
+                        }
+
+                        if (expanded) {
+                            volume.chapters.forEach { chapter ->
+                                val isSelected = readingChapterId == chapter.id
                                 Box(
                                     modifier = Modifier
-                                        .clickable {
-                                            onChangeSelectedVolumeId(
-                                                if (selectedVolumeId == volume.volumeId) ""
-                                                else volume.volumeId
-                                            )
-                                        }
-                                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                                        .fillMaxWidth()
+                                        .height(42.dp)
+                                        .clickable { onClickChapter(chapter.id) }
+                                        .padding(horizontal = 22.dp),
+                                    contentAlignment = Alignment.CenterStart
                                 ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 4.dp, horizontal = 6.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column {
-                                            Text(text = volume.volumeTitle, fontWeight = FontWeight.W600, style = typography.titleMedium, color = colorScheme.onSurface)
-                                            Text(
-                                                text = stringResource(
-                                                    R.string.info_volume_chapters_count,
-                                                    volume.chapters.size
-                                                ),
-                                                color = colorScheme.secondary,
-                                                style = typography.labelMedium
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (isSelected) {
+                                            Icon(
+                                                painter = painterResource(R.drawable.play_arrow_24px),
+                                                tint = colorScheme.outline,
+                                                contentDescription = null
                                             )
+                                            Spacer(Modifier.width(8.dp))
                                         }
-                                        Spacer(Modifier.weight(2f))
-                                        Icon(
-                                            modifier = Modifier
-                                                .scale(0.75f)
-                                                .rotate(if (expanded) -90f else 90f),
-                                            painter = painterResource(R.drawable.arrow_forward_ios_24px),
-                                            tint = colorScheme.onSurface,
-                                            contentDescription = null
+                                        Text(
+                                            text = chapter.title,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            style = typography.titleSmall,
+                                            color = colorScheme.onSurfaceVariant,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
                                         )
-                                    }
-                                }
-
-                                if (expanded) {
-                                    volume.chapters.forEach { chapter ->
-                                        val isSelected = readingChapterId == chapter.id
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(42.dp)
-                                                .clickable { onClickChapter(chapter.id) }
-                                                .padding(horizontal = 22.dp),
-                                            contentAlignment = Alignment.CenterStart
-                                        ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                if (isSelected) {
-                                                    Icon(
-                                                        painter = painterResource(R.drawable.play_arrow_24px),
-                                                        tint = colorScheme.outline,
-                                                        contentDescription = null
-                                                    )
-                                                    Spacer(Modifier.width(8.dp))
-                                                }
-                                                Text(
-                                                    text = chapter.title,
-                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                    style = typography.titleSmall,
-                                                    color = colorScheme.onSurfaceVariant,
-                                                    maxLines = 2,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                            }
-                                        }
                                     }
                                 }
                             }

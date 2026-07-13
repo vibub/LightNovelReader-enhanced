@@ -635,6 +635,36 @@
     <string name="linovelib_bookmark_match_empty_catalog">Manual matching is available after the catalog loads</string>
     <string name="linovelib_bookmark_match_success">Bilinovel chapter bookmark matched</string>
     <string name="linovelib_parser_warning_title">Linovelib paragraph order may be abnormal</string>
+    <string name="chapter_comments_title">Chapter comments</string>
+    <string name="chapter_comments_title_count">Chapter comments · %1$d</string>
+    <string name="chapter_comments_participant_count">%1$d participants</string>
+    <string name="chapter_comments_hot_tab">Hot</string>
+    <string name="chapter_comments_all_tab">All</string>
+    <string name="chapter_comments_view">View chapter comments</string>
+    <string name="reader_chapter_end">End of chapter</string>
+    <string name="reader_next_chapter_title">Next: %1$s</string>
+    <string name="chapter_comments_login_required">Sign in to view all comments</string>
+    <string name="chapter_comments_login_action">Sign in</string>
+    <string name="chapter_comments_relogin_action">Sign in again</string>
+    <string name="chapter_comments_cookie_expired">Your login Cookie may have expired</string>
+    <string name="chapter_comments_loading">Loading comments…</string>
+    <string name="chapter_comments_empty">No comments yet</string>
+    <string name="chapter_comments_load_failed">Failed to load comments</string>
+    <string name="chapter_comments_retry">Retry</string>
+    <string name="chapter_comments_load_more_failed">Failed to load more comments</string>
+    <string name="chapter_comments_error_network">Unable to load comments. Check your network connection.</string>
+    <string name="chapter_comments_error_rate_limited">Requests are too frequent. Please try again later.</string>
+    <string name="chapter_comments_error_cloudflare">The site check blocked this request. Open the login page and pass the check first.</string>
+    <string name="chapter_comments_error_protocol">The comment response could not be parsed.</string>
+    <string name="chapter_comments_spoiler">Spoiler</string>
+    <string name="chapter_comments_spoiler_hidden">This comment contains spoilers. Tap to reveal.</string>
+    <string name="chapter_comments_expand_quotes">Expand quotes</string>
+    <string name="chapter_comments_collapse_quotes">Collapse quotes</string>
+    <string name="chapter_comments_like_count">Likes: %1$d</string>
+    <string name="chapter_comments_dislike_count">Dislikes: %1$d</string>
+    <string name="chapter_comments_unknown_user">Unknown user</string>
+    <string name="chapter_comments_avatar_description">Avatar of %1$s</string>
+    <string name="chapter_comments_quote">%1$s: %2$s</string>
     <string name="action_webview">Web page</string>
 
     <!-- Notifications -->

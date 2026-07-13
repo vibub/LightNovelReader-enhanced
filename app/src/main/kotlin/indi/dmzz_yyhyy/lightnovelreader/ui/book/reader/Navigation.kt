@@ -27,10 +27,12 @@ import androidx.navigation.toRoute
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import indi.dmzz_yyhyy.lightnovelreader.R
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.imageview.ImageViewerScreen
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.imageview.ImageViewerViewModel
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.ColorPickerDialog
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.search.navigateToLinovelibWebBookDestination
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.sourcechange.navigateToSettingsSourceChangeSettingsDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.theme.navigateToSettingsThemeDestination
 import io.nightfish.lightnovelreader.api.Route
 import indi.dmzz_yyhyy.lightnovelreader.utils.ImageUtils.saveBitmapAsPng
@@ -62,6 +64,25 @@ fun NavGraphBuilder.bookReaderDestination() {
             onClickThemeSettings = navController::navigateToSettingsThemeDestination,
             onClickBookmark = {
                 viewModel.bookmarkCurrentChapter()
+            },
+            avatarHeaders = viewModel.imageHeader,
+            onOpenChapterComments = if (viewModel.uiState.isLinovelibSource) {
+                viewModel::openChapterComments
+            } else {
+                null
+            },
+            onDismissChapterComments = viewModel::dismissChapterComments,
+            onSelectChapterCommentTab = viewModel::selectChapterCommentTab,
+            onLoadNextChapterComments = viewModel::loadNextChapterComments,
+            onRetryChapterComments = viewModel::retryChapterComments,
+            onClickChapterCommentsLogin = if (viewModel.uiState.isLinovelibSource) {
+                {
+                    navController.navigateToSettingsSourceChangeSettingsDestination(
+                        LinovelibConstants.SOURCE_ID.toString()
+                    )
+                }
+            } else {
+                null
             },
             onClickWebView = if (viewModel.uiState.isLinovelibSource) {
                 {

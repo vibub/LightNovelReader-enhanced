@@ -113,7 +113,14 @@ fun ReaderScreen(
     onSelectChapterFromReaderCatalog: (chapterId: String) -> Unit,
     onClickThemeSettings: () -> Unit,
     onClickBookmark: () -> Unit,
-    onClickWebView: (() -> Unit)? = null
+    onClickWebView: (() -> Unit)? = null,
+    avatarHeaders: Map<String, String> = emptyMap(),
+    onOpenChapterComments: ((ChapterEndContext) -> Unit)? = null,
+    onDismissChapterComments: () -> Unit = {},
+    onSelectChapterCommentTab: (ChapterCommentTab) -> Unit = {},
+    onLoadNextChapterComments: () -> Unit = {},
+    onRetryChapterComments: (ChapterCommentTab) -> Unit = {},
+    onClickChapterCommentsLogin: (() -> Unit)? = null
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     var isImmersive by remember { mutableStateOf(true) }
@@ -130,6 +137,7 @@ fun ReaderScreen(
     val coroutineScope = rememberCoroutineScope()
     val settingsBottomSheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden)
     val chaptersBottomSheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden)
+    val commentsBottomSheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden)
 
     val claim = LocalClaimSnackbarHost.current
 
@@ -250,7 +258,8 @@ fun ReaderScreen(
             updateTotalReadingTime = updateTotalReadingTime,
             onClickPrevChapter = onClickPrevChapter,
             onClickNextChapter = onClickNextChapter,
-            onChangeIsImmersive = { isImmersive = !isImmersive }
+            onChangeIsImmersive = { isImmersive = !isImmersive },
+            onClickChapterComments = onOpenChapterComments
         )
     }
     parserWarningToShow?.let { warning ->
@@ -304,6 +313,27 @@ fun ReaderScreen(
             }
         )
     }
+
+    AnimatedVisibility(visible = readingScreenUiState.chapterCommentsUiState.isVisible) {
+        ChapterCommentsBottomSheet(
+            sheetState = commentsBottomSheetState,
+            uiState = readingScreenUiState.chapterCommentsUiState,
+            avatarHeaders = avatarHeaders,
+            onDismissRequest = {
+                coroutineScope.launch { commentsBottomSheetState.hide() }.invokeOnCompletion {
+                    if (!commentsBottomSheetState.isVisible) {
+                        onDismissChapterComments()
+                    }
+                }
+            },
+            onSelectTab = onSelectChapterCommentTab,
+            onLoadNextPage = onLoadNextChapterComments,
+            onRetryHot = { onRetryChapterComments(ChapterCommentTab.Hot) },
+            onRetryAll = { onRetryChapterComments(ChapterCommentTab.All) },
+            onLogin = { onClickChapterCommentsLogin?.invoke() }
+        )
+    }
+
     LaunchedEffect(readingScreenUiState.bookVolumes) {
         selectedVolumeId = readingScreenUiState.bookVolumes.volumes.firstOrNull { volume -> volume.chapters.any { it.id == readingScreenUiState.contentUiState.readingChapterContent.id } }?.volumeId ?: ""
     }
@@ -319,12 +349,18 @@ fun Content(
     accumulateReadingTime: (bookId: String, Int) -> Unit,
     onClickPrevChapter: () -> Unit,
     onClickNextChapter: () -> Unit,
-    onChangeIsImmersive: () -> Unit
+    onChangeIsImmersive: () -> Unit,
+    onClickChapterComments: ((ChapterEndContext) -> Unit)?
 ) {
     val context = LocalContext.current
     val activity = context as Activity
     val window = activity.window
     val density = LocalDensity.current
+    val chapterTitleById = remember(readingScreenUiState.bookVolumes) {
+        readingScreenUiState.bookVolumes.volumes
+            .flatMap { it.chapters }
+            .associate { it.id to it.title }
+    }
 
     val stableSafeTopDp by remember {
         mutableStateOf(
@@ -455,7 +491,10 @@ fun Content(
                     ),
                 changeIsImmersive = onChangeIsImmersive,
                 onClickPrevChapter = onClickPrevChapter,
-                onClickNextChapter = onClickNextChapter
+                onClickNextChapter = onClickNextChapter,
+                bookId = readingScreenUiState.bookId,
+                chapterTitleById = chapterTitleById,
+                onClickChapterComments = onClickChapterComments
             )
 
             AnimatedVisibility(

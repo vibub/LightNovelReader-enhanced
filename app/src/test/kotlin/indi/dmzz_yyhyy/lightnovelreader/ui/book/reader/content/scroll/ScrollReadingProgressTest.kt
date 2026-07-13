@@ -29,7 +29,7 @@ class ScrollReadingProgressTest {
         val footerProgress = scrollContentChapterProgress(
             key = ParsedScrollContentItemKey("chapter", ScrollContentItemType.Footer),
             itemOffset = 99,
-            itemSize = 1,
+            itemSize = 800,
             viewportHeight = 100,
             componentCount = 3
         )
@@ -174,6 +174,22 @@ class ScrollReadingProgressTest {
 
         assertEquals(11, target.itemIndex)
         assertEquals(1f, target.itemProgress, 0.0001f)
+    }
+
+    @Test
+    fun footerKeyStillResolvesItsChapterAfterFooterUiGrows() {
+        val key = scrollContentItemKey(
+            chapterId = "chapter-42",
+            type = ScrollContentItemType.Footer
+        )
+
+        assertEquals(
+            ParsedScrollContentItemKey(
+                chapterId = "chapter-42",
+                type = ScrollContentItemType.Footer
+            ),
+            key.scrollContentItemKeyOrNull()
+        )
     }
 
     @Test

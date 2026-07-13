@@ -7,6 +7,7 @@ import indi.dmzz_yyhyy.lightnovelreader.utils.network.UserAgentGenerator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import org.jsoup.Connection
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.io.IOException
@@ -78,6 +79,30 @@ class LinovelibJsoup(
         coolDownOnCloudflare = true
     )
 
+    suspend fun postFormRaw(
+        url: String,
+        formData: Map<String, String>,
+        referer: String = LinovelibConstants.BASE_URL,
+        accept: String = "application/json,text/javascript,*/*;q=0.01",
+        useCookie: Boolean = true,
+        retryTime: Int = 2,
+        userAgentMode: UserAgentMode = UserAgentMode.Desktop
+    ): String = fetch(
+        url = url,
+        referer = referer,
+        accept = accept,
+        useCookie = useCookie,
+        retryTime = retryTime,
+        userAgentMode = userAgentMode,
+        coolDownOnCloudflare = true,
+        method = Connection.Method.POST,
+        formData = formData,
+        extraHeaders = mapOf(
+            "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
+            "X-Requested-With" to "XMLHttpRequest"
+        )
+    )
+
     fun defaultHeaders(
         referer: String = LinovelibConstants.BASE_URL,
         useCookie: Boolean = true,
@@ -107,20 +132,29 @@ class LinovelibJsoup(
         useCookie: Boolean,
         retryTime: Int,
         userAgentMode: UserAgentMode,
-        coolDownOnCloudflare: Boolean
+        coolDownOnCloudflare: Boolean,
+        method: Connection.Method = Connection.Method.GET,
+        formData: Map<String, String> = emptyMap(),
+        extraHeaders: Map<String, String> = emptyMap()
     ): String = withContext(Dispatchers.IO) {
         var lastError: Throwable? = null
         var delayMillis = 1_500L
         repeat(retryTime + 1) { attempt ->
             try {
                 val body = LinovelibRateLimiter.run {
-                    val response = Jsoup.connect(url)
+                    val connection = Jsoup.connect(url)
                         .ignoreContentType(true)
                         .ignoreHttpErrors(true)
                         .followRedirects(true)
                         .timeout(15_000)
-                        .headers(defaultHeaders(referer, useCookie, userAgentMode) + ("Accept" to accept))
-                        .execute()
+                        .method(method)
+                        .headers(
+                            defaultHeaders(referer, useCookie, userAgentMode) +
+                                ("Accept" to accept) +
+                                extraHeaders
+                        )
+                    if (formData.isNotEmpty()) connection.data(formData)
+                    val response = connection.execute()
                     val body = response.bodyAsBytes().toString(Charsets.UTF_8)
                     val statusCode = response.statusCode()
                     if (statusCode == 429) {

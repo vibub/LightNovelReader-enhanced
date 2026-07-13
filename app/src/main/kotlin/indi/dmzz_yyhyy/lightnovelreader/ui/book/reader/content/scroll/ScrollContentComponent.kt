@@ -51,7 +51,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import indi.dmzz_yyhyy.lightnovelreader.BuildConfig
 import indi.dmzz_yyhyy.lightnovelreader.R
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ChapterEndContext
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderChapterEnd
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.toChapterEndContext
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.Loading
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data.MenuOptions
 import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
@@ -202,7 +205,10 @@ fun ScrollContentComponent(
     paddingValues: PaddingValues,
     changeIsImmersive: () -> Unit,
     onClickPrevChapter: () -> Unit,
-    onClickNextChapter: () -> Unit
+    onClickNextChapter: () -> Unit,
+    bookId: String,
+    chapterTitleById: Map<String, String>,
+    onClickChapterComments: ((ChapterEndContext) -> Unit)?
 ) {
     ScrollContentTextComponent(
         modifier = modifier,
@@ -211,7 +217,10 @@ fun ScrollContentComponent(
         paddingValues = paddingValues,
         changeIsImmersive = changeIsImmersive,
         onClickPrevChapter = onClickPrevChapter,
-        onClickNextChapter = onClickNextChapter
+        onClickNextChapter = onClickNextChapter,
+        bookId = bookId,
+        chapterTitleById = chapterTitleById,
+        onClickChapterComments = onClickChapterComments
     )
 }
 
@@ -223,7 +232,10 @@ fun ScrollContentTextComponent(
     paddingValues: PaddingValues,
     changeIsImmersive: () -> Unit,
     onClickPrevChapter: () -> Unit,
-    onClickNextChapter: () -> Unit
+    onClickNextChapter: () -> Unit,
+    bookId: String,
+    chapterTitleById: Map<String, String>,
+    onClickChapterComments: ((ChapterEndContext) -> Unit)?
 ) {
     val snackbarHostState = LocalSnackbarHost.current
     val screenHeight = LocalResources.current.displayMetrics.heightPixels
@@ -544,7 +556,16 @@ fun ScrollContentTextComponent(
                     }
 
                     is ScrollContentRenderItem.Footer -> {
-                        Spacer(Modifier.height(1.dp))
+                        if (onClickChapterComments == null) {
+                            Spacer(Modifier.height(1.dp))
+                        } else {
+                            ReaderChapterEnd(
+                                context = item.content.toChapterEndContext(bookId),
+                                nextChapterTitle = chapterTitleById[item.content.nextChapter],
+                                contentColor = textColor,
+                                onClickComments = onClickChapterComments
+                            )
+                        }
                     }
                 }
             }

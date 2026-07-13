@@ -71,6 +71,39 @@ class LinovelibChapterPageMapTest {
         assertEquals(803, parts.linovelibContentWeight())
     }
 
+    @Test
+    fun lastLinovelibChapterPageIdUsesLastValidBoundary() {
+        val content = emptyContent().withLinovelibChapterPageMap(
+            listOf(
+                LinovelibChapterPageBoundary("1843", 0, 100),
+                LinovelibChapterPageBoundary("1843_2", 100, 220),
+                LinovelibChapterPageBoundary("1843_5", 220, 300)
+            )
+        )
+
+        assertEquals("1843_5", content.lastLinovelibChapterPageId("1843"))
+    }
+
+    @Test
+    fun lastLinovelibChapterPageIdFallsBackToBaseChapterId() {
+        assertEquals(
+            "1843",
+            emptyContent().lastLinovelibChapterPageId("/novel/8/1843_5.html")
+        )
+    }
+
+    @Test
+    fun lastLinovelibChapterPageIdIgnoresInvalidBoundaries() {
+        val content = emptyContent().withLinovelibChapterPageMap(
+            listOf(
+                LinovelibChapterPageBoundary("", 0, 10),
+                LinovelibChapterPageBoundary("1843_2", 20, 20)
+            )
+        )
+
+        assertEquals("1843", content.lastLinovelibChapterPageId("1843_5"))
+    }
+
     private fun emptyContent() = buildJsonObject {
         putJsonArray("components") {}
     }

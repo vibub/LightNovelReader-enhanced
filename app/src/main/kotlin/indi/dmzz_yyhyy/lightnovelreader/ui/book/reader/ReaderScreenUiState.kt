@@ -15,6 +15,7 @@ interface ReaderScreenUiState {
     val bookVolumes: BookVolumes
     val contentUiState: ContentUiState
     val bookmarkUiState: ReaderBookmarkUiState
+    val chapterCommentsUiState: ChapterCommentsUiState
     val isLinovelibSource: Boolean
 }
 
@@ -33,5 +34,6 @@ class MutableReaderScreenUiState(
     override var bookVolumes by mutableStateOf(BookVolumes.empty(""))
     override var contentUiState by mutableStateOf(contentUiState)
     override var bookmarkUiState by mutableStateOf(ReaderBookmarkUiState())
+    override var chapterCommentsUiState by mutableStateOf(ChapterCommentsUiState())
     override var isLinovelibSource by mutableStateOf(false)
 }

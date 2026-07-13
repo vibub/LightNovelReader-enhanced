@@ -3,6 +3,7 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ChapterEndContext
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip.FlipPageContentComponent
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip.FlipPageContentUiState
@@ -17,7 +18,10 @@ fun ContentComponent(
     paddingValues: PaddingValues,
     changeIsImmersive: () -> Unit,
     onClickPrevChapter: () -> Unit,
-    onClickNextChapter: () -> Unit
+    onClickNextChapter: () -> Unit,
+    bookId: String,
+    chapterTitleById: Map<String, String>,
+    onClickChapterComments: ((ChapterEndContext) -> Unit)?
 ) {
     uiState.let { contentUiState ->
         when(contentUiState) {
@@ -28,7 +32,10 @@ fun ContentComponent(
                 paddingValues,
                 changeIsImmersive,
                 onClickPrevChapter,
-                onClickNextChapter
+                onClickNextChapter,
+                bookId,
+                chapterTitleById,
+                onClickChapterComments
             )
             is ScrollContentUiState -> ScrollContentComponent(
                 modifier,
@@ -38,6 +45,9 @@ fun ContentComponent(
                 changeIsImmersive,
                 onClickPrevChapter,
                 onClickNextChapter,
+                bookId,
+                chapterTitleById,
+                onClickChapterComments
             )
         }
     }

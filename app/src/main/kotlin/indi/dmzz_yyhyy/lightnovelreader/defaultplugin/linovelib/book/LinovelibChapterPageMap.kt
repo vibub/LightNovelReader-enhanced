@@ -1,5 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book
 
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -78,6 +79,17 @@ internal fun JsonObject.targetLinovelibChapterPageId(
     return boundaries.firstOrNull { boundary ->
         targetWeight >= boundary.startWeight && targetWeight < boundary.endWeight
     }?.chapterId ?: boundaries.last().chapterId
+}
+
+internal fun JsonObject.lastLinovelibChapterPageId(fallbackChapterId: String): String {
+    val fallbackBaseChapterId = LinovelibConstants.run {
+        fallbackChapterId.normalizeChapterId().substringBefore('_')
+    }
+    return linovelibChapterPageMap()
+        .lastOrNull()
+        ?.chapterId
+        ?.takeIf { it.isNotBlank() }
+        ?: fallbackBaseChapterId
 }
 
 private const val LINOVELIB_CHAPTER_PAGE_MAP_KEY = "linovelibChapterPageMap"

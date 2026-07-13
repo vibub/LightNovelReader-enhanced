@@ -13,7 +13,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
-import kotlin.math.roundToInt
 
 class FlipPageContentViewModel(
     val bookRepository: BookRepository,
@@ -42,10 +41,13 @@ class FlipPageContentViewModel(
                 collectProgressJob?.cancel()
                 collectProgressJob = coroutineScope.launch(Dispatchers.IO) {
                     snapshotFlow { pagerState.settledPage }.collect {
-                        if (!canPersistProgress || pagerState.pageCount == 0) return@collect
+                        if (!canPersistProgress || uiState.contentPageCount == 0) return@collect
                         val content = uiState.readingChapterContent
                         if (content.isEmpty() || content.id != requestedChapterId) return@collect
-                        val progress = ((it + 1) / pagerState.pageCount.toFloat()).coerceIn(0f, 1f)
+                        val progress = flipReadingProgress(
+                            settledPage = it,
+                            contentPageCount = uiState.contentPageCount
+                        )
                         uiState.readingProgress = progress
                         updateReadingProgress(
                             ReadingProgressSnapshot(
@@ -61,7 +63,8 @@ class FlipPageContentViewModel(
         }
     }
 
-    fun updatePagerState(pagerState: PagerState) {
+    fun updatePagerState(pagerState: PagerState, contentPageCount: Int) {
+        uiState.contentPageCount = contentPageCount.coerceAtLeast(0)
         uiState.pagerState = pagerState
         tryRestorePagerPosition()
     }
@@ -69,15 +72,19 @@ class FlipPageContentViewModel(
     private fun tryRestorePagerPosition() {
         val progressToRestore = pendingRestoreProgress ?: return
         val pagerState = uiState.pagerState
-        if (pagerState.pageCount == 0 || requestedChapterId.isBlank() || restoredChapterId == requestedChapterId) return
+        val contentPageCount = uiState.contentPageCount
+        if (contentPageCount == 0 || requestedChapterId.isBlank() || restoredChapterId == requestedChapterId) return
         val recovered = progressToRestore.coerceIn(0f, 1f)
         restoredChapterId = requestedChapterId
         pendingRestoreProgress = null
         coroutineScope.launch {
             if (recovered > 0f) {
-                val target = ((pagerState.pageCount * recovered).roundToInt() - 1)
-                    .coerceIn(0, pagerState.pageCount - 1)
-                pagerState.scrollToPage(target)
+                pagerState.scrollToPage(
+                    flipRestoreContentPage(
+                        progress = recovered,
+                        contentPageCount = contentPageCount
+                    )
+                )
             }
             if (restoredChapterId == requestedChapterId) {
                 canPersistProgress = true
@@ -121,6 +128,7 @@ class FlipPageContentViewModel(
         pendingRestoreProgress = null
         restoredChapterId = ""
         uiState.readingProgress = 0f
+        uiState.contentPageCount = 0
         changeChapterJob = coroutineScope.launch {
             bookRepository.getChapterContentFlow(
                 targetChapterId,
