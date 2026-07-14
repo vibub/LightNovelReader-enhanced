@@ -49,10 +49,7 @@ class LinovelibWebsiteDataSource(
             ?: document.labelValue("作者")
             ?: document.firstText(".book-info a[href*=author]", ".book-author", ".author")
             ?: ""
-        val cover = document.metaContent("pic")
-            ?: document.metaContent("og:image")
-            ?: document.firstCoverImageUrl()
-            ?: ""
+        val cover = parseBookCoverUrl(document)
         val description = parseBookDescription(document)
         val tags = (document.metaContent("tags") ?: document.metaContent("keywords") ?: document.labelValue("标签") ?: "")
             .split(" ", ",", "，", "/", "、")
@@ -86,6 +83,11 @@ class LinovelibWebsiteDataSource(
         it.printStackTrace()
         BookInformation.empty(id)
     }
+
+    internal fun parseBookCoverUrl(document: Document): String = document.firstCoverImageUrl()
+        ?: document.metaContent("pic")
+        ?: document.metaContent("og:image")
+        ?: ""
 
     internal fun parseBookDescription(document: Document): String {
         val description = document.metaContent("og:description")

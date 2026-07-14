@@ -60,6 +60,72 @@ class LinovelibWebsiteDataSourceTest {
     }
 
     @Test
+    fun parseBookCoverUrlPrefersVisibleCoverAndKeepsQuery() {
+        val document = Jsoup.parse(
+            """
+            <html><head>
+              <meta name="pic" content="https://www.linovelib.com/files/article/image/3/3095/3095s.jpg">
+              <meta property="og:image" content="https://www.linovelib.com/files/article/image/3/3095/og.jpg">
+            </head><body>
+              <div class="book-img"><img src="https://www.linovelib.com/files/article/image/3/3095/3095s.jpg?33311"></div>
+            </body></html>
+            """.trimIndent()
+        )
+
+        val coverUrl = LinovelibWebsiteDataSource(LinovelibJsoup()).parseBookCoverUrl(document)
+
+        assertEquals("https://www.linovelib.com/files/article/image/3/3095/3095s.jpg?33311", coverUrl)
+    }
+
+    @Test
+    fun parseBookCoverUrlFallsBackToPicMetadata() {
+        val document = Jsoup.parse(
+            """
+            <html><head>
+              <meta name="pic" content="https://www.linovelib.com/files/article/image/3/3095/pic.jpg">
+              <meta property="og:image" content="https://www.linovelib.com/files/article/image/3/3095/og.jpg">
+            </head></html>
+            """.trimIndent()
+        )
+
+        val coverUrl = LinovelibWebsiteDataSource(LinovelibJsoup()).parseBookCoverUrl(document)
+
+        assertEquals("https://www.linovelib.com/files/article/image/3/3095/pic.jpg", coverUrl)
+    }
+
+    @Test
+    fun parseBookCoverUrlFallsBackToOpenGraphMetadata() {
+        val document = Jsoup.parse(
+            """
+            <html><head>
+              <meta property="og:image" content="https://www.linovelib.com/files/article/image/3/3095/og.jpg">
+            </head></html>
+            """.trimIndent()
+        )
+
+        val coverUrl = LinovelibWebsiteDataSource(LinovelibJsoup()).parseBookCoverUrl(document)
+
+        assertEquals("https://www.linovelib.com/files/article/image/3/3095/og.jpg", coverUrl)
+    }
+
+    @Test
+    fun parseBookCoverUrlIgnoresPlaceholderVisibleCover() {
+        val document = Jsoup.parse(
+            """
+            <html><head>
+              <meta name="pic" content="https://www.linovelib.com/files/article/image/3/3095/pic.jpg">
+            </head><body>
+              <div class="book-img"><img src="https://www.linovelib.com/images/placeholder.png"></div>
+            </body></html>
+            """.trimIndent()
+        )
+
+        val coverUrl = LinovelibWebsiteDataSource(LinovelibJsoup()).parseBookCoverUrl(document)
+
+        assertEquals("https://www.linovelib.com/files/article/image/3/3095/pic.jpg", coverUrl)
+    }
+
+    @Test
     fun parseVolumesResolvesJavascriptCidChapterFromNextChapter() = runBlocking {
         val document = Jsoup.parse(
             """
