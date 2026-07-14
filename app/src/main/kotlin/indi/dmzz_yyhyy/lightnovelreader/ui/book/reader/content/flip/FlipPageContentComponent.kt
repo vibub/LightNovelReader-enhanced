@@ -23,7 +23,6 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -109,10 +108,13 @@ private fun SimpleFlipPageTextComponent(
     val resources = LocalResources.current
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
-    var contentKey by remember { mutableIntStateOf(0) }
     val hasChapterEndPage = onClickChapterComments != null
+    val chapterContent = uiState.readingChapterContent
+    val chapterId = chapterContent.id
+    val contentComponents = uiState.contentComponentsMap[chapterId]
     val slippedContentComponentList = remember(
-        uiState.readingChapterContent.content,
+        chapterId,
+        chapterContent.content,
         resources,
         density,
         hasChapterEndPage
@@ -131,22 +133,26 @@ private fun SimpleFlipPageTextComponent(
                     (paddingValues.calculateTopPadding() + paddingValues.calculateBottomPadding()).toPx()
                 }.toInt()
             )
-        val key = uiState.readingChapterContent.content.hashCode() + width + height
-        if (key == contentKey) return@remember emptyList()
         val result = mutableListOf<AbstractContentComponent<*>>()
-        uiState.contentComponentsMap[uiState.readingChapterContent.id]?.forEach {
+        contentComponents?.forEach {
             if (it is AbstractDivisibleContentComponent<*, *>) {
                 result.addAll(it.split(height, width))
             } else {
                 result.add(it)
             }
         }
-        val pagerPageCount = result.size + if (hasChapterEndPage) 1 else 0
-        uiState.updatePageState(
-            PagerState { pagerPageCount },
-            result.size
-        )
         return@remember result
+    }
+    val pagerPageCount = slippedContentComponentList.size + if (hasChapterEndPage) 1 else 0
+    val pagerState = remember(chapterId, slippedContentComponentList, pagerPageCount) {
+        PagerState { pagerPageCount }
+    }
+    LaunchedEffect(chapterId, pagerState, pagerPageCount) {
+        uiState.updatePageState(
+            chapterId,
+            pagerState,
+            slippedContentComponentList.size
+        )
     }
     val focusRequester = remember { FocusRequester() }
     val snackbarHostState = LocalSnackbarHost.current
@@ -250,7 +256,7 @@ private fun SimpleFlipPageTextComponent(
                 )
         ) {
             HorizontalPager(
-                state = uiState.pagerState,
+                state = pagerState,
                 key = { it },
                 modifier = modifier
                     .focusRequester(focusRequester)
@@ -262,16 +268,16 @@ private fun SimpleFlipPageTextComponent(
                             when (event.type) {
                                 KeyEventType.KeyDown -> {
                                     if (event.nativeKeyEvent.repeatCount == 0) {
-                                        if (event.key == Key.VolumeUp) lastPage(uiState.pagerState)
-                                        else nextPage(uiState.pagerState)
+                                        if (event.key == Key.VolumeUp) lastPage(pagerState)
+                                        else nextPage(pagerState)
 
                                         if (intervalMs > 0) {
                                             volumeJob?.cancel()
                                             volumeJob = scope.launch {
                                                 while (isActive) {
                                                     delay(intervalMs.milliseconds)
-                                                    if (event.key == Key.VolumeUp) lastPage(uiState.pagerState)
-                                                    else nextPage(uiState.pagerState)
+                                                    if (event.key == Key.VolumeUp) lastPage(pagerState)
+                                                    else nextPage(pagerState)
                                                 }
                                             }
                                         }
@@ -308,8 +314,8 @@ private fun SimpleFlipPageTextComponent(
                             onTap = {
                                 if (settingState.isUsingFlipPage && settingState.isUsingClickFlipPage)
                                     when {
-                                        it.x < screenWidthPx / 3f -> lastPage(uiState.pagerState)
-                                        it.x > screenWidthPx * 2f / 3f -> nextPage(uiState.pagerState)
+                                        it.x < screenWidthPx / 3f -> lastPage(pagerState)
+                                        it.x > screenWidthPx * 2f / 3f -> nextPage(pagerState)
                                         else -> changeIsImmersive.invoke()
                                     }
                                 else changeIsImmersive.invoke()

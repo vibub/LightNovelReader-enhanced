@@ -11,7 +11,7 @@ import io.nightfish.lightnovelreader.api.book.ChapterContent
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
 
 interface FlipPageContentUiState: ContentUiState {
-    val updatePageState: (PagerState, Int) -> Unit
+    val updatePageState: (String, PagerState, Int) -> Unit
     val pagerState: PagerState
     val contentPageCount: Int
 }
@@ -20,7 +20,7 @@ class MutableFlipPageContentUiState(
     override val loadNextChapter: () -> Unit,
     override val loadLastChapter: () -> Unit,
     override val changeChapter: (String) -> Unit,
-    override val updatePageState: (PagerState, Int) -> Unit,
+    override val updatePageState: (String, PagerState, Int) -> Unit,
 ): FlipPageContentUiState {
     override var pagerState by mutableStateOf(PagerState { 0 })
     override var contentPageCount by mutableStateOf(0)

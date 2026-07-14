@@ -23,6 +23,8 @@ class LocalBookDataSource @Inject constructor(
     private val chapterContentDao: ChapterContentDao,
     private val userReadingDataDao: UserReadingDataDao
 ): LocalBookDataSourceApi {
+    private val userReadingDataUpdateLock = Any()
+
     override suspend fun getBookInformation(id: String): BookInformation? = bookInformationDao.get(id)
     override fun updateBookInformation(info: BookInformation) = bookInformationDao.insert(info)
     override suspend fun getBookVolumes(id: String): BookVolumes? = bookVolumesDao.getBookVolumes(id)
@@ -73,29 +75,31 @@ class LocalBookDataSource @Inject constructor(
     }
 
     override fun updateUserReadingData(id: String, update: (MutableUserReadingData) -> UserReadingData) {
-        val userReadingData = userReadingDataDao.getEntityWithoutFlow(id)?.let {
-            MutableUserReadingData(
-                it.id,
-                it.lastReadTime,
-                it.totalReadTime,
-                it.readingProgress,
-                it.lastReadChapterId,
-                it.lastReadChapterTitle,
-                it.currentChapterReadingProgressMap,
-                it.maxChapterReadingProgressMap
+        synchronized(userReadingDataUpdateLock) {
+            val userReadingData = userReadingDataDao.getEntityWithoutFlow(id)?.let {
+                MutableUserReadingData(
+                    it.id,
+                    it.lastReadTime,
+                    it.totalReadTime,
+                    it.readingProgress,
+                    it.lastReadChapterId,
+                    it.lastReadChapterTitle,
+                    it.currentChapterReadingProgressMap,
+                    it.maxChapterReadingProgressMap
+                )
+            } ?: MutableUserReadingData.empty().apply { this.id = id }
+            val new = update(userReadingData.apply { this.id = id })
+            userReadingDataDao.insert(
+                id = new.id,
+                lastReadTime = new.lastReadTime,
+                totalReadTime = new.totalReadTime,
+                readingProgress = new.readingProgress,
+                lastReadChapterId = new.lastReadChapterId,
+                lastReadChapterTitle = new.lastReadChapterTitle,
+                currentChapterReadingProgressMap = new.currentChapterReadingProgressMap,
+                maxChapterReadingProgressMap = new.maxChapterReadingProgressMap
             )
-        } ?: MutableUserReadingData.empty().apply { this.id = id }
-        val new = update(userReadingData.apply { this.id = id })
-        userReadingDataDao.insert(
-            id = new.id,
-            lastReadTime = new.lastReadTime,
-            totalReadTime = new.totalReadTime,
-            readingProgress = new.readingProgress,
-            lastReadChapterId = new.lastReadChapterId,
-            lastReadChapterTitle = new.lastReadChapterTitle,
-            currentChapterReadingProgressMap = new.currentChapterReadingProgressMap,
-            maxChapterReadingProgressMap = new.maxChapterReadingProgressMap
-        )
+        }
     }
 
     override fun getAllUserReadingData(): List<UserReadingData> =

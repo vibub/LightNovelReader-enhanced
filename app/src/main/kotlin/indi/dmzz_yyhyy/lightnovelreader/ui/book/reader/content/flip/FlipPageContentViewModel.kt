@@ -3,16 +3,30 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip
 import android.util.Log
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.snapshots.Snapshot
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.content.ContentComponentRepository
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReadingProgressSnapshot
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentViewModel
+import io.nightfish.lightnovelreader.api.book.ChapterContent
+import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
+
+internal fun MutableFlipPageContentUiState.publishChapterContent(
+    content: ChapterContent,
+    contentComponents: List<AbstractContentComponent<*>>
+) {
+    Snapshot.withMutableSnapshot {
+        contentComponentsMap[content.id] = contentComponents
+        readingChapterContent = content
+    }
+}
 
 class FlipPageContentViewModel(
     val bookRepository: BookRepository,
@@ -20,12 +34,12 @@ class FlipPageContentViewModel(
     val updateReadingProgress: (ReadingProgressSnapshot) -> Unit,
     val contentComponentRepository: ContentComponentRepository
 ) : ContentViewModel {
-    private var pendingRestoreProgress: Float? = null
-    private var canPersistProgress = false
-    private var restoredChapterId = ""
+    private val progressSession = FlipPageProgressSession()
     private var collectProgressJob: Job? = null
     private var changeChapterJob: Job? = null
     private var restoreProgressJob: Job? = null
+    private var restorePagerJob: Job? = null
+    private var activePagerState: PagerState? = null
     private var requestedChapterId = ""
     private var prefetchedNextChapterKey = ""
     override val uiState: MutableFlipPageContentUiState = MutableFlipPageContentUiState(
@@ -35,60 +49,67 @@ class FlipPageContentViewModel(
         updatePageState = ::updatePagerState
     )
 
-    init {
-        coroutineScope.launch(Dispatchers.IO) {
-            snapshotFlow { uiState.pagerState }.collect { pagerState ->
-                collectProgressJob?.cancel()
-                collectProgressJob = coroutineScope.launch(Dispatchers.IO) {
-                    snapshotFlow { pagerState.settledPage }.collect {
-                        if (!canPersistProgress || uiState.contentPageCount == 0) return@collect
-                        val content = uiState.readingChapterContent
-                        if (content.isEmpty() || content.id != requestedChapterId) return@collect
-                        val progress = flipReadingProgress(
-                            settledPage = it,
-                            contentPageCount = uiState.contentPageCount
-                        )
-                        uiState.readingProgress = progress
-                        updateReadingProgress(
-                            ReadingProgressSnapshot(
-                                bookId = uiState.bookId,
-                                chapterId = content.id,
-                                chapterTitle = content.title,
-                                progress = progress
-                            )
-                        )
-                    }
-                }
-            }
+    fun updatePagerState(
+        chapterId: String,
+        pagerState: PagerState,
+        contentPageCount: Int
+    ) {
+        val installation = progressSession.installPager(
+            chapterId = chapterId,
+            contentPageCount = contentPageCount
+        ) ?: return
+        collectProgressJob?.cancel()
+        restorePagerJob?.cancel()
+        activePagerState = pagerState
+        uiState.contentPageCount = installation.session.contentPageCount
+        uiState.pagerState = pagerState
+        installation.restoreRequest?.let {
+            restorePagerPosition(it, pagerState)
         }
     }
 
-    fun updatePagerState(pagerState: PagerState, contentPageCount: Int) {
-        uiState.contentPageCount = contentPageCount.coerceAtLeast(0)
-        uiState.pagerState = pagerState
-        tryRestorePagerPosition()
+    private fun restorePagerPosition(
+        request: FlipPageRestoreRequest,
+        pagerState: PagerState
+    ) {
+        collectProgressJob?.cancel()
+        restorePagerJob?.cancel()
+        restorePagerJob = coroutineScope.launch {
+            pagerState.scrollToPage(
+                flipRestoreContentPage(
+                    progress = request.progress,
+                    contentPageCount = request.session.contentPageCount
+                )
+            )
+            if (!progressSession.completeRestore(request)) return@launch
+            uiState.readingProgress = request.progress
+            collectPagerProgress(request.session, pagerState)
+        }
     }
 
-    private fun tryRestorePagerPosition() {
-        val progressToRestore = pendingRestoreProgress ?: return
-        val pagerState = uiState.pagerState
-        val contentPageCount = uiState.contentPageCount
-        if (contentPageCount == 0 || requestedChapterId.isBlank() || restoredChapterId == requestedChapterId) return
-        val recovered = progressToRestore.coerceIn(0f, 1f)
-        restoredChapterId = requestedChapterId
-        pendingRestoreProgress = null
-        coroutineScope.launch {
-            if (recovered > 0f) {
-                pagerState.scrollToPage(
-                    flipRestoreContentPage(
-                        progress = recovered,
-                        contentPageCount = contentPageCount
+    private fun collectPagerProgress(
+        session: FlipPagePagerSession,
+        pagerState: PagerState
+    ) {
+        collectProgressJob?.cancel()
+        collectProgressJob = coroutineScope.launch {
+            snapshotFlow { pagerState.settledPage }.collect { settledPage ->
+                val content = uiState.readingChapterContent
+                if (content.isEmpty() || content.id != session.chapterId) return@collect
+                val progress = flipReadingProgress(
+                    settledPage = settledPage,
+                    contentPageCount = session.contentPageCount
+                )
+                if (!progressSession.acceptProgress(session, progress)) return@collect
+                uiState.readingProgress = progress
+                updateReadingProgress(
+                    ReadingProgressSnapshot(
+                        bookId = uiState.bookId,
+                        chapterId = content.id,
+                        chapterTitle = content.title,
+                        progress = progress
                     )
                 )
-            }
-            if (restoredChapterId == requestedChapterId) {
-                canPersistProgress = true
-                uiState.readingProgress = recovered
             }
         }
     }
@@ -120,13 +141,14 @@ class FlipPageContentViewModel(
             return
         }
         val targetChapterId = id
+        val visitId = progressSession.beginChapter(targetChapterId)
         requestedChapterId = targetChapterId
         prefetchedNextChapterKey = ""
+        collectProgressJob?.cancel()
         changeChapterJob?.cancel()
         restoreProgressJob?.cancel()
-        canPersistProgress = false
-        pendingRestoreProgress = null
-        restoredChapterId = ""
+        restorePagerJob?.cancel()
+        activePagerState = null
         uiState.readingProgress = 0f
         uiState.contentPageCount = 0
         changeChapterJob = coroutineScope.launch {
@@ -136,8 +158,10 @@ class FlipPageContentViewModel(
                 WebDataSourcePriority.High
             ).collect { content ->
                 if (content.isEmpty() || content.id != targetChapterId || requestedChapterId != targetChapterId) return@collect
-                uiState.readingChapterContent = content
-                uiState.contentComponentsMap[content.id] = contentComponentRepository.getContentDataFromJson(content.content).components
+                val contentComponents = contentComponentRepository
+                    .getContentDataFromJson(content.content)
+                    .components
+                uiState.publishChapterContent(content, contentComponents)
                 bookRepository.updateUserReadingData(uiState.bookId) {
                     it.apply {
                         lastReadTime = LocalDateTime.now()
@@ -157,14 +181,21 @@ class FlipPageContentViewModel(
                 }
             }
         }
-        restoreProgressJob = coroutineScope.launch(Dispatchers.IO) {
+        restoreProgressJob = coroutineScope.launch {
             val progress = if (restoreProgress) {
-                bookRepository.getUserReadingData(uiState.bookId)
-                    .currentChapterReadingProgressMap[targetChapterId] ?: 0f
+                withContext(Dispatchers.IO) {
+                    bookRepository.getUserReadingData(uiState.bookId)
+                        .currentChapterReadingProgressMap[targetChapterId] ?: 0f
+                }
             } else 0f
-            if (requestedChapterId == targetChapterId) {
-                pendingRestoreProgress = progress
-                tryRestorePagerPosition()
+            val restoreRequest = progressSession.loadRestoreProgress(
+                visitId = visitId,
+                chapterId = targetChapterId,
+                progress = progress
+            ) ?: return@launch
+            val pagerState = activePagerState ?: return@launch
+            if (progressSession.isCurrent(restoreRequest.session)) {
+                restorePagerPosition(restoreRequest, pagerState)
             }
         }
     }
