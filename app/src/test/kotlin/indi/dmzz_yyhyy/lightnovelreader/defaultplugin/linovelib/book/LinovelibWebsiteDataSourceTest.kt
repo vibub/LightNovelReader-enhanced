@@ -14,6 +14,52 @@ import org.junit.Test
 
 class LinovelibWebsiteDataSourceTest {
     @Test
+    fun parseBookDescriptionPrefersOpenGraphDescription() {
+        val document = Jsoup.parse(
+            """
+            <html><head>
+              <meta name="description" content="义妹生活内容简介：SEO 简介">
+              <meta property="og:description" content="页面简介">
+            </head></html>
+            """.trimIndent()
+        )
+
+        val description = LinovelibWebsiteDataSource(LinovelibJsoup()).parseBookDescription(document)
+
+        assertEquals("页面简介", description)
+    }
+
+    @Test
+    fun parseBookDescriptionFallsBackToMetaDescription() {
+        val document = Jsoup.parse(
+            """
+            <html><head>
+              <meta name="description" content="内容简介：兜底简介">
+            </head></html>
+            """.trimIndent()
+        )
+
+        val description = LinovelibWebsiteDataSource(LinovelibJsoup()).parseBookDescription(document)
+
+        assertEquals("兜底简介", description)
+    }
+
+    @Test
+    fun parseBookDescriptionFallsBackToVisibleIntroduction() {
+        val document = Jsoup.parse(
+            """
+            <html><body>
+              <div id="bookIntro">内容简介：可见简介</div>
+            </body></html>
+            """.trimIndent()
+        )
+
+        val description = LinovelibWebsiteDataSource(LinovelibJsoup()).parseBookDescription(document)
+
+        assertEquals("可见简介", description)
+    }
+
+    @Test
     fun parseVolumesResolvesJavascriptCidChapterFromNextChapter() = runBlocking {
         val document = Jsoup.parse(
             """

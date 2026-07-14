@@ -53,9 +53,7 @@ class LinovelibWebsiteDataSource(
             ?: document.metaContent("og:image")
             ?: document.firstCoverImageUrl()
             ?: ""
-        val description = document.metaContent("description")
-            ?: document.firstText("#bookIntro", ".book-intro", ".book-desc", ".intro", ".book-dec")
-            ?: ""
+        val description = parseBookDescription(document)
         val tags = (document.metaContent("tags") ?: document.metaContent("keywords") ?: document.labelValue("标签") ?: "")
             .split(" ", ",", "，", "/", "、")
             .map { it.trim() }
@@ -76,7 +74,7 @@ class LinovelibWebsiteDataSource(
             subtitle = "",
             coverUrl = LinovelibJsoup.normalizeCoverUrl(cover).takeIf { it.isNotBlank() }?.toUri() ?: Uri.EMPTY,
             author = author.cleanText(),
-            description = description.cleanDescription(),
+            description = description,
             tags = tags,
             publishingHouse = document.labelValue("文库")?.cleanText() ?: "",
             wordCount = WordCount(wordText.parseWordCount()),
@@ -87,6 +85,14 @@ class LinovelibWebsiteDataSource(
         if (it is CancellationException) throw it
         it.printStackTrace()
         BookInformation.empty(id)
+    }
+
+    internal fun parseBookDescription(document: Document): String {
+        val description = document.metaContent("og:description")
+            ?: document.metaContent("description")
+            ?: document.firstText("#bookIntro", ".book-intro", ".book-desc", ".intro", ".book-dec")
+            ?: ""
+        return description.cleanDescription()
     }
 
     suspend fun getBookVolumes(id: String): BookVolumes = runCatching {
