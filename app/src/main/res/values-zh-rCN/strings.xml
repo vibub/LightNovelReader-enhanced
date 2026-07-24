@@ -640,6 +640,8 @@
     <string name="chapter_comments_error_protocol">无法解析评论响应。</string>
     <string name="chapter_comments_spoiler">剧透</string>
     <string name="chapter_comments_spoiler_hidden">该评论包含剧透，点击查看。</string>
+    <string name="chapter_comments_controversial">争议</string>
+    <string name="chapter_comments_controversial_hidden">该评论存在争议，点击查看。</string>
     <string name="chapter_comments_expand_quotes">展开引用</string>
     <string name="chapter_comments_collapse_quotes">收起引用</string>
     <string name="chapter_comments_like_count">点赞量：%1$d</string>

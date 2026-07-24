@@ -58,6 +58,7 @@ class LinovelibChapterCommentParserTest {
         assertEquals(12, comment.likeCount)
         assertEquals(3, comment.dislikeCount)
         assertTrue(comment.isSpoiler)
+        assertFalse(comment.isControversial)
         assertEquals(
             listOf(
                 LinovelibCommentQuote("用户甲", "第一层\n第二行"),
@@ -65,6 +66,31 @@ class LinovelibChapterCommentParserTest {
             ),
             comment.quotedReplies
         )
+    }
+
+    @Test
+    fun parsePageExtractsAndMarksControversialCommentBody() {
+        val page = LinovelibChapterCommentParser.parsePage(
+            raw = """
+                {
+                  "err_msg": "success",
+                  "data": [{
+                    "plid": "90002",
+                    "plusername": "争议用户",
+                    "saytext": "<div class='wrap-collabsible'><input class='toggle' type='checkbox'><label class='lbl-toggle'><s> +[隐藏]+ 该评论存在争议，赞成？反对？ </s></label><div class='collapsible-content'><div class='content-inner'><p>实际正文<br>第二行</p></div></div></div>",
+                    "ispoiler": "0"
+                  }]
+                }
+            """.trimIndent(),
+            requestedPageIndex = 1
+        )
+
+        val comment = page.comments.single()
+        assertTrue(comment.isControversial)
+        assertFalse(comment.isSpoiler)
+        assertEquals("实际正文\n第二行", comment.body)
+        assertFalse(comment.body.contains("隐藏"))
+        assertFalse(comment.body.contains("评论存在争议"))
     }
 
     @Test

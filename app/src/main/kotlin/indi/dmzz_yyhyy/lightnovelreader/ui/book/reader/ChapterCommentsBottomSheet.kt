@@ -451,6 +451,12 @@ private fun ChapterCommentCard(
                                 showWarningIcon = true
                             )
                         }
+                        if (comment.isControversial) {
+                            ChapterCommentTag(
+                                text = stringResource(R.string.chapter_comments_controversial),
+                                showWarningIcon = true
+                            )
+                        }
                     }
                     if (comment.publishedAt.isNotBlank()) {
                         Text(
@@ -462,7 +468,7 @@ private fun ChapterCommentCard(
                 }
             }
 
-            if (comment.isSpoiler && !spoilerRevealed) {
+            if ((comment.isSpoiler || comment.isControversial) && !spoilerRevealed) {
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -482,7 +488,10 @@ private fun ChapterCommentCard(
                             tint = colorScheme.onTertiaryContainer
                         )
                         Text(
-                            text = stringResource(R.string.chapter_comments_spoiler_hidden),
+                            text = stringResource(
+                                if (comment.isControversial) R.string.chapter_comments_controversial_hidden
+                                else R.string.chapter_comments_spoiler_hidden
+                            ),
                             style = typography.bodyMedium,
                             color = colorScheme.onTertiaryContainer
                         )

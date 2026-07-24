@@ -78,7 +78,8 @@ object LinovelibChapterCommentParser {
             quotedReplies = parsedText.quotes,
             likeCount = intValue("zcnum")?.coerceAtLeast(0) ?: 0,
             dislikeCount = intValue("fdnum")?.coerceAtLeast(0) ?: 0,
-            isSpoiler = booleanValue("ispoiler") ?: false
+            isSpoiler = booleanValue("ispoiler") ?: false,
+            isControversial = parsedText.isControversial
         )
     }
 
@@ -86,7 +87,17 @@ object LinovelibChapterCommentParser {
         if (raw.isBlank()) return ParsedCommentText()
         val document = Jsoup.parseBodyFragment(raw, LinovelibConstants.BASE_URL)
         document.select("script, style, iframe, object, embed, link, meta").remove()
-        val quotes = document.select(".ecomment .ecommentauthor")
+        val controversialWrapper = document.selectFirst(".wrap-collabsible")
+            ?.takeIf { wrapper ->
+                wrapper.selectFirst(".lbl-toggle")
+                    ?.text()
+                    ?.contains(CONTROVERSIAL_LABEL_MARKER) == true
+            }
+        val contentRoot = controversialWrapper?.let { wrapper ->
+            wrapper.selectFirst(".collapsible-content .content-inner")
+                ?: wrapper.also { it.select("input, .lbl-toggle").remove() }
+        } ?: document.body()
+        val quotes = contentRoot.select(".ecomment .ecommentauthor")
             .mapNotNull { element ->
                 val text = element.textWithLineBreaks()
                 if (text.isBlank()) return@mapNotNull null
@@ -100,10 +111,11 @@ object LinovelibChapterCommentParser {
                     )
                 }
             }
-        document.select(".ecomment").remove()
+        contentRoot.select(".ecomment").remove()
         return ParsedCommentText(
-            body = document.body().textWithLineBreaks(),
-            quotes = quotes
+            body = contentRoot.textWithLineBreaks(),
+            quotes = quotes,
+            isControversial = controversialWrapper != null
         )
     }
 
@@ -154,8 +166,10 @@ object LinovelibChapterCommentParser {
 
     private data class ParsedCommentText(
         val body: String = "",
-        val quotes: List<LinovelibCommentQuote> = emptyList()
+        val quotes: List<LinovelibCommentQuote> = emptyList(),
+        val isControversial: Boolean = false
     )
 
     private const val SUCCESS = "success"
+    private const val CONTROVERSIAL_LABEL_MARKER = "评论存在争议"
 }

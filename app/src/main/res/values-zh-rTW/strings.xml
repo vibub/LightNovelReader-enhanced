@@ -631,6 +631,8 @@
     <string name="chapter_comments_error_protocol">無法解析評論回應。</string>
     <string name="chapter_comments_spoiler">劇透</string>
     <string name="chapter_comments_spoiler_hidden">此評論包含劇透，點選查看。</string>
+    <string name="chapter_comments_controversial">爭議</string>
+    <string name="chapter_comments_controversial_hidden">此評論存在爭議，點選查看。</string>
     <string name="chapter_comments_expand_quotes">展開引用</string>
     <string name="chapter_comments_collapse_quotes">收起引用</string>
     <string name="chapter_comments_like_count">按讚數：%1$d</string>

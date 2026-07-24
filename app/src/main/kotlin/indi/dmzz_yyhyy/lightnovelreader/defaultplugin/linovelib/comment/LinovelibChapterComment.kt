@@ -11,7 +11,8 @@ data class LinovelibChapterComment(
     val quotedReplies: List<LinovelibCommentQuote>,
     val likeCount: Int,
     val dislikeCount: Int,
-    val isSpoiler: Boolean
+    val isSpoiler: Boolean,
+    val isControversial: Boolean = false
 )
 
 data class LinovelibCommentQuote(

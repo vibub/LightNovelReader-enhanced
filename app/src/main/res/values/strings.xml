@@ -658,6 +658,8 @@
     <string name="chapter_comments_error_protocol">The comment response could not be parsed.</string>
     <string name="chapter_comments_spoiler">Spoiler</string>
     <string name="chapter_comments_spoiler_hidden">This comment contains spoilers. Tap to reveal.</string>
+    <string name="chapter_comments_controversial">Controversial</string>
+    <string name="chapter_comments_controversial_hidden">This comment is controversial. Tap to reveal.</string>
     <string name="chapter_comments_expand_quotes">Expand quotes</string>
     <string name="chapter_comments_collapse_quotes">Collapse quotes</string>
     <string name="chapter_comments_like_count">Likes: %1$d</string>

@@ -635,6 +635,8 @@
     <string name="chapter_comments_error_protocol">Не удалось разобрать ответ с комментариями.</string>
     <string name="chapter_comments_spoiler">Спойлер</string>
     <string name="chapter_comments_spoiler_hidden">Этот комментарий содержит спойлер. Нажмите, чтобы показать.</string>
+    <string name="chapter_comments_controversial">Спорное</string>
+    <string name="chapter_comments_controversial_hidden">Этот комментарий является спорным. Нажмите, чтобы показать.</string>
     <string name="chapter_comments_expand_quotes">Развернуть цитаты</string>
     <string name="chapter_comments_collapse_quotes">Свернуть цитаты</string>
     <string name="chapter_comments_like_count">Нравится: %1$d</string>
