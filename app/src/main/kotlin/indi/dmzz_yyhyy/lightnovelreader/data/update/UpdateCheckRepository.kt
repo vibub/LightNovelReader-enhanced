@@ -19,16 +19,20 @@ import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data.MenuOptions
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -37,6 +41,7 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
+import kotlin.time.Duration.Companion.seconds
 import javax.inject.Singleton
 
 @Singleton
@@ -61,6 +66,7 @@ class UpdateCheckRepository @Inject constructor(
         LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
 
     companion object {
+        private const val CHECK_TIMEOUT_SECONDS = 30
         private const val NOTIFICATION_CHANNEL_ID = "AppUpdateDownload"
         private const val NOTIFICATION_ID = 0x4C4E52
     }
@@ -87,26 +93,38 @@ class UpdateCheckRepository @Inject constructor(
             )
             val distributionPlatform = platformOption.key
             Log.i("UpdateChecker", "Checking for updates from $distributionPlatform/$updateChannelKey")
+            release = null
+            mutableAvailable.emit(false)
             _updatePhase.update { "已请求更新，等待 $distributionPlatform 应答" }
             try {
-                release = platformOption.value
+                val parser = platformOption.value
                     .getOptionWithValueOrDefault(updateChannelKey).value
-                    .parser(_updatePhase)
+                val checkedRelease = withTimeout(CHECK_TIMEOUT_SECONDS.seconds) {
+                    runInterruptible(Dispatchers.IO) {
+                        parser.parser(_updatePhase)
+                    }
+                }
+                release = checkedRelease
+                if (checkedRelease == null) {
+                    Log.e("UpdateChecker", "failed to get valid release")
+                    _updatePhase.emit("${formattedNow()} | 失败: 未获取到有效更新信息")
+                } else if (checkedRelease.version > BuildConfig.VERSION_CODE) {
+                    Log.i("UpdateChecker", "Updates available: ${checkedRelease.versionName}")
+                    _updatePhase.emit("${formattedNow()} | 有可用更新: ${checkedRelease.versionName}")
+                    mutableAvailable.emit(true)
+                } else {
+                    Log.i("UpdateChecker", "App is up to date (${checkedRelease.versionName})")
+                    _updatePhase.emit("${formattedNow()} | 已是最新 (远程: ${checkedRelease.versionName})")
+                }
+            } catch (_: TimeoutCancellationException) {
+                Log.w("UpdateChecker", "Update check timed out after $CHECK_TIMEOUT_SECONDS seconds")
+                _updatePhase.emit("${formattedNow()} | 检查超时：$CHECK_TIMEOUT_SECONDS 秒内未收到响应")
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                Log.e("UpdateChecker", "failed to get release")
-                e.printStackTrace()
+                Log.e("UpdateChecker", "failed to get release", e)
                 _updatePhase.emit("${formattedNow()} | 失败: ${e.javaClass.simpleName}\n${e.message}")
             }
-            if (release != null) {
-                if (release!!.version > BuildConfig.VERSION_CODE) {
-                    Log.i("UpdateChecker", "Updates available: ${release!!.versionName}")
-                    _updatePhase.emit("${formattedNow()} | 有可用更新: ${release!!.versionName}")
-                } else {
-                    Log.i("UpdateChecker", "App is up to date (${release!!.versionName})")
-                    _updatePhase.emit("${formattedNow()} | 已是最新 (远程: ${release!!.versionName})")
-                }
-            }
-            mutableAvailable.emit(release != null && release!!.version > BuildConfig.VERSION_CODE)
         }
     }
 

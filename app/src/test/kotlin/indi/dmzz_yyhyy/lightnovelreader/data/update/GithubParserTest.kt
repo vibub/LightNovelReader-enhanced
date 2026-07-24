@@ -5,6 +5,14 @@ import org.junit.Test
 
 class GithubParserTest {
     @Test
+    fun latestReleasePathUsesStableGithubEndpoint() {
+        assertEquals(
+            "/vibub/LightNovelReader-enhanced/releases/latest",
+            GithubParser.latestReleasePathForTest()
+        )
+    }
+
+    @Test
     fun rawGithubUrlCandidatesPreferDirectUrlBeforeProxy() {
         assertEquals(
             listOf(

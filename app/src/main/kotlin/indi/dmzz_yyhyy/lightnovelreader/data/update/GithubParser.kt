@@ -18,6 +18,8 @@ import java.util.zip.ZipFile
 object GithubParser {
     private const val REPOSITORY_SLUG = "vibub/LightNovelReader-enhanced"
     private const val REPOSITORY_PATH = "/vibub/LightNovelReader-enhanced"
+    private const val LATEST_RELEASE_PATH = "$REPOSITORY_PATH/releases/latest"
+    private const val BUILD_GRADLE_PATH = "app/build.gradle.kts"
     private const val DEFAULT_BRANCH = "refactoring"
     private const val WORKFLOW_FILE = "marge.yml"
     private val versionCodeRegex = Regex("versionCode = ([0-9_]+)")
@@ -33,6 +35,8 @@ object GithubParser {
 
     internal fun githubAssetUrlCandidatesForTest(href: String): List<String> =
         githubAssetUrlCandidates(href)
+
+    internal fun latestReleasePathForTest(): String = LATEST_RELEASE_PATH
 
     private fun rawGithubUrlCandidates(ref: String, path: String): List<String> {
         val normalizedPath = path.trimStart('/')
@@ -76,8 +80,8 @@ object GithubParser {
         throw lastError ?: IOException("No URL candidates provided")
     }
 
-    private fun fetchRawGithubText(ref: String, path: String): String =
-        fetchTextFromCandidates(rawGithubUrlCandidates(ref, path))
+    private fun fetchRawGithubText(ref: String): String =
+        fetchTextFromCandidates(rawGithubUrlCandidates(ref, BUILD_GRADLE_PATH))
 
     private fun updateHost(): String {
         try {
@@ -216,7 +220,7 @@ object GithubParser {
                     .select("""a[href^="$REPOSITORY_PATH/tree/"]""")
                     .attr("href")
                     .replace("$REPOSITORY_PATH/tree/", "")
-                val gradle = fetchRawGithubText("refs/tags/$tag", "app/build.gradle.kts")
+                val gradle = fetchRawGithubText("refs/tags/$tag")
                 val versionCode = versionCodeRegex.find(gradle)?.groups?.get(1)?.value?.replace("_", "")?.toIntOrNull() ?: Log.e("GithubParser", "failed to get versionCode").also { return null }
                 val versionName = versionNameRegex.find(gradle)?.groups?.get(1)?.value?.replace("\"", "") ?: Log.e("GithubParser", "failed to get versionName").also { return null }
                 updatePhase.tryEmit("GitHub步骤: 解析更新日志")
@@ -235,21 +239,11 @@ object GithubParser {
     }
 
     object ReleaseParser: UpdateParser {
-        private const val URL = REPOSITORY_PATH
         override fun parser(updatePhase: MutableStateFlow<String>): Release? {
             System.setProperty("sun.net.http.allowRestrictedHeaders", "true")
             host = updateHost()
-            val releasePath = Jsoup
-                .connect(host+ URL)
-                .also {
-                    if (host.startsWith("http://")) it.header("Host", "github.com")
-                }
-                .get()
-                .selectFirst("""a[href^="$REPOSITORY_PATH/releases/tag/"]""")
-                ?.attr("href")
-                ?: return null
             updatePhase.tryEmit("GitHub步骤: 获取最新Release")
-            return progressReleasePage(host + releasePath, updatePhase)
+            return progressReleasePage(host + LATEST_RELEASE_PATH, updatePhase)
         }
     }
     object DevelopmentParser: UpdateParser {
@@ -279,7 +273,7 @@ object GithubParser {
             updatePhase.tryEmit("GitHub步骤: 获取最新Release")
             val downloadUrl: String?
             updatePhase.tryEmit("GitHub步骤: 拉取远程分支版本号")
-            val gradle = fetchRawGithubText("refs/heads/$DEFAULT_BRANCH", "app/build.gradle.kts")
+            val gradle = fetchRawGithubText("refs/heads/$DEFAULT_BRANCH")
             val fallbackVersionCode = versionCodeRegex.find(gradle)?.groups?.get(1)?.value?.replace("_", "")?.toIntOrNull() ?: Log.e("GithubParser", "failed to get versionCode").also { return null }
             val fallbackVersionName = versionNameRegex.find(gradle)?.groups?.get(1)?.value?.replace("\"", "") ?: Log.e("GithubParser", "failed to get versionName").also { return null }
             val connection = Jsoup.connect(host + URL)
