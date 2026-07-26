@@ -38,6 +38,8 @@ class ScrollContentViewModel(
     private var collectPrevChapterJob: Job? = null
     private var collectCurrentChapterJob: Job? = null
     private var collectNextChapterJob: Job? = null
+    private var collectingPrevChapterId: String? = null
+    private var collectingNextChapterId: String? = null
     private val imageHeightPreloadedKeys = mutableSetOf<String>()
 
     override val uiState: MutableScrollContentUiSate = MutableScrollContentUiSate(
@@ -189,15 +191,10 @@ class ScrollContentViewModel(
                         resetContentList()
                         uiState.contentList[2] = nextChapter
                         uiState.contentList[1] = currentChapter
+                        collectingNextChapterId = readingChapterContent.id
                         collectNextChapterJob = collectChapter(2, readingChapterContent.id)
                         collectCurrentChapterJob = collectChapter(1, currentChapterId) { chapterContent ->
-                            collectPrevChapterJob?.cancel()
-                            collectPrevChapterJob = collectAdjacentChapter(
-                                index = 0,
-                                chapterId = chapterContent.prevChapter,
-                                currentChapterId = chapterContent.id,
-                                occupiedChapterIds = setOf(readingChapterContent.id)
-                            )
+                            updateAdjacentChapterCollectors(chapterContent)
                             updateLastReadChapter(chapterContent.id, chapterContent.title)
                         }
                         uiState.readingChapterId = currentChapterId
@@ -220,15 +217,10 @@ class ScrollContentViewModel(
                         resetContentList()
                         uiState.contentList[0] = prevChapter
                         uiState.contentList[1] = currentChapter
+                        collectingPrevChapterId = readingChapterContent.id
                         collectPrevChapterJob = collectChapter(0, readingChapterContent.id)
                         collectCurrentChapterJob = collectChapter(1, currentChapterId) { chapterContent ->
-                            collectNextChapterJob?.cancel()
-                            collectNextChapterJob = collectAdjacentChapter(
-                                index = 2,
-                                chapterId = chapterContent.nextChapter,
-                                currentChapterId = chapterContent.id,
-                                occupiedChapterIds = setOf(readingChapterContent.id)
-                            )
+                            updateAdjacentChapterCollectors(chapterContent)
                             updateLastReadChapter(chapterContent.id, chapterContent.title)
                         }
                         uiState.readingChapterId = currentChapterId
@@ -242,7 +234,11 @@ class ScrollContentViewModel(
     }
 
     override fun changeBookId(id: String) {
-        if (uiState.bookId != id) imageHeightPreloadedKeys.clear()
+        if (uiState.bookId != id) {
+            imageHeightPreloadedKeys.clear()
+            collectingPrevChapterId = null
+            collectingNextChapterId = null
+        }
         uiState.bookId = id
     }
 
@@ -269,6 +265,8 @@ class ScrollContentViewModel(
     }
 
     private fun resetContentList() {
+        collectingPrevChapterId = null
+        collectingNextChapterId = null
         uiState.contentList.clear()
         uiState.contentList.add(null)
         uiState.contentList.add(null)
@@ -333,20 +331,7 @@ class ScrollContentViewModel(
                 val chapterContentUiState = result.get()?.toUiState()
                 uiState.contentList[1] = id to result.map { chapterContentUiState!! }
                 result.onOk { chapterContent ->
-                    collectPrevChapterJob?.cancel()
-                    collectPrevChapterJob = collectAdjacentChapter(
-                        index = 0,
-                        chapterId = chapterContent.prevChapter,
-                        currentChapterId = chapterContent.id,
-                        occupiedChapterIds = setOfNotNull(chapterContent.nextChapter)
-                    )
-                    collectNextChapterJob?.cancel()
-                    collectNextChapterJob = collectAdjacentChapter(
-                        index = 2,
-                        chapterId = chapterContent.nextChapter,
-                        currentChapterId = chapterContent.id,
-                        occupiedChapterIds = setOfNotNull(chapterContent.prevChapter)
-                    )
+                    updateAdjacentChapterCollectors(chapterContent)
 
                     bookRepository.updateUserReadingData(uiState.bookId) { userReadingData ->
                         uiState.readingProgress = if (restoreProgress) {
@@ -378,20 +363,52 @@ class ScrollContentViewModel(
                 }
         }
 
-    private fun collectAdjacentChapter(
-        index: Int,
-        chapterId: String?,
+    private fun updateAdjacentChapterCollectors(chapterContent: ChapterContentUiState) =
+        updateAdjacentChapterCollectors(
+            currentChapterId = chapterContent.id,
+            prevChapterId = chapterContent.prevChapter,
+            nextChapterId = chapterContent.nextChapter
+        )
+
+    private fun updateAdjacentChapterCollectors(chapterContent: ChapterContent) =
+        updateAdjacentChapterCollectors(
+            currentChapterId = chapterContent.id,
+            prevChapterId = chapterContent.prevChapter,
+            nextChapterId = chapterContent.nextChapter
+        )
+
+    private fun updateAdjacentChapterCollectors(
         currentChapterId: String,
-        occupiedChapterIds: Set<String> = emptySet()
-    ): Job? {
-        val adjacentChapterId = chapterId
+        prevChapterId: String?,
+        nextChapterId: String?
+    ) {
+        val validPrevChapterId = prevChapterId
             ?.takeIf { it != currentChapterId }
-            ?.takeIf { it !in occupiedChapterIds }
-            ?: run {
-                uiState.contentList[index] = null
-                return null
+            ?.takeIf { it != nextChapterId }
+        if (collectingPrevChapterId != validPrevChapterId) {
+            collectPrevChapterJob?.cancel()
+            collectingPrevChapterId = validPrevChapterId
+            collectPrevChapterJob = if (validPrevChapterId == null) {
+                uiState.contentList[0] = null
+                null
+            } else {
+                collectChapter(0, validPrevChapterId)
             }
-        return collectChapter(index, adjacentChapterId)
+        }
+
+        val validNextChapterId = nextChapterId
+            ?.takeIf { it != currentChapterId }
+            ?.takeIf { it != prevChapterId }
+        if (collectingNextChapterId != validNextChapterId) {
+            collectNextChapterJob?.cancel()
+            collectingNextChapterId = validNextChapterId
+            collectNextChapterJob = if (validNextChapterId == null) {
+                uiState.contentList[2] = null
+                null
+            } else {
+                collectChapter(2, validNextChapterId)
+            }
+        }
     }
 
     private suspend fun updateLastReadChapter(chapterId: String, chapterTitle: String?) {

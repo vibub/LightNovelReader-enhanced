@@ -35,6 +35,36 @@ class BookRepositoryResultEmissionTest {
     }
 
     @Test
+    fun chapterWithoutLocalCacheAlwaysRequestsRemote() {
+        assertTrue(
+            shouldRequestRemoteChapter(
+                hasUsableLocal = false,
+                wasRecentlyFetched = true
+            )
+        )
+    }
+
+    @Test
+    fun staleLocalChapterRequestsRemoteRefresh() {
+        assertTrue(
+            shouldRequestRemoteChapter(
+                hasUsableLocal = true,
+                wasRecentlyFetched = false
+            )
+        )
+    }
+
+    @Test
+    fun recentlyFetchedLocalChapterSkipsDuplicateRemoteRequest() {
+        assertFalse(
+            shouldRequestRemoteChapter(
+                hasUsableLocal = true,
+                wasRecentlyFetched = true
+            )
+        )
+    }
+
+    @Test
     fun bookshelfKeepsLocalPlaceholderWhenRemoteFails() = runBlocking {
         val results = preserveLocalFallback(
             local = "同步书名",

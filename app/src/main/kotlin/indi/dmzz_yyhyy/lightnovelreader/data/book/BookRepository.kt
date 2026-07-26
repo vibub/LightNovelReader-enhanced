@@ -100,6 +100,11 @@ internal fun <T, E> preserveLocalFallback(
     }
 }.distinctUntilChanged()
 
+internal fun shouldRequestRemoteChapter(
+    hasUsableLocal: Boolean,
+    wasRecentlyFetched: Boolean
+): Boolean = !hasUsableLocal || !wasRecentlyFetched
+
 @Singleton
 class BookRepository @Inject constructor(
     private val webBookDataSourceProvider: WebBookDataSourceProvider,
@@ -110,8 +115,11 @@ class BookRepository @Inject constructor(
 ): BookRepositoryApi {
     companion object {
         private const val TAG = "BookRepository"
+        private const val CHAPTER_REMOTE_REFRESH_TTL_MILLIS = 10 * 60 * 1000L
     }
 
+    private val chapterRefreshLock = Any()
+    private val recentChapterRemoteFetches = mutableMapOf<String, Long>()
     private val webBookDataSource get() = webBookDataSourceProvider.value
 
     override fun getBookInformationFlow(
@@ -189,9 +197,13 @@ class BookRepository @Inject constructor(
         val local = localBookDataSource.getChapterContent(sourceId, bookId, chapterId)
             ?.takeIf(::isUsableChapterContent)
         local?.let { emit(Ok(it)) }
+        if (!shouldRequestRemoteChapter(local != null, isChapterRecentlyFetched(sourceId, bookId, chapterId))) {
+            return@flow
+        }
         val remote = webBookDataSource.getChapterContent(chapterId, bookId, priority)
             .onOk { remote ->
                 localBookDataSource.updateChapterContent(sourceId, bookId, remote)
+                markChapterRemoteFetched(sourceId, bookId, chapterId)
             }.onErr {
                 Log.e(TAG, "Failed to request web data (title=${it.title}, message=${it.message})")
                 it.throwable?.printStackTrace()
@@ -209,14 +221,45 @@ class BookRepository @Inject constructor(
         priority: WebDataSourcePriority
     ) {
         val sourceId = webBookDataSource.id.toLegacyCompatibleSourceId()
+        val local = localBookDataSource.getChapterContent(sourceId, bookId, chapterId)
+            ?.takeIf(::isUsableChapterContent)
+        if (local != null) return
+
         webBookDataSource.getChapterContent(chapterId, bookId, priority)
             .onOk { remote ->
                 localBookDataSource.updateChapterContent(sourceId, bookId, remote)
+                markChapterRemoteFetched(sourceId, bookId, chapterId)
             }.onErr {
                 Log.e(TAG, "Failed to request web data (title=${it.title}, message=${it.message})")
                 it.throwable?.printStackTrace()
             }
     }
+
+    private fun markChapterRemoteFetched(sourceId: Int, bookId: String, chapterId: String) {
+        synchronized(chapterRefreshLock) {
+            recentChapterRemoteFetches[chapterRefreshKey(sourceId, bookId, chapterId)] =
+                System.currentTimeMillis()
+        }
+    }
+
+    private fun isChapterRecentlyFetched(sourceId: Int, bookId: String, chapterId: String): Boolean {
+        val now = System.currentTimeMillis()
+        synchronized(chapterRefreshLock) {
+            val iterator = recentChapterRemoteFetches.iterator()
+            while (iterator.hasNext()) {
+                if (now - iterator.next().value > CHAPTER_REMOTE_REFRESH_TTL_MILLIS) {
+                    iterator.remove()
+                }
+            }
+            val lastFetchedAt = recentChapterRemoteFetches[
+                chapterRefreshKey(sourceId, bookId, chapterId)
+            ] ?: return false
+            return now - lastFetchedAt <= CHAPTER_REMOTE_REFRESH_TTL_MILLIS
+        }
+    }
+
+    private fun chapterRefreshKey(sourceId: Int, bookId: String, chapterId: String): String =
+        "$sourceId/$bookId/$chapterId"
 
     override suspend fun getUserReadingData(bookId: String): UserReadingData =
         localBookDataSource.getUserReadingData(bookId)
