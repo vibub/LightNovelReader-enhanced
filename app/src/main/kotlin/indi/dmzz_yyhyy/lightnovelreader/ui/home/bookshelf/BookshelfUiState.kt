@@ -33,7 +33,7 @@ fun Bookshelf.toBookshelfUiState(bookRepository: BookRepository, bookshelfReposi
     autoCache = this.autoCache,
     systemUpdateReminder = this.systemUpdateReminder,
     allBookFlows = this.allBookIds.map { id ->
-        val bookInformationFlow = bookRepository.getBookInformationFlow(id)
+        val bookInformationFlow = bookRepository.getBookshelfBookInformationFlow(id)
         val bookshelfBookMetadataFlow = bookshelfRepository.getBookshelfBookMetadataFlow(id)
         id to bookInformationFlow.combine(bookshelfBookMetadataFlow) { result, bookshelfBookMetadata ->
             result.map {
@@ -46,7 +46,7 @@ fun Bookshelf.toBookshelfUiState(bookRepository: BookRepository, bookshelfReposi
         }
     },
     pinnedBookFlows = this.pinnedBookIds.map { id ->
-        val bookInformationFlow = bookRepository.getBookInformationFlow(id)
+        val bookInformationFlow = bookRepository.getBookshelfBookInformationFlow(id)
         val bookshelfBookMetadataFlow = bookshelfRepository.getBookshelfBookMetadataFlow(id)
         id to bookInformationFlow.combine(bookshelfBookMetadataFlow) { result, bookshelfBookMetadata ->
             result.map {
@@ -59,7 +59,7 @@ fun Bookshelf.toBookshelfUiState(bookRepository: BookRepository, bookshelfReposi
         }
     },
     updatedBookFlows = this.updatedBookIds.map { id ->
-        val bookInformationFlow = bookRepository.getBookInformationFlow(id)
+        val bookInformationFlow = bookRepository.getBookshelfBookInformationFlow(id)
         val bookVolumesFlow = bookRepository.getBookVolumesFlow(id)
         val bookshelfBookMetadataFlow = bookshelfRepository.getBookshelfBookMetadataFlow(id)
         id to combine(bookshelfBookMetadataFlow, bookInformationFlow, bookVolumesFlow) { bookshelfBookMetadata, bookInformationResult, bookVolumesResult ->

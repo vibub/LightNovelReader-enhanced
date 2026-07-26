@@ -27,6 +27,8 @@ import io.nightfish.lightnovelreader.api.book.UserReadingData
 import io.nightfish.lightnovelreader.api.error.WebRequestError
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.JsonArray
@@ -88,6 +90,16 @@ internal fun <T, E> shouldEmitRemoteResult(
     remote: Result<T, E>
 ): Boolean = !hasUsableLocal || remote.isOk
 
+internal fun <T, E> preserveLocalFallback(
+    local: T?,
+    remote: Flow<Result<T, E>>
+): Flow<Result<T, E>> = flow {
+    local?.let { emit(Ok(it)) }
+    remote.collect { result ->
+        if (shouldEmitRemoteResult(local != null, result)) emit(result)
+    }
+}.distinctUntilChanged()
+
 @Singleton
 class BookRepository @Inject constructor(
     private val webBookDataSourceProvider: WebBookDataSourceProvider,
@@ -130,6 +142,21 @@ class BookRepository @Inject constructor(
         result.map {
             textProcessingRepository.processBookInformation { it }
         }
+    }
+
+    internal fun getBookshelfBookInformationFlow(
+        id: String,
+        priority: WebDataSourcePriority = WebDataSourcePriority.Default
+    ): Flow<Result<BookInformation, WebRequestError>> = flow {
+        val local = localBookDataSource.getBookInformation(id)?.let { bookInformation ->
+            textProcessingRepository.processBookInformation { bookInformation }
+        }
+        emitAll(
+            preserveLocalFallback(
+                local = local,
+                remote = getBookInformationFlow(id, priority)
+            )
+        )
     }
 
     override fun getBookVolumesFlow(

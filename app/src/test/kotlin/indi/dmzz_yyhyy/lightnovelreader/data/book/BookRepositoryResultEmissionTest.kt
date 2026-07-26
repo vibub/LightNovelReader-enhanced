@@ -6,9 +6,13 @@ import io.nightfish.lightnovelreader.api.book.BookVolumes
 import io.nightfish.lightnovelreader.api.book.ChapterContent
 import io.nightfish.lightnovelreader.api.book.ChapterInformation
 import io.nightfish.lightnovelreader.api.book.Volume
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.putJsonArray
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -28,6 +32,36 @@ class BookRepositoryResultEmissionTest {
     @Test
     fun remoteSuccessReplacesUsableLocalValue() {
         assertTrue(shouldEmitRemoteResult(true, Ok("fresh")))
+    }
+
+    @Test
+    fun bookshelfKeepsLocalPlaceholderWhenRemoteFails() = runBlocking {
+        val results = preserveLocalFallback(
+            local = "同步书名",
+            remote = flowOf(Err("network"))
+        ).toList()
+
+        assertEquals(listOf(Ok("同步书名")), results)
+    }
+
+    @Test
+    fun bookshelfReplacesLocalPlaceholderWhenRemoteSucceeds() = runBlocking {
+        val results = preserveLocalFallback(
+            local = "同步书名",
+            remote = flowOf(Ok("完整详情"))
+        ).toList()
+
+        assertEquals(listOf(Ok("同步书名"), Ok("完整详情")), results)
+    }
+
+    @Test
+    fun bookshelfEmitsRemoteErrorWithoutLocalFallback() = runBlocking {
+        val results = preserveLocalFallback<String, String>(
+            local = null,
+            remote = flowOf(Err("network"))
+        ).toList()
+
+        assertEquals(listOf(Err("network")), results)
     }
 
     @Test
