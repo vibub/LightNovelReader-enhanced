@@ -99,28 +99,55 @@ fun NavGraphBuilder.bookDetailDestination() {
                 viewModel.uiState.bookVolumes
                     ?.map {
                         it.volumes.firstOrNull()?.chapters?.firstOrNull()?.id
-                    }?.onOk { id ->
-                        id?.let {
-                            navController.navigateToBookReaderDestination(bookId, it, context)
+                    }?.onOk { firstChapterId ->
+                        resolveReadingEntry(
+                            lastReadChapterId = null,
+                            firstChapterId = firstChapterId
+                        )?.let { readingEntry ->
+                            navController.navigateToBookReaderDestination(
+                                bookId = bookId,
+                                chapterId = readingEntry.chapterId,
+                                context = context,
+                                restoreProgress = readingEntry.restoreProgress
+                            )
                         }
                     }?.onErr {
                         Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show()
                     }
             },
             onClickContinueReading = {
-                if (viewModel.uiState.userReadingData?.lastReadChapterId == null)
+                val lastReadChapterId = viewModel.uiState.userReadingData?.lastReadChapterId
+                if (hasReadingRecord(lastReadChapterId)) {
+                    resolveReadingEntry(
+                        lastReadChapterId = lastReadChapterId,
+                        firstChapterId = null
+                    )?.let { readingEntry ->
+                        navController.navigateToBookReaderDestination(
+                            bookId = bookId,
+                            chapterId = readingEntry.chapterId,
+                            context = context,
+                            restoreProgress = readingEntry.restoreProgress
+                        )
+                    }
+                } else {
                     viewModel.uiState.bookVolumes
                         ?.map {
                             it.volumes.firstOrNull()?.chapters?.firstOrNull()?.id
-                        }?.onOk { id ->
-                            id?.let {
-                                navController.navigateToBookReaderDestination(bookId, it, context)
+                        }?.onOk { firstChapterId ->
+                            resolveReadingEntry(
+                                lastReadChapterId = lastReadChapterId,
+                                firstChapterId = firstChapterId
+                            )?.let { readingEntry ->
+                                navController.navigateToBookReaderDestination(
+                                    bookId = bookId,
+                                    chapterId = readingEntry.chapterId,
+                                    context = context,
+                                    restoreProgress = readingEntry.restoreProgress
+                                )
                             }
                         }?.onErr {
                             Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show()
                         }
-                else {
-                    navController.navigateToBookReaderDestination(bookId, viewModel.uiState.userReadingData!!.lastReadChapterId!!, context)
                 }
             },
             cacheBook = { bookId ->

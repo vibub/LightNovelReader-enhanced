@@ -129,12 +129,13 @@ class ScrollContentViewModel(
         val widthPx = imagePreloadWidthPx()
         if (uiState.bookId.isBlank() || chapterId.isBlank() || widthPx <= 0) return
         val preloadKey = "${uiState.bookId}/$chapterId/$widthPx"
-        if (!imageHeightPreloadedKeys.add(preloadKey)) return
+        if (preloadKey in imageHeightPreloadedKeys) return
 
         components.forEach { component ->
             val data = component.data as? ImageComponentData ?: return@forEach
             preloadImageComponentHeight(data, widthPx)
         }
+        imageHeightPreloadedKeys.add(preloadKey)
     }
 
     private suspend fun ChapterContent.toUiState(): ChapterContentUiState {
@@ -332,25 +333,6 @@ class ScrollContentViewModel(
                 val chapterContentUiState = result.get()?.toUiState()
                 uiState.contentList[1] = id to result.map { chapterContentUiState!! }
                 result.onOk { chapterContent ->
-                    bookRepository.updateUserReadingData(uiState.bookId) { userReadingData ->
-                        uiState.readingProgress = if (restoreProgress) {
-                            userReadingData.currentChapterReadingProgressMap[id] ?: 0f
-                        } else {
-                            0f
-                        }
-                        userReadingData.copy(
-                            lastReadTime = LocalDateTime.now(),
-                            lastReadChapterId = id,
-                            lastReadChapterTitle = chapterContent.title,
-                        )
-                    }
-                    chapterContent.nextChapter?.let {
-                        bookRepository.preloadChapterContent(
-                            it,
-                            uiState.bookId
-                        )
-                    }
-
                     collectPrevChapterJob?.cancel()
                     collectPrevChapterJob = collectAdjacentChapter(
                         index = 0,
@@ -365,6 +347,19 @@ class ScrollContentViewModel(
                         currentChapterId = chapterContent.id,
                         occupiedChapterIds = setOfNotNull(chapterContent.prevChapter)
                     )
+
+                    bookRepository.updateUserReadingData(uiState.bookId) { userReadingData ->
+                        uiState.readingProgress = if (restoreProgress) {
+                            userReadingData.currentChapterReadingProgressMap[id] ?: 0f
+                        } else {
+                            0f
+                        }
+                        userReadingData.copy(
+                            lastReadTime = LocalDateTime.now(),
+                            lastReadChapterId = id,
+                            lastReadChapterTitle = chapterContent.title,
+                        )
+                    }
                 }
             }
         }

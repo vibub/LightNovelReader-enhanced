@@ -30,7 +30,7 @@ data class ChapterContent(
      *
      * @since Api 2
      */
-    fun hasPrevChapter(): Boolean = prevChapter == null
+    fun hasPrevChapter(): Boolean = prevChapter != null
 
     /**
      * 判断是否存在下一章
@@ -39,5 +39,5 @@ data class ChapterContent(
      *
      * @since Api 2
      */
-    fun hasNextChapter(): Boolean = nextChapter == null
+    fun hasNextChapter(): Boolean = nextChapter != null
 }

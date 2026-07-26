@@ -60,6 +60,7 @@ import indi.dmzz_yyhyy.lightnovelreader.BuildConfig
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.image.ImageTransPostProcessingViewModel
 import io.nightfish.lightnovelreader.api.image.ImagePostProcessingPipeline
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -129,6 +130,7 @@ internal suspend fun preloadReaderImageHeight(
             .build()
         context.imageLoader.execute(request)
     }.getOrElse { throwable ->
+        if (throwable is CancellationException) throw throwable
         debugImageLog {
             "preloadFailed uri=${imageUri.shortForLog()} error=${throwable.localizedMessage}"
         }
