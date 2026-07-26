@@ -1,6 +1,7 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.sync
 
 import android.net.Uri
+import indi.dmzz_yyhyy.lightnovelreader.data.book.isUsableBookInformation
 import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalBookDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
@@ -167,11 +168,10 @@ class LinovelibSyncRepository @Inject constructor(
 
     private suspend fun getBookInformationForSync(
         remoteBook: LinovelibAccountDataSource.LinovelibRemoteBook
-    ): BookInformation {
-        localBookDataSource.getBookInformation(remoteBook.bookId)
-            ?.let { return it }
-        return remoteBook.toMinimalBookInformation()
-    }
+    ): BookInformation = resolveLinovelibSyncBookInformation(
+        remoteBook = remoteBook,
+        localBookInformation = localBookDataSource.getBookInformation(remoteBook.bookId)
+    )
 
     private suspend fun getBookVolumesForSync(bookId: String): BookVolumes {
         val remoteVolumes = websiteDataSource.getBookVolumes(bookId)
@@ -180,21 +180,6 @@ class LinovelibSyncRepository @Inject constructor(
         }
         return remoteVolumes
     }
-
-    private fun LinovelibAccountDataSource.LinovelibRemoteBook.toMinimalBookInformation(): BookInformation =
-        BookInformation(
-            id = bookId,
-            title = title.ifBlank { "Linovelib $bookId" },
-            subtitle = "",
-            coverUri = Uri.EMPTY,
-            author = "",
-            description = "",
-            tags = emptyList(),
-            publishingHouse = "",
-            wordCount = WordCount(-1),
-            lastUpdated = LocalDateTime.MIN,
-            isComplete = false
-        )
 
     private suspend fun ensureSyncBookshelf() {
         if (bookshelfRepository.getBookshelf(LinovelibConstants.SYNC_BOOKSHELF_ID) != null) return
@@ -235,6 +220,28 @@ class LinovelibSyncRepository @Inject constructor(
     }
 
 }
+
+internal fun resolveLinovelibSyncBookTitle(bookId: String, title: String): String =
+    title.ifBlank { "Linovelib $bookId" }
+
+internal fun resolveLinovelibSyncBookInformation(
+    remoteBook: LinovelibAccountDataSource.LinovelibRemoteBook,
+    localBookInformation: BookInformation?
+): BookInformation = localBookInformation
+    ?.takeIf(::isUsableBookInformation)
+    ?: BookInformation(
+        id = remoteBook.bookId,
+        title = resolveLinovelibSyncBookTitle(remoteBook.bookId, remoteBook.title),
+        subtitle = "",
+        coverUri = Uri.EMPTY,
+        author = "",
+        description = "",
+        tags = emptyList(),
+        publishingHouse = "",
+        wordCount = WordCount(0),
+        lastUpdated = LocalDateTime.MIN,
+        isComplete = false
+    )
 
 internal object LinovelibRemoteBookmarkSyncResolver {
     fun resolveDirect(

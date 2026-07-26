@@ -98,6 +98,9 @@ class LinovelibWebsiteDataSource(
         require(bookId.isNotBlank()) { "Invalid Linovelib book id: $id" }
         val document = jsoup.getDocument(LinovelibConstants.catalogUrl(bookId), referer = LinovelibConstants.detailUrl(bookId))
         val volumes = parseVolumes(document, bookId)
+        require(isUsableLinovelibCatalog(volumes)) {
+            "Linovelib book $bookId has no catalog chapters"
+        }
         BookVolumes(bookId, volumes)
     }.getOrElse {
         throw it
@@ -182,6 +185,9 @@ class LinovelibWebsiteDataSource(
                 )
                 LinovelibChapterContentParser.Part.SectionBreak -> Unit
             }
+        }
+        require(hasRenderableLinovelibChapterContent(builder.components.size)) {
+            "Linovelib chapter $normalizedBookId/$normalizedChapterId has no renderable content"
         }
         val content = builder.build()
             .withLinovelibChapterPageMap(pageBoundaries)
@@ -558,6 +564,11 @@ class LinovelibWebsiteDataSource(
         )
     }
 }
+
+internal fun isUsableLinovelibCatalog(volumes: List<Volume>): Boolean =
+    volumes.any { volume -> volume.chapters.any { chapter -> chapter.id.isNotBlank() } }
+
+internal fun hasRenderableLinovelibChapterContent(componentCount: Int): Boolean = componentCount > 0
 
 internal fun extractLinovelibScriptPage(document: Document, name: String): String? {
     val regex = Regex("""\b(?:var\s+)?${Regex.escape(name)}\s*=\s*["']([^"']*)["']""")

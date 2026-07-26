@@ -2,6 +2,8 @@ package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book
 
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibJsoup
+import io.nightfish.lightnovelreader.api.book.ChapterInformation
+import io.nightfish.lightnovelreader.api.book.Volume
 import io.nightfish.lightnovelreader.api.content.component.ImageComponentData
 import io.nightfish.lightnovelreader.api.content.component.SimpleTextStyleRange
 import kotlinx.coroutines.runBlocking
@@ -10,6 +12,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LinovelibWebsiteDataSourceTest {
@@ -123,6 +126,37 @@ class LinovelibWebsiteDataSourceTest {
         val coverUrl = LinovelibWebsiteDataSource(LinovelibJsoup()).parseBookCoverUrl(document)
 
         assertEquals("https://www.linovelib.com/files/article/image/3/3095/pic.jpg", coverUrl)
+    }
+
+    @Test
+    fun emptyCatalogIsNotUsable() {
+        assertFalse(isUsableLinovelibCatalog(emptyList()))
+        assertFalse(
+            isUsableLinovelibCatalog(
+                listOf(Volume("2890_0", "正文", emptyList()))
+            )
+        )
+    }
+
+    @Test
+    fun catalogWithChapterIsUsable() {
+        assertTrue(
+            isUsableLinovelibCatalog(
+                listOf(
+                    Volume(
+                        volumeId = "2890_0",
+                        volumeTitle = "正文",
+                        chapters = listOf(ChapterInformation("142735", "插图"))
+                    )
+                )
+            )
+        )
+    }
+
+    @Test
+    fun emptyChapterComponentsAreNotRenderable() {
+        assertFalse(hasRenderableLinovelibChapterContent(0))
+        assertTrue(hasRenderableLinovelibChapterContent(1))
     }
 
     @Test

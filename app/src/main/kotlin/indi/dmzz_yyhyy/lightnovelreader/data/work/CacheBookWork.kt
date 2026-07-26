@@ -20,6 +20,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadType
 import indi.dmzz_yyhyy.lightnovelreader.data.download.MutableDownloadItem
 import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalBookDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
+import indi.dmzz_yyhyy.lightnovelreader.utils.toLegacyCompatibleSourceId
 
 @HiltWorker
 class CacheBookWork @AssistedInject constructor(
@@ -46,7 +47,7 @@ class CacheBookWork @AssistedInject constructor(
         )
         downloadProgressRepository.addExportItem(downloadItem)
         val webBookDataSource = webBookDataSourceProvider.value
-        val sourceId = webBookDataSource.id.hashCode()
+        val sourceId = webBookDataSource.id.toLegacyCompatibleSourceId()
         webBookDataSource.getBookVolumes(bookId)
             .andThen { bookVolumes ->
                 coroutineBinding {

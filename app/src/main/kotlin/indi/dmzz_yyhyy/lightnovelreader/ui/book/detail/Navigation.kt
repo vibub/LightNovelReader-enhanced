@@ -182,10 +182,7 @@ fun NavGraphBuilder.bookDetailDestination() {
             },
             onClickWebView = if (viewModel.uiState.isLinovelibSource) {
                 {
-                    navController.navigateToLinovelibWebBookDestination(
-                        bookId,
-                        viewModel.uiState.bookmarkUiState.chapterId
-                    )
+                    navController.navigateToLinovelibWebBookDestination(bookId)
                 }
             } else {
                 null
