@@ -7,6 +7,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.UserReadingDataDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.UserReadingDataEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -33,15 +34,19 @@ class LocalBookDataSourceTest {
 
         try {
             val progressUpdate = executor.submit {
-                dataSource.updateUserReadingData(BOOK_ID) {
-                    it.apply { updateChapterReadingProgress(CHAPTER_ID, 0.5f) }
+                runBlocking {
+                    dataSource.updateUserReadingData(BOOK_ID) {
+                        it.copyWithUpdatedChapterReadingProgress(CHAPTER_ID, 0.5f)
+                    }
                 }
             }
             assertTrue(dao.firstInsertStarted.await(5, TimeUnit.SECONDS))
 
             val readingTimeUpdate = executor.submit {
-                dataSource.updateUserReadingData(BOOK_ID) {
-                    it.apply { totalReadTime = 42 }
+                runBlocking {
+                    dataSource.updateUserReadingData(BOOK_ID) {
+                        it.copy(totalReadTime = 42)
+                    }
                 }
             }
             try {
@@ -81,7 +86,7 @@ class LocalBookDataSourceTest {
         private val readCount = AtomicInteger()
         private val insertCount = AtomicInteger()
 
-        override fun insert(
+        override suspend fun insert(
             id: String,
             lastReadTime: LocalDateTime,
             totalReadTime: Int,
@@ -108,24 +113,22 @@ class LocalBookDataSourceTest {
             stored.set(entity)
         }
 
-        override fun insert(userReading: UserReadingDataEntity) {
+        override suspend fun insert(userReading: UserReadingDataEntity) {
             stored.set(userReading)
         }
 
-        override fun getEntity(id: String): UserReadingDataEntity? = stored.get()
-
-        override fun getEntityFlow(id: String): Flow<UserReadingDataEntity?> = flowOf(stored.get())
-
-        override fun getAll(): List<UserReadingDataEntity> = listOf(stored.get())
-
-        override fun getEntityWithoutFlow(id: String): UserReadingDataEntity? {
+        override suspend fun getEntity(id: String): UserReadingDataEntity? {
             if (readCount.incrementAndGet() == 2) secondReadStarted.countDown()
             return stored.get()
         }
 
-        override fun deleteByIds(ids: List<String>) = Unit
+        override fun getEntityFlow(id: String): Flow<UserReadingDataEntity?> = flowOf(stored.get())
 
-        override fun clear() = Unit
+        override suspend fun getAll(): List<UserReadingDataEntity> = listOf(stored.get())
+
+        override suspend fun deleteByIds(ids: List<String>) = Unit
+
+        override suspend fun clear() = Unit
     }
 
     companion object {

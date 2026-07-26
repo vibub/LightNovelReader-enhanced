@@ -54,7 +54,7 @@ class LinovelibChapterCommentRepository @Inject constructor(
             refererChapterPageId = refererChapterPageId,
             query = query,
             pageIndex = pageIndex,
-            hasCookie = accountStore.hasCookie()
+            hasCookie = accountStore.hasStoredCookie()
         )
         return try {
             val raw = jsoup.postFormRaw(

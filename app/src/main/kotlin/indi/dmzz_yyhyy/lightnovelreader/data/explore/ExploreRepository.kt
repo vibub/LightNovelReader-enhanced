@@ -11,12 +11,12 @@ import javax.inject.Singleton
 class ExploreRepository @Inject constructor(
     private val webBookDataSourceProvider: WebBookDataSourceProvider,
 ) {
-    val searchTypes get() = webBookDataSourceProvider.default.searchProvider.searchTypes
-    val currentSourceId get() = webBookDataSourceProvider.default.id
-    val explorePageProvider get() = webBookDataSourceProvider.default.explorePageProvider
+    val currentSourceId get() = webBookDataSourceProvider.value.id
+    val searchTypes get() = webBookDataSourceProvider.value.searchProvider.searchTypes
+    val explorePageProvider get() = webBookDataSourceProvider.value.explorePageProvider
 
     fun search(searchType: SearchType, keyword: String): Flow<SearchResult> =
-        webBookDataSourceProvider.default.searchProvider.search(searchType, keyword)
+        webBookDataSourceProvider.value.searchProvider.search(searchType, keyword)
 
-    fun getSuggestions(history: List<String>, keyword: String): List<String> = webBookDataSourceProvider.default.searchProvider.getSearchSuggestions(history, keyword)
+    fun getSuggestions(history: List<String>, keyword: String): List<String> = webBookDataSourceProvider.value.searchProvider.getSearchSuggestions(history, keyword)
 }

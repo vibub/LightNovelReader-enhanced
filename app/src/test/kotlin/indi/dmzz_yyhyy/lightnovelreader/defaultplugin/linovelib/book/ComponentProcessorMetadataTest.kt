@@ -16,6 +16,7 @@ import org.junit.Test
 class ComponentProcessorMetadataTest {
     @Test
     fun processKeepsTopLevelMetadata() {
+        val componentId = SimpleTextComponentData.id.toString()
         val content = buildJsonObject {
             put("linovelibParserWarning", "warning")
             putJsonArray("linovelibChapterPageMap") {
@@ -27,14 +28,14 @@ class ComponentProcessorMetadataTest {
             }
             putJsonArray("components") {
                 addJsonObject {
-                    put("id", SimpleTextComponentData.ID)
+                    put("id", componentId)
                     put("data", SimpleTextComponentData("原文").toJsonElement())
                 }
             }
         }
         val processor = ComponentProcessor(
-            serializerMap = mapOf(SimpleTextComponentData.ID to SimpleTextComponentData.jsonSerializer),
-            dataKClassMap = mapOf(SimpleTextComponentData.ID to SimpleTextComponentData::class),
+            serializerMap = mapOf(componentId to SimpleTextComponentData.jsonSerializer),
+            dataKClassMap = mapOf(componentId to SimpleTextComponentData::class),
             content = content
         )
 

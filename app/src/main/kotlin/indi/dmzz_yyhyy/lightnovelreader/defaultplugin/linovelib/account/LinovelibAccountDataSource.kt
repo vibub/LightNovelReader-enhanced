@@ -16,7 +16,7 @@ class LinovelibAccountDataSource(
         page: Int,
         refererChapterPageId: String
     ): String {
-        if (!accountStore.hasCookie()) throw IllegalStateException("尚未保存 Linovelib 登录 Cookie")
+        if (!accountStore.hasStoredCookie()) throw IllegalStateException("尚未保存 Linovelib 登录 Cookie")
         return jsoup.getRaw(
             url = LinovelibConstants.addBookcaseUrl(bookId, chapterId, page),
             referer = LinovelibConstants.chapterUrl(bookId, refererChapterPageId),
@@ -27,7 +27,7 @@ class LinovelibAccountDataSource(
     }
 
     suspend fun getRemoteBookshelfResult(): LinovelibRemoteBookshelf {
-        if (!accountStore.hasCookie()) throw IllegalStateException("尚未保存 Linovelib 登录 Cookie")
+        if (!accountStore.hasStoredCookie()) throw IllegalStateException("尚未保存 Linovelib 登录 Cookie")
         val candidates = linkedMapOf<String, LinovelibRemoteBook>()
         val visitedUrls = mutableSetOf<String>()
         var expectedGroupCount: Int? = null

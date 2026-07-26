@@ -15,33 +15,33 @@ interface ChapterContentDao {
     @TypeConverters(JsonObjectConverter::class)
     @Query(
         "replace into chapter_content (source_id, book_id, id, title, content, lastChapter, nextChapter) " +
-                "values (:sourceId, :bookId, :id, :title, :content, :lastChapter, :nextChapter)"
+                "values (:sourceId, :bookId, :id, :title, :content, :prevChapter, :nextChapter)"
     )
-    fun update(
+    suspend fun update(
         sourceId: Int,
         bookId: String,
         id: String,
         title: String,
         content: JsonObject,
-        lastChapter: String,
+        prevChapter: String,
         nextChapter: String
     )
 
     @Transaction
-    fun update(sourceId: Int, bookId: String, chapterContent: ChapterContent) {
+    suspend fun update(sourceId: Int, bookId: String, chapterContent: ChapterContent) {
         update(
             sourceId,
             bookId,
             chapterContent.id,
             chapterContent.title,
             chapterContent.content,
-            chapterContent.lastChapter,
-            chapterContent.nextChapter
+            chapterContent.prevChapter ?: "",
+            chapterContent.nextChapter ?: ""
         )
     }
 
     @Transaction
-    fun update(chapterContent: ChapterContent) {
+    suspend fun update(chapterContent: ChapterContent) {
         update(
             ChapterContentEntity.LEGACY_SOURCE_ID,
             ChapterContentEntity.LEGACY_BOOK_ID,
@@ -50,14 +50,14 @@ interface ChapterContentDao {
     }
 
     @Transaction
-    fun update(chapterContent: ChapterContentEntity) {
+    suspend fun update(chapterContent: ChapterContentEntity) {
         update(
             chapterContent.sourceId,
             chapterContent.bookId,
             chapterContent.id,
             chapterContent.title,
             chapterContent.content,
-            chapterContent.lastChapter,
+            chapterContent.prevChapter,
             chapterContent.nextChapter
         )
     }
@@ -85,29 +85,29 @@ interface ChapterContentDao {
     suspend fun getId(id: String): String?
 
     @Query("delete from chapter_content")
-    fun clear()
+    suspend fun clear()
 
     @Query("delete from chapter_content where source_id = :sourceId and book_id = :bookId and id = :id")
-    fun delete(sourceId: Int, bookId: String, id: String)
+    suspend fun delete(sourceId: Int, bookId: String, id: String)
 
     @Query("delete from chapter_content where source_id = :sourceId and book_id = :bookId and id in (:ids)")
-    fun deleteByIds(sourceId: Int, bookId: String, ids: List<String>)
+    suspend fun deleteByIds(sourceId: Int, bookId: String, ids: List<String>)
 
     @Query("delete from chapter_content where book_id in (:bookIds)")
-    fun deleteByBookIds(bookIds: List<String>)
+    suspend fun deleteByBookIds(bookIds: List<String>)
 
     @Query("delete from chapter_content where source_id = -1 and book_id = '' and id in (:ids)")
-    fun deleteLegacyByIds(ids: List<String>)
+    suspend fun deleteLegacyByIds(ids: List<String>)
 
     @Query("delete from chapter_content where book_id = :bookId and id in (:ids)")
-    fun deleteByBookIdAndIds(bookId: String, ids: List<String>)
+    suspend fun deleteByBookIdAndIds(bookId: String, ids: List<String>)
 
     @Query("delete from chapter_content where id in (:ids)")
-    fun deleteByIds(ids: List<String>)
+    suspend fun deleteByIds(ids: List<String>)
 
     @Update
-    fun updateEntities(vararg entities: ChapterContentEntity)
+    suspend fun updateEntities(vararg entities: ChapterContentEntity)
 
     @Query("select * from chapter_content")
-    fun getAllEntities(): List<ChapterContentEntity>
+    suspend fun getAllEntities(): List<ChapterContentEntity>
 }

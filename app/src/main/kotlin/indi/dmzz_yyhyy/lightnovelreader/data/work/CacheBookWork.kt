@@ -3,12 +3,18 @@ package indi.dmzz_yyhyy.lightnovelreader.data.work
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.widget.Toast
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.github.michaelbull.result.andThen
+import com.github.michaelbull.result.coroutines.coroutineBinding
+import com.github.michaelbull.result.onErr
+import com.github.michaelbull.result.onOk
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadProgressRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadType
 import indi.dmzz_yyhyy.lightnovelreader.data.download.MutableDownloadItem
@@ -21,76 +27,85 @@ class CacheBookWork @AssistedInject constructor(
     @Assisted workerParams: WorkerParameters,
     private val localBookDataSource: LocalBookDataSource,
     private val webBookDataSourceProvider: WebBookDataSourceProvider,
-    private val downloadProgressRepository: DownloadProgressRepository
+    private val downloadProgressRepository: DownloadProgressRepository,
+    private val bookRepository: BookRepository
 ) : CoroutineWorker(appContext, workerParams) {
     companion object {
-        const val KEY_BOOK_ID = "bookId"
+        private const val TAG = "CacheBookWork"
 
         fun ofId(id: String): String = "cache:$id"
     }
 
     override suspend fun doWork(): Result {
-        val bookId = inputData.getString(KEY_BOOK_ID) ?: return Result.failure()
+        val bookId = inputData.getString("bookId") ?: return Result.failure()
         if (bookId.isBlank()) return Result.failure()
-        val webBookDataSource = webBookDataSourceProvider.lowPriority
-        val sourceId = webBookDataSource.id
-        val downloadItem = MutableDownloadItem(DownloadType.CACHE, bookId)
+        val downloadItem = MutableDownloadItem(
+            DownloadType.CACHE,
+            bookId,
+            bookRepository.getBookInformationFlow(bookId)
+        )
         downloadProgressRepository.addExportItem(downloadItem)
-        var count = 0
-        val bookVolumes = webBookDataSource.getBookVolumes(bookId)
-        val total = bookVolumes.volumes.sumOf { it.chapters.size } + 1
-        if (bookVolumes.volumes.isEmpty()) return Result.failure()
-        localBookDataSource.updateBookVolumes(bookVolumes)
-        val orderedChapters = bookVolumes.volumes.flatMap { it.chapters }
-        val navigationByChapterId = orderedChapters.mapIndexed { index, chapter ->
-            chapter.id to Pair(
-                orderedChapters.getOrNull(index - 1)?.id ?: "",
-                orderedChapters.getOrNull(index + 1)?.id ?: ""
-            )
-        }.toMap()
-        fun updateProgress() {
-            count++
-            downloadItem.progress = count.toFloat() / total
-        }
-        for (volume in bookVolumes.volumes) {
-            for (chapterInformation in volume.chapters) {
-                val chapterId = chapterInformation.id
-                val cachedChapter = localBookDataSource.getExactChapterContent(sourceId, bookId, chapterId)
-                if (cachedChapter != null && !cachedChapter.isEmpty()) {
-                    val (lastChapterId, nextChapterId) = navigationByChapterId[chapterId] ?: Pair("", "")
-                    if (cachedChapter.lastChapter != lastChapterId || cachedChapter.nextChapter != nextChapterId) {
-                        localBookDataSource.updateChapterContent(
-                            sourceId,
-                            bookId,
-                            cachedChapter.toMutable().apply {
-                                lastChapter = lastChapterId
-                                nextChapter = nextChapterId
-                            }
+        val webBookDataSource = webBookDataSourceProvider.value
+        val sourceId = webBookDataSource.id.hashCode()
+        webBookDataSource.getBookVolumes(bookId)
+            .andThen { bookVolumes ->
+                coroutineBinding {
+                    var count = 0
+                    val total = bookVolumes.volumes.sumOf { it.chapters.size } + 1
+                    localBookDataSource.updateBookVolumes(bookVolumes)
+                    val orderedChapters = bookVolumes.volumes.flatMap { it.chapters }
+                    val navigationByChapterId = orderedChapters.mapIndexed { index, chapter ->
+                        chapter.id to Pair(
+                            orderedChapters.getOrNull(index - 1)?.id,
+                            orderedChapters.getOrNull(index + 1)?.id
                         )
+                    }.toMap()
+                    bookVolumes.volumes.forEach { volume ->
+                        volume.chapters.map { it.id }.forEach { chapterId ->
+                            val cachedChapter = localBookDataSource.getExactChapterContent(sourceId, bookId, chapterId)
+                            if (cachedChapter != null) {
+                                val (prevChapterId, nextChapterId) = navigationByChapterId[chapterId] ?: Pair(null, null)
+                                if (cachedChapter.prevChapter != prevChapterId || cachedChapter.nextChapter != nextChapterId) {
+                                    localBookDataSource.updateChapterContent(
+                                        sourceId,
+                                        bookId,
+                                        cachedChapter.copy(
+                                            prevChapter = prevChapterId,
+                                            nextChapter = nextChapterId
+                                        )
+                                    )
+                                }
+                                count++
+                                downloadItem.progress = count.toFloat() / total
+                                return@forEach
+                            }
+                            val chapter = webBookDataSource.getChapterContent(
+                                chapterId = chapterId,
+                                bookId = bookId
+                            ).bind()
+                            localBookDataSource.updateChapterContent(sourceId, bookId, chapter)
+                            count++
+                            downloadItem.progress = count.toFloat() / total
+                        }
                     }
-                    updateProgress()
-                    continue
                 }
-                val chapter = webBookDataSource.getChapterContent(
-                    chapterId = chapterId,
-                    bookId = bookId
-                )
-                if (chapter.isEmpty()) {
-                    Handler(Looper.getMainLooper()).post {
-                        Toast.makeText(applicationContext, "缓存失败，请检查网络环境", Toast.LENGTH_SHORT).show()
-                    }
-                    return Result.failure()
+            }
+            .andThen {
+                coroutineBinding {
+                    val bookInformation = webBookDataSource.getBookInformation(bookId).bind()
+                    localBookDataSource.updateBookInformation(bookInformation)
                 }
-                localBookDataSource.updateChapterContent(sourceId, bookId, chapter)
-                updateProgress()
             }
-        }
-        webBookDataSource.getBookInformation(bookId)
-            .let {
-                if (it.isEmpty()) return Result.failure()
-                localBookDataSource.updateBookInformation(it)
+            .onOk {
+                downloadItem.progress = 1f
             }
-        downloadItem.progress = 1f
+            .onErr {
+                Handler(Looper.getMainLooper()).post {
+                    Toast.makeText(applicationContext, "缓存失败, ${it.message}", Toast.LENGTH_SHORT).show()
+                }
+                it.throwable?.stackTraceToString()?.let { msg -> Log.e(TAG, msg) }
+            }
+
         return Result.success()
     }
 }

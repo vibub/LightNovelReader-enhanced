@@ -20,16 +20,17 @@ local.properties
 ./local.properties
 .kotlin/
 /app/snapshot/
+/proxy/build/**
+/compiler/build/**
+/build/**
 
+# 本地 Claude Code、索引和调试资料
 .claude/
 CLAUDE.md
 .codegraph/
 docs/superpowers/
 .idea/studiobot.xml
-
-proxy/build/
-
-build/
 logcat/
 
+# 本地签名文件
 Keystore/

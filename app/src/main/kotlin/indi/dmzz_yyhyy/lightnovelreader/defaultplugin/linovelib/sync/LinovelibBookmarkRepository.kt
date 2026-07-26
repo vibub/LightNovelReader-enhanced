@@ -16,7 +16,7 @@ class LinovelibBookmarkRepository @Inject constructor(
     fun getBookmarkFlow(bookId: String): Flow<LinovelibChapterBookmarkEntity?> =
         bookmarkDao.getFlow(bookId).map { it?.toLocalBookmark() }
 
-    fun upsertRemoteBookmark(
+    suspend fun upsertRemoteBookmark(
         bookId: String,
         chapterId: String,
         chapterTitle: String,
@@ -35,7 +35,7 @@ class LinovelibBookmarkRepository @Inject constructor(
         )
     }
 
-    fun matchRemoteBookmarkManually(
+    suspend fun matchRemoteBookmarkManually(
         bookId: String,
         chapterId: String,
         chapterTitle: String

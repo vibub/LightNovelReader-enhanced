@@ -14,6 +14,8 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
+import com.github.michaelbull.result.get
+import com.github.michaelbull.result.onOk
 import dagger.hilt.android.lifecycle.HiltViewModel
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
@@ -50,23 +52,22 @@ class DetailViewModel @Inject constructor(
         Log.d("DetailViewModel", "Init bookId = $bookId")
         if (isInitialized) return
         isInitialized = true
-        val isLinovelibSource = webBookDataSourceProvider.default.id == LinovelibConstants.SOURCE_ID
+        val isLinovelibSource = webBookDataSourceProvider.value.id == LinovelibConstants.SOURCE_ID
         _uiState.isLinovelibSource = isLinovelibSource
         viewModelScope.launch(Dispatchers.IO) {
-            bookRepository.getBookInformationFlow(bookId, WebDataSourcePriority.High).collect {
-                if (it.id.isBlank()) return@collect
-                _uiState.bookInformation = it
-                _uiState.isLoading = false
-                val bookshelfBookMetadata = bookshelfRepository.getBookshelfBookMetadata(bookId) ?: return@collect
-                bookshelfBookMetadata.bookShelfIds.forEach { bookshelfId ->
-                    bookshelfRepository.deleteBookFromBookshelfUpdatedBookIds(bookshelfId, bookId)
+            bookRepository.getBookInformationFlow(bookId, WebDataSourcePriority.High).collect { result ->
+                result.onOk {
+                    val bookshelfBookMetadata = bookshelfRepository.getBookshelfBookMetadata(bookId) ?: return@onOk
+                    bookshelfBookMetadata.bookShelfIds.forEach { bookshelfId ->
+                        bookshelfRepository.deleteBookFromBookshelfUpdatedBookIds(bookshelfId, bookId)
+                    }
+                    bookshelfRepository.updateBookshelfBookMetadataLastUpdateTime(bookId, it.lastUpdated)
                 }
-                bookshelfRepository.updateBookshelfBookMetadataLastUpdateTime(bookId, it.lastUpdated)
+                _uiState.bookInformation = result
             }
         }
         viewModelScope.launch(Dispatchers.IO) {
             bookRepository.getBookVolumesFlow(bookId, WebDataSourcePriority.High).collect {
-                if (it.volumes.isEmpty()) return@collect
                 _uiState.bookVolumes = it
             }
         }
@@ -104,8 +105,8 @@ class DetailViewModel @Inject constructor(
     }
 
     fun cacheBook(bookId: String): Flow<WorkInfo?> {
-        bookRepository.cacheBook(bookId)
-        val isCachedFlow = bookRepository.isCacheBookWorkFlow(bookId)
+        val workRequest = bookRepository.cacheBook(bookId)
+        val isCachedFlow = bookRepository.isCacheBookWorkFlow(workRequest.id)
         viewModelScope.launch(Dispatchers.IO) {
             isCachedFlow.collect { workInfo ->
                 if (workInfo?.state == WorkInfo.State.SUCCEEDED) {
@@ -123,10 +124,10 @@ class DetailViewModel @Inject constructor(
 
     fun matchLinovelibBookmark(bookId: String, chapterId: String): Boolean {
         if (!_uiState.isLinovelibSource) return false
-        val chapter = _uiState.bookVolumes.volumes
-            .asSequence()
-            .flatMap { it.chapters.asSequence() }
-            .firstOrNull { it.id == chapterId }
+        val chapter = _uiState.bookVolumes?.get()?.volumes
+            ?.asSequence()
+            ?.flatMap { it.chapters.asSequence() }
+            ?.firstOrNull { it.id == chapterId }
             ?: return false
         viewModelScope.launch(Dispatchers.IO) {
             linovelibBookmarkRepository.matchRemoteBookmarkManually(

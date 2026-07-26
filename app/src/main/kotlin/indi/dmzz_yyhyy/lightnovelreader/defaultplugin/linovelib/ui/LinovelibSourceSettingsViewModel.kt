@@ -28,7 +28,7 @@ class LinovelibSourceSettingsViewModel @Inject constructor(
     webBookDataSourceProvider: WebBookDataSourceProvider
 ) : ViewModel() {
     private val accountStore = LinovelibAccountStore(userDataRepository)
-    private val canSync = webBookDataSourceProvider.default.id == LinovelibConstants.SOURCE_ID
+    private val canSync = webBookDataSourceProvider.value.id == LinovelibConstants.SOURCE_ID
     private val _uiState = MutableStateFlow(LinovelibSourceSettingsUiState(canSync = canSync))
     val uiState: StateFlow<LinovelibSourceSettingsUiState> = _uiState
 

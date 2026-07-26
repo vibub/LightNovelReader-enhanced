@@ -36,7 +36,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,17 +49,18 @@ import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.SectionHeader
 import indi.dmzz_yyhyy.lightnovelreader.utils.navigationBarSpacer
+import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.web.WebDataSourceItem
 
 @Composable
 fun SourceChangeScreen(
     uiState: SourceChangeUiState,
     onClickBack: () -> Unit,
-    onApplyClick: (Int) -> Unit,
-    onSourceSettingsClick: (Int) -> Unit
+    onApplyClick: (Identifier) -> Unit,
+    onSourceSettingsClick: (Identifier) -> Unit
 ) {
     var selectedSourceId by rememberSaveable(uiState.currentSourceId) {
-        mutableIntStateOf(uiState.currentSourceId)
+        mutableStateOf(uiState.currentSourceId)
     }
 
     val hasPendingChange = selectedSourceId != uiState.currentSourceId
@@ -74,18 +75,20 @@ fun SourceChangeScreen(
                     .firstOrNull { it.id == uiState.currentSourceId }?.name ?: "",
                 targetSourceName = uiState.webDataSourceItems
                     .firstOrNull { it.id == selectedSourceId }?.name ?: "",
-                onApplyClick = { onApplyClick(selectedSourceId) }
+                onApplyClick = { selectedSourceId?.let { onApplyClick(it) } }
             )
 
         }
     ) { innerPadding ->
-        SourceChangeContent(
-            modifier = Modifier.padding(innerPadding),
-            uiState = uiState,
-            selectedSourceId = selectedSourceId,
-            onSelectedChange = { selectedSourceId = it },
-            onSourceSettingsClick = onSourceSettingsClick
-        )
+        selectedSourceId?.let { sourceId ->
+            SourceChangeContent(
+                modifier = Modifier.padding(innerPadding),
+                uiState = uiState,
+                selectedSourceId = sourceId,
+                onSelectedChange = { selectedSourceId = it },
+                onSourceSettingsClick = onSourceSettingsClick
+            )
+        }
     }
 }
 
@@ -178,9 +181,9 @@ private fun SourceChangeBottomBar(
 private fun SourceChangeContent(
     modifier: Modifier = Modifier,
     uiState: SourceChangeUiState,
-    selectedSourceId: Int,
-    onSelectedChange: (Int) -> Unit,
-    onSourceSettingsClick: (Int) -> Unit
+    selectedSourceId: Identifier,
+    onSelectedChange: (Identifier) -> Unit,
+    onSourceSettingsClick: (Identifier) -> Unit
 ) {
     LazyColumn(
         modifier = modifier

@@ -60,7 +60,7 @@ class SimpleTextComponent(
         }
     )
 
-    override val id = SimpleTextComponentData.ID
+    override val id = SimpleTextComponentData.id
 
     @Composable
     override fun Content(modifier: Modifier) {
@@ -83,7 +83,7 @@ class SimpleTextComponent(
         val isDark = localTheme.isDark
         val onSurface = localTheme.colorScheme.onSurface
 
-        val color = remember(isDark, textColor, textDarkColor, onSurface) {
+        return remember(isDark, textColor, textDarkColor, onSurface) {
             when {
                 isDark && textDarkColor.isUnspecified -> onSurface
                 !isDark && textColor.isUnspecified -> onSurface
@@ -91,28 +91,9 @@ class SimpleTextComponent(
                 else -> textColor
             }
         }
-
-        return color
     }
 
-    fun measureHeight(width: Int): Int {
-        if (width <= 0) return 0
-        val fontSize = fontSizeUserData.getOrDefault(15f)
-        val fontLineHeight = fontLineHeightUserData.getOrDefault(7f)
-        val fontWeigh = fontWeightUserData.getOrDefault(500f)
-        return textMeasurer.measure(
-            text = data.toAnnotatedString(),
-            style = AppTypography.bodyMedium.copy(
-                fontSize = fontSize.sp,
-                lineHeight = (fontLineHeight + fontSize).sp,
-                fontWeight = FontWeight(fontWeigh.toInt()),
-                fontFamily = readerFontFamily(fontFamilyUriUserData),
-            ),
-            constraints = Constraints(maxWidth = width),
-        ).size.height.coerceAtLeast(1)
-    }
-
-    override fun split(
+    override suspend fun split(
         height: Int,
         width: Int
     ): List<SimpleTextComponent> {
@@ -133,20 +114,22 @@ class SimpleTextComponent(
             .map { SimpleTextComponent(it, userDataRepositoryApi, context) }
     }
 
-    fun readerFontFamily(fontFamilyUriUserData: UriUserData): FontFamily? {
+    private suspend fun readerFontFamily(fontFamilyUriUserData: UriUserData): FontFamily? {
         val uri = fontFamilyUriUserData.getOrDefault(Uri.EMPTY)
-        val fontFamily = loadReaderFontFamilySafe(uri)
-        return fontFamily
+        return loadReaderFontFamilySafe(uri)
     }
 
-    fun TextLayoutResult.getSlipData(data: SimpleTextComponentData, width: Int, height: Int): List<SimpleTextComponentData> {
-        val result: MutableList<IntRange> = mutableListOf()
+    private fun TextLayoutResult.getSlipData(
+        data: SimpleTextComponentData,
+        width: Int,
+        height: Int
+    ): List<SimpleTextComponentData> {
+        val result = mutableListOf<IntRange>()
         var lastLine = 0
         fun getNotOverflowRange(startLine: Int): IntRange {
             fun getNotOverflowLine(): Int {
                 val startHeight = getLineTop(startLine)
-                fun isLineOverflow(line: Int): Boolean =
-                    getLineBottom(line) > height + startHeight
+                fun isLineOverflow(line: Int): Boolean = getLineBottom(line) > height + startHeight
 
                 var checkLine = getLineForOffset(
                     getOffsetForPosition(
@@ -166,14 +149,14 @@ class SimpleTextComponent(
             lastLine++
             return startTextOffset..<endTextOffset
         }
-        while (lastLine < this.lineCount) {
-            getNotOverflowRange(lastLine).let(result::add)
+        while (lastLine < lineCount) {
+            result += getNotOverflowRange(lastLine)
         }
         return result.mapIndexedNotNull { index, range ->
             val text = data.text.slice(range)
             when (index) {
                 0 if text.isBlank() -> null
-                result.size - 1 if text.isBlank() -> null
+                result.lastIndex if text.isBlank() -> null
                 else -> data.slice(range)
             }
         }

@@ -8,8 +8,6 @@ import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.BookVolumes
 import io.nightfish.lightnovelreader.api.book.ChapterContent
 import io.nightfish.lightnovelreader.api.book.ChapterInformation
-import io.nightfish.lightnovelreader.api.book.MutableBookInformation
-import io.nightfish.lightnovelreader.api.book.MutableChapterContent
 import io.nightfish.lightnovelreader.api.book.Volume
 import io.nightfish.lightnovelreader.api.book.WordCount
 import io.nightfish.lightnovelreader.api.content.builder.ContentBuilder
@@ -34,16 +32,16 @@ class LinovelibWebsiteDataSource(
 
     suspend fun getBookInformation(id: String): BookInformation = runCatching {
         val bookId = id.normalizeBookId()
-        if (bookId.isBlank()) return@runCatching BookInformation.empty(id)
+        require(bookId.isNotBlank()) { "Invalid Linovelib book id: $id" }
         val document = jsoup.getDocument(LinovelibConstants.detailUrl(bookId))
         if (document.text().contains("作品已下架") || document.title().contains("404")) {
-            return@runCatching BookInformation.empty(bookId)
+            error("Linovelib book $bookId is unavailable")
         }
         val title = document.metaContent("name")
             ?: document.metaContent("og:novel:book_name")
             ?: document.metaContent("og:title")?.substringBefore("_")
             ?: document.firstText("h1", ".book-title", ".book-name", ".book-info h2")
-            ?: return@runCatching BookInformation.empty(bookId)
+            ?: error("Linovelib book $bookId has no title")
         val author = document.metaContent("author")
             ?: document.metaContent("og:novel:author")
             ?: document.labelValue("作者")
@@ -65,11 +63,11 @@ class LinovelibWebsiteDataSource(
             ?: document.labelValue("最后更新")
             ?: ""
         val wordText = document.labelValue("字数") ?: document.labelValue("全文长度") ?: ""
-        MutableBookInformation(
+        BookInformation(
             id = bookId,
             title = title.cleanText(),
             subtitle = "",
-            coverUrl = LinovelibJsoup.normalizeCoverUrl(cover).takeIf { it.isNotBlank() }?.toUri() ?: Uri.EMPTY,
+            coverUri = LinovelibJsoup.normalizeCoverUrl(cover).takeIf { it.isNotBlank() }?.toUri() ?: Uri.EMPTY,
             author = author.cleanText(),
             description = description,
             tags = tags,
@@ -79,9 +77,7 @@ class LinovelibWebsiteDataSource(
             isComplete = statusText.contains("完结") || statusText.contains("已完成")
         )
     }.getOrElse {
-        if (it is CancellationException) throw it
-        it.printStackTrace()
-        BookInformation.empty(id)
+        throw it
     }
 
     internal fun parseBookCoverUrl(document: Document): String = document.firstCoverImageUrl()
@@ -99,21 +95,19 @@ class LinovelibWebsiteDataSource(
 
     suspend fun getBookVolumes(id: String): BookVolumes = runCatching {
         val bookId = id.normalizeBookId()
-        if (bookId.isBlank()) return@runCatching BookVolumes.empty(id)
+        require(bookId.isNotBlank()) { "Invalid Linovelib book id: $id" }
         val document = jsoup.getDocument(LinovelibConstants.catalogUrl(bookId), referer = LinovelibConstants.detailUrl(bookId))
         val volumes = parseVolumes(document, bookId)
-        if (volumes.isEmpty()) BookVolumes.empty(bookId) else BookVolumes(bookId, volumes)
+        BookVolumes(bookId, volumes)
     }.getOrElse {
-        if (it is CancellationException) throw it
-        it.printStackTrace()
-        BookVolumes.empty(id)
+        throw it
     }
 
     suspend fun getChapterContent(chapterId: String, bookId: String): ChapterContent = runCatching {
         val normalizedBookId = bookId.normalizeBookId()
         val normalizedChapterId = chapterId.normalizeChapterId()
-        if (normalizedBookId.isBlank() || normalizedChapterId.isBlank()) {
-            return@runCatching ChapterContent.empty(chapterId)
+        require(normalizedBookId.isNotBlank() && normalizedChapterId.isNotBlank()) {
+            "Invalid Linovelib chapter id: $bookId/$chapterId"
         }
         val builder = ContentBuilder()
         val parserWarnings = mutableListOf<String>()
@@ -148,7 +142,7 @@ class LinovelibWebsiteDataSource(
             if (title.isBlank()) title = document.firstText("h1", ".chapter-title", ".bookname h1") ?: ""
             val content = document.selectFirst("#TextContent") ?: document.selectFirst("#textcontent")
             ?: document.selectFirst(".chapter-content") ?: document.selectFirst("#content")
-            ?: if (page == 1) return@runCatching ChapterContent.empty(normalizedChapterId) else error("Linovelib chapter $normalizedBookId/$normalizedChapterId page $currentPageChapterId has no content")
+            ?: error("Linovelib chapter $normalizedBookId/$normalizedChapterId page $currentPageChapterId has no content")
             val signature = content.linovelibChapterPageSignature()
             if (signature.isBlank() || !seenPageSignatures.add(signature)) {
                 if (page == 1) break
@@ -198,17 +192,15 @@ class LinovelibWebsiteDataSource(
         } else {
             ChapterNavigation()
         }
-        MutableChapterContent(
+        ChapterContent(
             id = normalizedChapterId,
             title = cleanTitle.ifBlank { navigation.currentTitle },
             content = content,
-            lastChapter = lastChapterId.ifBlank { navigation.lastChapterId },
-            nextChapter = nextChapterId.ifBlank { navigation.nextChapterId }
-        ).takeIf { !it.isEmpty() } ?: ChapterContent.empty(normalizedChapterId)
+            prevChapter = lastChapterId.ifBlank { navigation.lastChapterId }.takeIf { it.isNotBlank() },
+            nextChapter = nextChapterId.ifBlank { navigation.nextChapterId }.takeIf { it.isNotBlank() }
+        )
     }.getOrElse {
-        if (it is CancellationException) throw it
-        it.printStackTrace()
-        ChapterContent.empty(chapterId)
+        throw it
     }
 
     fun parseSearchBooks(document: Document): List<BookInformation> {
@@ -220,11 +212,11 @@ class LinovelibWebsiteDataSource(
             val title = element.selectFirst("a[href~=/novel/\\d+\\.html]")?.text()?.cleanText().orEmpty()
             if (title.isBlank()) return@mapNotNull null
             val cover = element.selectFirst("img")?.imageUrl().orEmpty()
-            MutableBookInformation(
+            BookInformation(
                 id = bookId,
                 title = title,
                 subtitle = "",
-                coverUrl = cover.takeIf { it.isNotBlank() }?.toUri() ?: Uri.EMPTY,
+                coverUri = cover.takeIf { it.isNotBlank() }?.toUri() ?: Uri.EMPTY,
                 author = element.textAfterLabel("作者") ?: "",
                 description = element.selectFirst(".desc, .intro, p")?.text()?.cleanDescription() ?: "",
                 tags = emptyList(),

@@ -1,9 +1,11 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data
 
 import indi.dmzz_yyhyy.lightnovelreader.R
+import indi.dmzz_yyhyy.lightnovelreader.data.update.APIParser
 import indi.dmzz_yyhyy.lightnovelreader.data.update.GithubParser
 import indi.dmzz_yyhyy.lightnovelreader.data.update.UpdateParser
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfSortType
+import indi.dmzz_yyhyy.lightnovelreader.ui.bookmanager.LocalBookSort
 
 @Suppress("PropertyName", "unused")
 sealed class MenuOptions {
@@ -86,8 +88,15 @@ sealed class MenuOptions {
         OptionWithValue("CI", R.string.key_update_channel_ci, GithubParser.CIParser)
     )
 
+    data object LnrAPIUpdateChannelOptions: UpdateChannelOptions(
+        OptionWithValue(RELEASE, R.string.key_update_channel_release, APIParser.StableParser),
+        OptionWithValue(DEVELOPMENT, R.string.key_update_channel_development, APIParser.BetaParser),
+        OptionWithValue("CI", R.string.key_update_channel_ci, APIParser.UnstableParser)
+    )
+
     data object UpdatePlatformOptions: MenuOptionsWithValues<UpdateChannelOptions>() {
         val GitHub = option("GitHub", R.string.key_platform_github, GitHubUpdateChannelOptions)
+        val LnrAPI = option("LnrAPI", R.string.key_platform_lnr_api, LnrAPIUpdateChannelOptions)
     }
 
     data object DarkModeOptions: MenuOptions(
@@ -173,11 +182,16 @@ sealed class MenuOptions {
         val Detailed = option("detailed", R.string.key_duration_style_detailed)
     }
 
+    data object LocalBookSortMenuOptions : MenuOptions(
+        Option(LocalBookSort.Size.name, R.string.key_local_book_sort_size),
+        Option(LocalBookSort.LastRead.name, R.string.key_local_book_sort_last_read),
+        Option(LocalBookSort.ChapterCount.name, R.string.key_local_book_sort_chapter_count)
+    )
+
     data object BookshelfSortTypeOptions: MenuOptionsWithValues<BookshelfSortType>(
         OptionWithValue(BookshelfSortType.Default.key, R.string.bookshelf_sort_default, BookshelfSortType.Default),
         OptionWithValue(BookshelfSortType.Latest.key, R.string.bookshelf_sort_latest, BookshelfSortType.Latest),
         OptionWithValue(BookshelfSortType.Name.key, R.string.bookshelf_sort_name, BookshelfSortType.Name),
         OptionWithValue(BookshelfSortType.WordCount.key, R.string.bookshelf_sort_word_count, BookshelfSortType.WordCount)
     )
-
 }

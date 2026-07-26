@@ -12,14 +12,14 @@ import javax.inject.Inject
 class ExploreViewModel @Inject constructor(
     private val webBookDataSourceProvider: WebBookDataSourceProvider
 ) : ViewModel() {
-    private var _uiState = MutableExploreUiState()
+    private var _uiState = MutableExploreUiState(webBookDataSourceProvider.value.id)
     val uiState: ExploreUiState = _uiState
 
     init {
-        _uiState.sourceId = webBookDataSourceProvider.default.id
-        _uiState.isOffLine = webBookDataSourceProvider.default.offLine
+        _uiState.sourceId = webBookDataSourceProvider.value.id
+        _uiState.isOffLine = webBookDataSourceProvider.value.offLine
         viewModelScope.launch(Dispatchers.IO) {
-            webBookDataSourceProvider.default.isOffLineFlow.collect {
+            webBookDataSourceProvider.value.isOffLineFlow.collect {
                 _uiState.isOffLine = it
             }
         }
@@ -28,7 +28,8 @@ class ExploreViewModel @Inject constructor(
     fun refresh() {
         _uiState.isRefreshing = true
         viewModelScope.launch(Dispatchers.IO) {
-            _uiState.isOffLine = webBookDataSourceProvider.default.isOffLine()
+            _uiState.sourceId = webBookDataSourceProvider.value.id
+            _uiState.isOffLine = webBookDataSourceProvider.value.isOffLine()
             _uiState.isRefreshing = false
         }
     }

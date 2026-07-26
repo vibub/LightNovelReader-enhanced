@@ -1,5 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.sync
 
+import android.net.Uri
 import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalBookDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
@@ -11,10 +12,13 @@ import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book.LinovelibWe
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibJsoup
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.BookVolumes
+import io.nightfish.lightnovelreader.api.book.WordCount
+import io.nightfish.lightnovelreader.api.bookshelf.Bookshelf
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfSortType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.Instant
+import java.time.LocalDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -35,11 +39,11 @@ class LinovelibSyncRepository @Inject constructor(
         bookId: String,
         chapterPageId: String
     ): LinovelibRemoteBookmarkResult = withContext(Dispatchers.IO) {
-        if (webBookDataSourceProvider.default.id != LinovelibConstants.SOURCE_ID) {
+        if (webBookDataSourceProvider.value.id != LinovelibConstants.SOURCE_ID) {
             val message = "请先切换到 Linovelib 数据源后再同步"
             return@withContext LinovelibRemoteBookmarkResult(success = false, message = message)
         }
-        if (!accountStore.hasCookie()) {
+        if (!accountStore.hasStoredCookie()) {
             val message = "尚未保存 Linovelib 登录 Cookie"
             return@withContext LinovelibRemoteBookmarkResult(success = false, message = message)
         }
@@ -79,12 +83,12 @@ class LinovelibSyncRepository @Inject constructor(
     }
 
     suspend fun syncRemoteToLocal(): LinovelibSyncResult = withContext(Dispatchers.IO) {
-        if (webBookDataSourceProvider.default.id != LinovelibConstants.SOURCE_ID) {
+        if (webBookDataSourceProvider.value.id != LinovelibConstants.SOURCE_ID) {
             val message = "请先切换到 Linovelib 数据源后再同步"
             accountStore.markSyncError(message)
             return@withContext LinovelibSyncResult(error = message)
         }
-        if (!accountStore.hasCookie()) {
+        if (!accountStore.hasStoredCookie()) {
             val message = "尚未保存 Linovelib 登录 Cookie"
             accountStore.markSyncError(message)
             return@withContext LinovelibSyncResult(error = message)
@@ -165,32 +169,44 @@ class LinovelibSyncRepository @Inject constructor(
         remoteBook: LinovelibAccountDataSource.LinovelibRemoteBook
     ): BookInformation {
         localBookDataSource.getBookInformation(remoteBook.bookId)
-            ?.takeIf { !it.isEmpty() }
             ?.let { return it }
         return remoteBook.toMinimalBookInformation()
     }
 
     private suspend fun getBookVolumesForSync(bookId: String): BookVolumes {
         val remoteVolumes = websiteDataSource.getBookVolumes(bookId)
-        if (!remoteVolumes.isEmpty()) {
+        if (remoteVolumes.volumes.isNotEmpty()) {
             localBookDataSource.updateBookVolumes(remoteVolumes)
         }
         return remoteVolumes
     }
 
     private fun LinovelibAccountDataSource.LinovelibRemoteBook.toMinimalBookInformation(): BookInformation =
-        BookInformation.empty(bookId).toMutable().apply {
-            title = this@toMinimalBookInformation.title.ifBlank { "Linovelib $bookId" }
-        }
+        BookInformation(
+            id = bookId,
+            title = title.ifBlank { "Linovelib $bookId" },
+            subtitle = "",
+            coverUri = Uri.EMPTY,
+            author = "",
+            description = "",
+            tags = emptyList(),
+            publishingHouse = "",
+            wordCount = WordCount(-1),
+            lastUpdated = LocalDateTime.MIN,
+            isComplete = false
+        )
 
-    private fun ensureSyncBookshelf() {
+    private suspend fun ensureSyncBookshelf() {
         if (bookshelfRepository.getBookshelf(LinovelibConstants.SYNC_BOOKSHELF_ID) != null) return
-        bookshelfRepository.createBookShelf(
-            id = LinovelibConstants.SYNC_BOOKSHELF_ID,
-            name = LinovelibConstants.SYNC_BOOKSHELF_NAME,
-            sortType = BookshelfSortType.Default,
-            autoCache = false,
-            systemUpdateReminder = false
+        bookshelfRepository.addBookshelf(
+            Bookshelf(
+                id = LinovelibConstants.SYNC_BOOKSHELF_ID,
+                name = LinovelibConstants.SYNC_BOOKSHELF_NAME,
+                sortType = BookshelfSortType.Default,
+                sortReversed = false,
+                autoCache = false,
+                systemUpdateReminder = false
+            )
         )
     }
 

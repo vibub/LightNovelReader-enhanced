@@ -3,6 +3,7 @@ package io.nightfish.lightnovelreader.api.content.component
 import android.content.Context
 import android.net.Uri
 import androidx.core.net.toUri
+import io.nightfish.lightnovelreader.api.identifier.ofAppId
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.descriptors.PrimitiveKind
@@ -21,7 +22,7 @@ import org.dom4j.Element
  * 图片组件数据
  * 用于在章节内容中嵌入一张图片
  *
- * @param uri 图片的[Uri]
+ * @param uri 图片的 [Uri]
  * @param topPaddingDp 图片上方间距，单位为 dp
  * @param bottomPaddingDp 图片下方间距，单位为 dp
  *
@@ -75,7 +76,7 @@ data class ImageComponentData(
         }
     }
 
-    override val id: String = ID
+    override val id = Companion.id
     override fun toJsonElement(): JsonElement = Json.encodeToJsonElement(this)
 
     override fun toHtmlElement(context: Context): Element = DocumentHelper.createElement("div").apply {
@@ -90,13 +91,13 @@ data class ImageComponentData(
      * @since Api 2
      */
     companion object {
-        /** 图片组件的唯一标识字符串 */
-        const val ID = "image"
+        /** 图片组件的唯一标识 */
+        val id = "image".ofAppId()
         /** 图片组件默认上方间距，单位为 dp */
         const val DEFAULT_TOP_PADDING_DP = 24
         /** 图片组件默认下方间距，单位为 dp */
         const val DEFAULT_BOTTOM_PADDING_DP = 32
-        /** 默认JSON序列化器 */
+        /** 默认 JSON 序列化器 */
         val jsonSerializer = object: ComponentDataJsonElementSerializer<ImageComponentData> {
             override fun toJsonElement(data: ImageComponentData): JsonElement = Json.encodeToJsonElement(data)
             override fun fromJsonElement(json: JsonElement): ImageComponentData = Json.decodeFromJsonElement(json)

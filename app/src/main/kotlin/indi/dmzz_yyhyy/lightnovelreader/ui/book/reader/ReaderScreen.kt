@@ -37,12 +37,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme.colorScheme
 import androidx.compose.material3.MaterialTheme.typography
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
@@ -50,7 +50,6 @@ import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -76,9 +75,16 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImagePainter
+import com.github.michaelbull.result.get
+import com.github.michaelbull.result.getOrElse
+import com.github.michaelbull.result.map
+import com.github.michaelbull.result.onErr
+import com.github.michaelbull.result.onOk
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book.LinovelibChapterContentParser
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentComponent
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.AnimatedText
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.AnimatedTextLine
@@ -90,14 +96,13 @@ import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
 import indi.dmzz_yyhyy.lightnovelreader.utils.readerBackgroundColor
 import indi.dmzz_yyhyy.lightnovelreader.utils.rememberReaderBackgroundPainter
 import indi.dmzz_yyhyy.lightnovelreader.utils.showSnackbar
-import io.nightfish.lightnovelreader.api.book.ChapterContent
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.coroutines.launch
-import kotlin.time.Duration.Companion.seconds
 import java.time.LocalTime
 import java.util.Locale
+import kotlin.time.Duration.Companion.seconds
 
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter", "LocalContextGetResourceValueCall")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -141,17 +146,18 @@ fun ReaderScreen(
 
     val claim = LocalClaimSnackbarHost.current
 
-    DisposableEffect(claim) {
+    DisposableEffect(Unit) {
         claim(true)
         onDispose { claim(false) }
     }
 
-    val currentChapter = readingScreenUiState.contentUiState.readingChapterContent
-    val parserWarning = currentChapter.content[LinovelibChapterContentParser.WARNING_KEY]
+    val currentChapter = readingScreenUiState.contentUiState?.readingChapterContent?.get()
+    val parserWarning = currentChapter?.sourceContent
+        ?.get(LinovelibChapterContentParser.WARNING_KEY)
         ?.jsonPrimitive
         ?.contentOrNull
         ?.takeIf { it.isNotBlank() }
-    LaunchedEffect(currentChapter.id, parserWarning) {
+    LaunchedEffect(currentChapter?.id, parserWarning) {
         val warning = parserWarning ?: return@LaunchedEffect
         val warningKey = "${currentChapter.id}:$warning"
         if (warningKey != shownParserWarningKey) {
@@ -199,7 +205,10 @@ fun ReaderScreen(
             ) {
                 TopBar(
                     onClickBackButton = onClickBackButton,
-                    title = readingScreenUiState.contentUiState.readingChapterContent.title,
+                    title = readingScreenUiState.contentUiState?.readingChapterContent
+                        ?.map { it.title }
+                        ?.getOrElse { "Unknowing" }
+                        ?: "Unknowing",
                     scrollBehavior
                 )
             }
@@ -220,7 +229,7 @@ fun ReaderScreen(
                 exit = shrinkVertically()
             ) {
                 BottomBar(
-                    chapterContent = readingScreenUiState.contentUiState.readingChapterContent,
+                    chapterContent = readingScreenUiState.contentUiState?.readingChapterContent?.get(),
                     onClickPrevChapter = onClickPrevChapter,
                     onClickNextChapter = onClickNextChapter,
                     onClickSettings = { showSettingsBottomSheet = true },
@@ -238,7 +247,7 @@ fun ReaderScreen(
             val bgPainter = rememberReaderBackgroundPainter(settingState)
             val bgState by remember(bgPainter) {
                 (bgPainter as? AsyncImagePainter)?.state
-            }?.collectAsState() ?: remember { mutableStateOf(null) }
+            }?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(null) }
 
             key(bgState) {
                 Image(
@@ -291,27 +300,53 @@ fun ReaderScreen(
     }
 
     AnimatedVisibility(visible = showChapterSelectionBottomSheet) {
-        ChapterSelectionBottomSheet(
-            sheetState = chaptersBottomSheetState,
-            selectedVolumeId = selectedVolumeId,
-            bookVolumes = readingScreenUiState.bookVolumes,
-            readingChapterId = readingScreenUiState.contentUiState.readingChapterContent.id,
-            onDismissRequest = {
-                coroutineScope.launch { chaptersBottomSheetState.hide() }.invokeOnCompletion {
-                    if (!chaptersBottomSheetState.isVisible) {
-                        showChapterSelectionBottomSheet = false
+        readingScreenUiState.contentUiState?.let { contentUiState ->
+            readingScreenUiState.bookVolumes?.onOk { bookVolumes ->
+                contentUiState.readingChapterId?.let { readingChapterId ->
+                    ChapterSelectionBottomSheet(
+                        sheetState = chaptersBottomSheetState,
+                        selectedVolumeId = selectedVolumeId,
+                        bookVolumes = bookVolumes,
+                        readingChapterId = readingChapterId,
+                        onDismissRequest = {
+                            coroutineScope.launch { chaptersBottomSheetState.hide() }
+                                .invokeOnCompletion {
+                                    if (!chaptersBottomSheetState.isVisible) {
+                                        showChapterSelectionBottomSheet = false
+                                    }
+                                }
+                            showChapterSelectionBottomSheet = false
+                            selectedVolumeId =
+                                bookVolumes.volumes.firstOrNull { volume ->
+                                    volume.chapters.any {
+                                        it.id == readingChapterId
+                                    }
+                                }?.volumeId ?: ""
+                        },
+                        onClickChapter = onSelectChapterFromReaderCatalog,
+                        onChangeSelectedVolumeId = {
+                            selectedVolumeId = it
+                        }
+                    )
+                }
+            }?.onErr {
+                //TODO 错误显示
+            } ?: {
+                //TODO 加载显示
+            }
+
+            LaunchedEffect(readingScreenUiState.bookVolumes) {
+                contentUiState.readingChapterId?.let { chapterId ->
+                    readingScreenUiState.bookVolumes?.onOk { bookVolumes ->
+                        selectedVolumeId = bookVolumes.volumes.firstOrNull { volume ->
+                            volume.chapters.any {
+                                it.id == chapterId
+                            }
+                        }?.volumeId ?: ""
                     }
                 }
-                showChapterSelectionBottomSheet = false
-                selectedVolumeId =
-                    readingScreenUiState.bookVolumes.volumes.firstOrNull { volume -> volume.chapters.any { it.id == readingScreenUiState.contentUiState.readingChapterContent.id } }?.volumeId
-                        ?: ""
-            },
-            onClickChapter = onSelectChapterFromReaderCatalog,
-            onChangeSelectedVolumeId = {
-                selectedVolumeId = it
             }
-        )
+        }
     }
 
     AnimatedVisibility(visible = readingScreenUiState.chapterCommentsUiState.isVisible) {
@@ -321,9 +356,7 @@ fun ReaderScreen(
             avatarHeaders = avatarHeaders,
             onDismissRequest = {
                 coroutineScope.launch { commentsBottomSheetState.hide() }.invokeOnCompletion {
-                    if (!commentsBottomSheetState.isVisible) {
-                        onDismissChapterComments()
-                    }
+                    if (!commentsBottomSheetState.isVisible) onDismissChapterComments()
                 }
             },
             onSelectTab = onSelectChapterCommentTab,
@@ -332,10 +365,6 @@ fun ReaderScreen(
             onRetryAll = { onRetryChapterComments(ChapterCommentTab.All) },
             onLogin = { onClickChapterCommentsLogin?.invoke() }
         )
-    }
-
-    LaunchedEffect(readingScreenUiState.bookVolumes) {
-        selectedVolumeId = readingScreenUiState.bookVolumes.volumes.firstOrNull { volume -> volume.chapters.any { it.id == readingScreenUiState.contentUiState.readingChapterContent.id } }?.volumeId ?: ""
     }
 }
 
@@ -357,9 +386,10 @@ fun Content(
     val window = activity.window
     val density = LocalDensity.current
     val chapterTitleById = remember(readingScreenUiState.bookVolumes) {
-        readingScreenUiState.bookVolumes.volumes
-            .flatMap { it.chapters }
-            .associate { it.id to it.title }
+        readingScreenUiState.bookVolumes?.get()?.volumes
+            ?.flatMap { it.chapters }
+            ?.associate { it.id to it.title }
+            ?: emptyMap()
     }
 
     val stableSafeTopDp by remember {
@@ -415,7 +445,9 @@ fun Content(
         onPauseOrDispose {
             isRunning = false
             if (totalReadingTime <= 60) {
-                updateTotalReadingTime(readingScreenUiState.bookId, totalReadingTime)
+                readingScreenUiState.bookId?.let {
+                    updateTotalReadingTime(it, totalReadingTime)
+                }
             } else {
                 Log.e("ReaderScreen", "time counter error, time now is $totalReadingTime over 60s")
             }
@@ -432,7 +464,9 @@ fun Content(
         while (isRunning) {
             totalReadingTime += 1
             if (totalReadingTime > 60) {
-                updateTotalReadingTime(readingScreenUiState.bookId, totalReadingTime)
+                readingScreenUiState.bookId?.let {
+                    updateTotalReadingTime(it, totalReadingTime)
+                }
                 totalReadingTime = 0
             }
             delay(1.seconds)
@@ -441,14 +475,18 @@ fun Content(
 
     LaunchedEffect(isRunning) {
         while (isRunning) {
-            accumulateReadingTime(readingScreenUiState.bookId, 1)
+            readingScreenUiState.bookId?.let {
+                accumulateReadingTime(it, 1)
+            }
             delay(1.seconds)
         }
     }
 
     LifecycleResumeEffect(Unit) {
         onPauseOrDispose {
-            accumulateReadingTime(readingScreenUiState.bookId, -1)
+            readingScreenUiState.bookId?.let {
+                accumulateReadingTime(it, -1)
+            }
         }
     }
 
@@ -456,7 +494,9 @@ fun Content(
         onDispose {
             activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             if (totalReadingTime <= 60) {
-                updateTotalReadingTime(readingScreenUiState.bookId, totalReadingTime)
+                readingScreenUiState.bookId?.let {
+                    updateTotalReadingTime(it, totalReadingTime)
+                }
             } else {
                 Log.e("ReaderScreen", "time counter error, time now is $totalReadingTime over 60s")
             }
@@ -470,32 +510,37 @@ fun Content(
                     settingState.enableChapterTitleIndicator
 
         Box(Modifier.fillMaxSize()) {
-            ContentComponent(
-                uiState = readingScreenUiState.contentUiState,
-                settingState = settingState,
-                paddingValues =
-                    if (settingState.autoPadding)
-                        PaddingValues(
-                            top = stableSafeTopDp,
-                            bottom = with(density) { WindowInsets.safeContent.getBottom(density).toDp() } + if (isEnableIndicator) 40.dp else 0.dp,
-                            start = 16.dp,
-                            end = 16.dp
-                        )
-                    else PaddingValues(
-                        top = settingState.topPadding.dp,
-                        bottom = if (isEnableIndicator)
-                            (settingState.bottomPadding + 40).dp
-                        else settingState.bottomPadding.dp,
-                        start = settingState.leftPadding.dp,
-                        end = settingState.rightPadding.dp
-                    ),
-                changeIsImmersive = onChangeIsImmersive,
-                onClickPrevChapter = onClickPrevChapter,
-                onClickNextChapter = onClickNextChapter,
-                bookId = readingScreenUiState.bookId,
-                chapterTitleById = chapterTitleById,
-                onClickChapterComments = onClickChapterComments
-            )
+            AnimatedContent(
+                readingScreenUiState.contentUiState,
+                label = "ContentAnimate"
+            ) { contentUiState ->
+                ContentComponent(
+                    uiState = contentUiState,
+                    settingState = settingState,
+                    paddingValues =
+                        if (settingState.autoPadding)
+                            PaddingValues(
+                                top = stableSafeTopDp,
+                                bottom = with(density) { WindowInsets.safeContent.getBottom(density).toDp() } + if (isEnableIndicator) 40.dp else 0.dp,
+                                start = 16.dp,
+                                end = 16.dp
+                            )
+                        else PaddingValues(
+                            top = settingState.topPadding.dp,
+                            bottom = if (isEnableIndicator)
+                                (settingState.bottomPadding + 40).dp
+                            else settingState.bottomPadding.dp,
+                            start = settingState.leftPadding.dp,
+                            end = settingState.rightPadding.dp
+                        ),
+                    changeIsImmersive = onChangeIsImmersive,
+                    onClickPrevChapter = onClickPrevChapter,
+                    onClickNextChapter = onClickNextChapter,
+                    bookId = readingScreenUiState.bookId.orEmpty(),
+                    chapterTitleById = chapterTitleById,
+                    onClickChapterComments = onClickChapterComments
+                )
+            }
 
             AnimatedVisibility(
                 modifier = Modifier.align(Alignment.BottomCenter),
@@ -521,9 +566,12 @@ fun Content(
                     enableBatteryIndicator = settingState.batteryIndicatorDisplayMode == "classic",
                     enableTimeIndicator = settingState.enableTimeIndicator,
                     enableChapterTitle = settingState.enableChapterTitleIndicator,
-                    chapterTitle = readingScreenUiState.contentUiState.readingChapterContent.title,
+                    chapterTitle = readingScreenUiState.contentUiState?.readingChapterContent
+                        ?.map { it.title }
+                        ?.getOrElse { "Unknowing" }
+                        ?: "Unknowing",
                     enableReadingChapterProgressIndicator = settingState.enableReadingChapterProgressIndicator,
-                    readingChapterProgress = readingScreenUiState.contentUiState.readingProgress,
+                    readingChapterProgress = readingScreenUiState.contentUiState?.readingProgress ?: 0f,
                 )
             }
         }
@@ -597,15 +645,17 @@ private fun TopBar(
 
 @Composable
 private fun BottomBar(
-    chapterContent: ChapterContent,
+    chapterContent: ChapterContentUiState?,
     onClickPrevChapter: () -> Unit,
     onClickNextChapter: () -> Unit,
     onClickSettings: () -> Unit,
     onClickChapterSelector: () -> Unit,
     bookmarkUiState: ReaderBookmarkUiState,
     onClickBookmark: () -> Unit,
-    onClickWebView: (() -> Unit)? = null
+    onClickWebView: (() -> Unit)?
 ) {
+    val hasPrevChapter = chapterContent?.hasPrevChapter() == true
+    val hasNextChapter = chapterContent?.hasNextChapter() == true
     BottomAppBar {
         Row(
             Modifier
@@ -616,7 +666,7 @@ private fun BottomBar(
         ) {
             TextButton(
                 onClick = onClickPrevChapter,
-                enabled = chapterContent.hasPrevChapter()
+                enabled = hasPrevChapter
             ) {
                 Column(
                     modifier = Modifier.padding(horizontal = 6.dp),
@@ -639,9 +689,9 @@ private fun BottomBar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val isBookmarked = bookmarkUiState.chapterId.isNotBlank() &&
-                    bookmarkUiState.chapterId.substringBefore('_') == chapterContent.id.substringBefore('_')
+                    bookmarkUiState.chapterId.substringBefore('_') == chapterContent?.id?.substringBefore('_')
                 IconButton(
-                    enabled = bookmarkUiState.isAvailable && chapterContent.id.isNotBlank(),
+                    enabled = bookmarkUiState.isAvailable && chapterContent != null,
                     onClick = onClickBookmark
                 ) {
                     Icon(
@@ -678,7 +728,7 @@ private fun BottomBar(
 
             TextButton(
                 onClick = onClickNextChapter,
-                enabled = chapterContent.hasNextChapter()
+                enabled = hasNextChapter
             ) {
                 Column(
                     modifier = Modifier.padding(horizontal = 6.dp),

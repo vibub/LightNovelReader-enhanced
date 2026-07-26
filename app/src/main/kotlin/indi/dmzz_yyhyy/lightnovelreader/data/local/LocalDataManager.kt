@@ -122,7 +122,7 @@ class LocalDataManager @Inject constructor(
         }.andThen {
             Ok(
                 LocalData(
-                    webBookDataSourceId = webDataSourceProvider.default.id,
+                    webBookDataSourceId = webDataSourceProvider.value.id,
                     bookInformationEntities = exportOptionLocalData.bookInformationEntities,
                     bookRecordEntities = exportOptionLocalData.bookRecordEntities,
                     dailyCountEntities = exportOptionLocalData.dailyCountEntities,
@@ -155,7 +155,7 @@ class LocalDataManager @Inject constructor(
     }
 
     suspend fun importLocalData(localData: LocalData): Result<Unit, Throwable> {
-        val webDataSourceId = webDataSourceProvider.default.id
+        val webDataSourceId = webDataSourceProvider.value.id
         return if (localData.webBookDataSourceId == webDataSourceId) {
             importLocalDataToDatabase(localData)
         } else importLocalDataToFile(localData)
@@ -194,7 +194,7 @@ class LocalDataManager @Inject constructor(
             *localData.bookshelfBookMetadataEntities.map { Pair(it.id, it) }.toTypedArray()
         )
         val newChapterContentEntitiesMap = mapOf(
-            *localData.chapterContentEntities.map { Pair(Triple(it.sourceId, it.bookId, it.id), it) }.toTypedArray()
+            *localData.chapterContentEntities.map { Pair(it.id, it) }.toTypedArray()
         )
         val newChapterInformationEntitiesMap = mapOf(
             *localData.chapterInformationEntities.map { Pair(it.id, it) }.toTypedArray()
@@ -238,7 +238,7 @@ class LocalDataManager @Inject constructor(
                 } ?: old
             },
             chapterContentEntities = oldLocalData.chapterContentEntities.map { old ->
-                newChapterContentEntitiesMap[Triple(old.sourceId, old.bookId, old.id)]?.let {
+                newChapterContentEntitiesMap[old.id]?.let {
                     old.merge(it)
                 } ?: old
             },
@@ -342,7 +342,7 @@ class LocalDataManager @Inject constructor(
         return Ok(Unit)
     }
 
-    fun cleanDatabaseWithoutGlobalUserData() {
+    suspend fun cleanDatabaseWithoutGlobalUserData() {
         bookBookInformationDao.clear()
         bookRecordDao.clear()
         dailyCountDao.clear()
@@ -357,7 +357,7 @@ class LocalDataManager @Inject constructor(
             userDataDao.remove(entity.path)
         }
         runCatching {
-            runBlocking { storageUsageRepository.invalidateSnapshot() }
+            storageUsageRepository.invalidateSnapshot()
         }
     }
 

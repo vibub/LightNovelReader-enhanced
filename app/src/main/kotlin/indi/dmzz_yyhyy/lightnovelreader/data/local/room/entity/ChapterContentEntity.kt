@@ -30,7 +30,8 @@ data class ChapterContentEntity(
     val title: String,
     @Serializable(JsonObjectSerializer::class)
     val content: JsonObject,
-    val lastChapter: String,
+    @ColumnInfo(name = "lastChapter")
+    val prevChapter: String,
     val nextChapter: String
 ): Mergeable<ChapterContentEntity> {
     override fun merge(new: ChapterContentEntity): ChapterContentEntity = new

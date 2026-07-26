@@ -4,6 +4,7 @@ import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstan
 import io.nightfish.lightnovelreader.api.userdata.UserDataRepositoryApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import java.time.Instant
 
 class LinovelibAccountStore(
@@ -14,22 +15,35 @@ class LinovelibAccountStore(
     private val lastSyncErrorData = userDataRepository.stringUserData(LinovelibConstants.LAST_SYNC_ERROR_PATH)
     private val lastSyncSummaryData = userDataRepository.stringUserData(LinovelibConstants.LAST_SYNC_SUMMARY_PATH)
 
-    fun getCookie(): String = cookieData.getOrDefault("").trim()
+    @Volatile
+    private var cachedCookie: String = ""
 
-    fun getCookieFlow(): Flow<String> = cookieData.getFlowWithDefault("")
+    fun getCookie(): String = cachedCookie
 
-    fun hasCookie(): Boolean = getCookie().isNotBlank()
+    suspend fun refreshCookie(): String = cookieData.getOrDefault("").trim().also {
+        cachedCookie = it
+    }
+
+    fun getCookieFlow(): Flow<String> = cookieData.getFlowWithDefault("").onEach {
+        cachedCookie = it.trim()
+    }
+
+    fun hasCookie(): Boolean = cachedCookie.isNotBlank()
+
+    suspend fun hasStoredCookie(): Boolean = refreshCookie().isNotBlank()
 
     fun hasCookieFlow(): Flow<Boolean> = getCookieFlow().map { it.isNotBlank() }
 
-    fun saveCookie(cookie: String) {
-        cookieData.set(cookie.trim())
+    suspend fun saveCookie(cookie: String) {
+        cachedCookie = cookie.trim()
+        cookieData.set(cachedCookie)
         lastSyncTimeData.set(Instant.now().toString())
         lastSyncSummaryData.set("Cookie 已保存")
         lastSyncErrorData.set("")
     }
 
-    fun clearCookie() {
+    suspend fun clearCookie() {
+        cachedCookie = ""
         userDataRepository.remove(LinovelibConstants.COOKIE_PATH)
         userDataRepository.remove(LinovelibConstants.LAST_SYNC_TIME_PATH)
         userDataRepository.remove(LinovelibConstants.LAST_SYNC_ERROR_PATH)
@@ -42,13 +56,13 @@ class LinovelibAccountStore(
 
     fun getLastSyncSummaryFlow(): Flow<String> = lastSyncSummaryData.getFlowWithDefault("")
 
-    fun markSyncSuccess(time: String, summary: String) {
+    suspend fun markSyncSuccess(time: String, summary: String) {
         lastSyncTimeData.set(time)
         lastSyncSummaryData.set(summary)
         lastSyncErrorData.set("")
     }
 
-    fun markSyncError(message: String) {
+    suspend fun markSyncError(message: String) {
         lastSyncErrorData.set(message)
     }
 }

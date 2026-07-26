@@ -13,17 +13,17 @@ import kotlinx.coroutines.flow.Flow
 interface LinovelibChapterBookmarkDao {
     @TypeConverters(LocalDateTimeConverter::class)
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun upsert(bookmark: LinovelibChapterBookmarkEntity)
+    suspend fun upsert(bookmark: LinovelibChapterBookmarkEntity)
 
     @Query("select * from linovelib_chapter_bookmark where book_id = :bookId")
-    fun get(bookId: String): LinovelibChapterBookmarkEntity?
+    suspend fun get(bookId: String): LinovelibChapterBookmarkEntity?
 
     @Query("select * from linovelib_chapter_bookmark where book_id = :bookId")
     fun getFlow(bookId: String): Flow<LinovelibChapterBookmarkEntity?>
 
     @Query("select * from linovelib_chapter_bookmark")
-    fun getAll(): List<LinovelibChapterBookmarkEntity>
+    suspend fun getAll(): List<LinovelibChapterBookmarkEntity>
 
     @Query("delete from linovelib_chapter_bookmark where book_id = :bookId")
-    fun delete(bookId: String)
+    suspend fun delete(bookId: String)
 }

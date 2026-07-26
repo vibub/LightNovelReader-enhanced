@@ -2,7 +2,7 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.components
 
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItem as MaterialListItem
 import androidx.compose.material3.ListItemColors
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -20,8 +20,17 @@ fun ListItem(
     supportingText: String,
     trailingContent: @Composable () -> Unit,
 ) {
-    ListItem(
+    MaterialListItem(
         modifier = modifier,
+        leadingContent = null,
+        trailingContent = trailingContent,
+        overlineContent = null,
+        supportingContent = {
+            Text(
+                text = supportingText,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        },
         colors = colors,
         headlineContent = {
             Text(
@@ -30,13 +39,6 @@ fun ListItem(
                 fontWeight = FontWeight.Medium
             )
         },
-        supportingContent = {
-            Text(
-                text = supportingText,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        },
-        trailingContent = trailingContent
     )
 }
 

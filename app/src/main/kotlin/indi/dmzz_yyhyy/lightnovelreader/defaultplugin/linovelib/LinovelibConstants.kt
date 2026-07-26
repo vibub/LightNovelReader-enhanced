@@ -1,5 +1,7 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib
 
+import io.nightfish.lightnovelreader.api.identifier.Identifier
+
 object LinovelibConstants {
     /** 桌面端 URL，用于 Jsoup 数据抓取（目录、章节、详情） */
     const val BASE_URL = "https://www.linovelib.com"
@@ -7,7 +9,8 @@ object LinovelibConstants {
     const val MOBILE_BASE_URL = "https://m.bilinovel.com"
     const val SOURCE_NAME = "Linovelib"
     const val SEARCH_BLOCKED_MESSAGE = "Linovelib 搜索入口被 Cloudflare 拦截。请在网页中搜索并点进小说详情页。"
-    val SOURCE_ID: Int = "linovelib".hashCode()
+    val SOURCE_ID = Identifier("lightnovelreader", SOURCE_NAME)
+    const val LEGACY_SOURCE_ID: Int = -1488977864
 
     const val COOKIE_PATH = "linovelib.cookie"
     const val LAST_SYNC_TIME_PATH = "linovelib.last_sync_time"

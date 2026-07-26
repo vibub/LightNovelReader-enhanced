@@ -137,6 +137,7 @@ class LinovelibJsoup(
         formData: Map<String, String> = emptyMap(),
         extraHeaders: Map<String, String> = emptyMap()
     ): String = withContext(Dispatchers.IO) {
+        if (useCookie) accountStore?.refreshCookie()
         var lastError: Throwable? = null
         var delayMillis = 1_500L
         repeat(retryTime + 1) { attempt ->

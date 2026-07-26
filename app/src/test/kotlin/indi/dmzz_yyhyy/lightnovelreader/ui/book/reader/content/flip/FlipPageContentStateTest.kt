@@ -1,9 +1,10 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip
 
 import androidx.compose.runtime.snapshots.Snapshot
-import io.nightfish.lightnovelreader.api.book.MutableChapterContent
+import com.github.michaelbull.result.Ok
+import com.github.michaelbull.result.get
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiState
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
-import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -12,34 +13,36 @@ import org.junit.Test
 
 class FlipPageContentStateTest {
     @Test
-    fun chapterContentIsNeverPublishedBeforeItsComponents() {
+    fun chapterContentIsPublishedWithItsComponents() {
         val uiState = MutableFlipPageContentUiState(
             loadNextChapter = {},
-            loadLastChapter = {},
+            loadPrevChapter = {},
             changeChapter = {},
             updatePageState = { _, _, _ -> }
         )
-        val content = MutableChapterContent(
+        val components = emptyList<AbstractContentComponent<*>>()
+        val content = ChapterContentUiState(
             id = "chapter-b",
             title = "Chapter B",
-            content = buildJsonObject {
-                put("components", buildJsonArray {})
-            }
+            content = components,
+            sourceContent = buildJsonObject {},
+            prevChapter = null,
+            nextChapter = null
         )
-        val components = emptyList<AbstractContentComponent<*>>()
         var observedPublication = false
         var observedIncompleteState = false
         val observer = Snapshot.registerApplyObserver { _, _ ->
-            if (uiState.readingChapterContent.id == content.id) {
+            val published = uiState.readingChapterContent?.get()
+            if (published?.id == content.id) {
                 observedPublication = true
-                if (!uiState.contentComponentsMap.containsKey(content.id)) {
+                if (published.content !== components) {
                     observedIncompleteState = true
                 }
             }
         }
 
         try {
-            uiState.publishChapterContent(content, components)
+            uiState.readingChapterContent = Ok(content)
             Snapshot.sendApplyNotifications()
         } finally {
             observer.dispose()
@@ -47,7 +50,6 @@ class FlipPageContentStateTest {
 
         assertTrue(observedPublication)
         assertFalse(observedIncompleteState)
-        assertEquals(content, uiState.readingChapterContent)
-        assertTrue(uiState.contentComponentsMap.containsKey(content.id))
+        assertEquals(content, uiState.readingChapterContent?.get())
     }
 }

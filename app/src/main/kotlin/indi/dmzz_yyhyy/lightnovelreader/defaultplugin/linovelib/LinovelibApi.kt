@@ -1,5 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib
 
+import com.github.michaelbull.result.runCatching as runCatchingResult
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.account.LinovelibAccountStore
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book.LinovelibWebsiteDataSource
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.explore.LinovelibExplorePageProvider
@@ -9,6 +10,7 @@ import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.search.Linovelib
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.BookVolumes
 import io.nightfish.lightnovelreader.api.book.ChapterContent
+import io.nightfish.lightnovelreader.api.error.mapAsWebRequestError
 import io.nightfish.lightnovelreader.api.userdata.UserDataRepositoryApi
 import io.nightfish.lightnovelreader.api.util.Cache
 import io.nightfish.lightnovelreader.api.web.WebBookDataSource
@@ -30,7 +32,7 @@ class LinovelibApi(
     private val websiteDataSource = LinovelibWebsiteDataSource(jsoup)
     private val mutableOffline = MutableStateFlow(false)
 
-    override val id: Int = LinovelibConstants.SOURCE_ID
+    override val id = LinovelibConstants.SOURCE_ID
     override val cache: Cache = Cache(timeout = 2 * 60 * 60 * 1000)
     override val permits: Int = 3
 
@@ -56,10 +58,24 @@ class LinovelibApi(
         return offline
     }
 
-    override suspend fun getBookInformation(id: String): BookInformation = websiteDataSource.getBookInformation(id)
+    override suspend fun getBookInformation(id: String) = runCatchingResult {
+        websiteDataSource.getBookInformation(id)
+    }.mapAsWebRequestError(
+        title = "Linovelib 书籍信息请求失败",
+        message = "无法获取书籍 $id 的详情"
+    )
 
-    override suspend fun getBookVolumes(id: String): BookVolumes = websiteDataSource.getBookVolumes(id)
+    override suspend fun getBookVolumes(id: String) = runCatchingResult {
+        websiteDataSource.getBookVolumes(id)
+    }.mapAsWebRequestError(
+        title = "Linovelib 目录请求失败",
+        message = "无法获取书籍 $id 的目录"
+    )
 
-    override suspend fun getChapterContent(chapterId: String, bookId: String): ChapterContent =
+    override suspend fun getChapterContent(chapterId: String, bookId: String) = runCatchingResult {
         websiteDataSource.getChapterContent(chapterId, bookId)
+    }.mapAsWebRequestError(
+        title = "Linovelib 章节请求失败",
+        message = "无法获取章节 $chapterId"
+    )
 }

@@ -25,7 +25,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book.lastLinovelibChapterPageId
-import io.nightfish.lightnovelreader.api.book.ChapterContent
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiState
 
 @Composable
 fun ReaderChapterEnd(
@@ -90,9 +90,9 @@ fun ReaderChapterEnd(
     }
 }
 
-internal fun ChapterContent.toChapterEndContext(bookId: String) = ChapterEndContext(
+internal fun ChapterContentUiState.toChapterEndContext(bookId: String) = ChapterEndContext(
     bookId = bookId,
     chapterId = id.substringBefore('_'),
     chapterTitle = title,
-    refererChapterPageId = content.lastLinovelibChapterPageId(id)
+    refererChapterPageId = sourceContent.lastLinovelibChapterPageId(id)
 )

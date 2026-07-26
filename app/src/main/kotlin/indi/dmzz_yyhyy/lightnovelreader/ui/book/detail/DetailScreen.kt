@@ -1,6 +1,7 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.book.detail
 
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
@@ -10,7 +11,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -42,6 +42,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
@@ -52,11 +53,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme.colorScheme
 import androidx.compose.material3.MaterialTheme.typography
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
+import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -78,7 +77,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
@@ -87,11 +85,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.github.michaelbull.result.getOrElse
+import com.github.michaelbull.result.map
+import com.github.michaelbull.result.onErr
+import com.github.michaelbull.result.onOk
 import com.valentinilk.shimmer.shimmer
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.book.get
@@ -110,12 +114,11 @@ import indi.dmzz_yyhyy.lightnovelreader.utils.fadeInOnce
 import indi.dmzz_yyhyy.lightnovelreader.utils.fadingEdge
 import indi.dmzz_yyhyy.lightnovelreader.utils.isScrollingUp
 import io.nightfish.lightnovelreader.api.book.BookInformation
-import io.nightfish.lightnovelreader.api.book.BookVolumes
 import io.nightfish.lightnovelreader.api.book.ChapterInformation
 import io.nightfish.lightnovelreader.api.book.Volume
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
 import kotlinx.coroutines.delay
-import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -137,19 +140,18 @@ fun DetailScreen(
     val navController = LocalNavController.current
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val snackbarHostState = LocalSnackbarHost.current
+    val context = LocalContext.current
 
     val exportBottomSheetState = rememberBottomSheetState(initialValue = SheetValue.PartiallyExpanded)
     val infoBottomSheetState = rememberBottomSheetState(initialValue = SheetValue.PartiallyExpanded)
-    val bookmarkMatchBottomSheetState = rememberBottomSheetState(initialValue = SheetValue.PartiallyExpanded)
 
     var showExportBottomSheet by remember { mutableStateOf(false) }
     var showInfoBottomSheet by remember { mutableStateOf(false) }
-    var showBookmarkMatchBottomSheet by remember { mutableStateOf(false) }
-    var bookmarkMatchSelectedVolumeId by rememberSaveable { mutableStateOf("") }
+    var showBookmarkMatchDialog by remember { mutableStateOf(false) }
     var exportSettings by remember { mutableStateOf(ExportSettings()) }
 
     val lazyListState = rememberLazyListState()
-    val volumesEmpty = uiState.bookVolumes.volumes.isEmpty()
+    val volumesEmpty = uiState.bookVolumes == null
 
     val isCollapsed by remember {
         derivedStateOf {
@@ -159,17 +161,17 @@ fun DetailScreen(
         }
     }
 
-    val claimSnackbarHost = LocalClaimSnackbarHost.current
+    val claim = LocalClaimSnackbarHost.current
 
-    DisposableEffect(claimSnackbarHost) {
-        claimSnackbarHost(true)
-        onDispose { claimSnackbarHost(false) }
+    DisposableEffect(Unit) {
+        claim(true)
+        onDispose { claim(false) }
     }
 
     val scrollingUp by lazyListState.isScrollingUp()
-    val fabVisible by remember(uiState.bookVolumes.volumes, lazyListState) {
+    val fabVisible by remember(uiState.bookVolumes, lazyListState) {
         derivedStateOf {
-            val hasVolumes = uiState.bookVolumes.volumes.isNotEmpty()
+            val hasVolumes = uiState.bookVolumes != null
             val allowByDirection = !lazyListState.isScrollInProgress || scrollingUp
             val canGoForward = lazyListState.canScrollForward
 
@@ -178,7 +180,7 @@ fun DetailScreen(
     }
 
 
-    val isStartReading = uiState.userReadingData.lastReadChapterId.isBlank()
+    val isStartReading = uiState.userReadingData?.lastReadChapterId != null
     val fabTextRes = if (isStartReading) R.string.start_reading else R.string.continue_reading
 
     val fabContent = remember {
@@ -244,15 +246,19 @@ fun DetailScreen(
                 .padding(innerPadding)
         ) {
             TopBar(
-                title = uiState.bookInformation.title,
-                readingProgress = uiState.userReadingData.readingProgress,
+                title = uiState.bookInformation?.map { it.title }?.getOrElse { "" } ?: "",
+                readingProgress = uiState.userReadingData?.readingProgress ?: 0f,
                 volumesEmpty = volumesEmpty,
                 onClickBackButton = onClickBackButton,
                 onClickExport = { showExportBottomSheet = true },
                 onClickTextFormatting = {
-                    navController.navigateToSettingsTextFormattingRulesDestination(
-                        uiState.bookInformation.id
-                    )
+                    uiState.bookInformation?.onOk {
+                        navController.navigateToSettingsTextFormattingRulesDestination(
+                            it.id
+                        )
+                    }?.onErr {
+                        Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show()
+                    }
                 },
                 onClickMarkAsRead = onClickMarkAsRead,
                 scrollBehavior = scrollBehavior,
@@ -260,22 +266,17 @@ fun DetailScreen(
             )
 
             Crossfade(
-                targetState = uiState.isLoading || uiState.bookInformation.title.isEmpty(),
+                targetState = uiState.bookInformation,
                 animationSpec = tween(300),
                 label = "DetailScreenCrossfade"
-            ) { empty ->
-                if (empty) {
-                    DetailContentSkeleton(
-                        Modifier
-                            .fillMaxSize()
-                            .background(colorScheme.surface)
-                    )
-                } else {
+            ) { result ->
+                result?.onOk {
                     DetailContent(
                         modifier = Modifier
                             .fillMaxSize()
                             .background(colorScheme.surface),
                         uiState = uiState,
+                        bookInformation = it,
                         onClickChapter = onClickChapter,
                         lazyListState = lazyListState,
                         cacheBook = cacheBook,
@@ -284,46 +285,57 @@ fun DetailScreen(
                         onClickCover = onClickCover,
                         onClickShowInfo = { showInfoBottomSheet = true },
                         onClickWebView = onClickWebView,
-                        onClickUnresolvedBookmark = { showBookmarkMatchBottomSheet = true }
+                        onClickUnresolvedBookmark = { showBookmarkMatchDialog = true }
+                    )
+                }?.onErr {
+                    //TODO 错误显示
+                } ?: DetailContentSkeleton(
+                        Modifier
+                            .fillMaxSize()
+                            .background(colorScheme.surface)
+                    )
+            }
+        }
+
+
+        if (showExportBottomSheet) {
+            uiState.bookVolumes?.onOk { bookVolumes ->
+                ExportBottomSheet(
+                    sheetState = exportBottomSheetState,
+                    bookVolumes = bookVolumes,
+                    settings = exportSettings,
+                    onSettingsChange = { exportSettings = it },
+                    onDismissRequest = { showExportBottomSheet = false },
+                    onClickExport = onClickExportToEpub
+                )
+            }
+        }
+        AnimatedVisibility(visible = showInfoBottomSheet) {
+            uiState.bookVolumes?.onOk { bookVolumes ->
+                uiState.bookInformation?.onOk { bookInformation ->
+                    BookInfoBottomSheet(
+                        bookInformation = bookInformation,
+                        bookVolumes = bookVolumes,
+                        sheetState = infoBottomSheetState,
+                        onDismissRequest = { showInfoBottomSheet = false }
                     )
                 }
             }
         }
 
-        if (showExportBottomSheet) {
-            ExportBottomSheet(
-                sheetState = exportBottomSheetState,
-                bookVolumes = uiState.bookVolumes,
-                settings = exportSettings,
-                onSettingsChange = { exportSettings = it },
-                onDismissRequest = { showExportBottomSheet = false },
-                onClickExport = onClickExportToEpub
-            )
+        if (showBookmarkMatchDialog) {
+            uiState.bookVolumes?.onOk { bookVolumes ->
+                LinovelibBookmarkMatchDialog(
+                    bookmarkTitle = uiState.bookmarkUiState.chapterTitle,
+                    bookVolumes = bookVolumes,
+                    onDismissRequest = { showBookmarkMatchDialog = false },
+                    onClickChapter = { chapterId ->
+                        onMatchLinovelibBookmark(chapterId)
+                        showBookmarkMatchDialog = false
+                    }
+                )
+            }
         }
-        AnimatedVisibility(visible = showInfoBottomSheet) {
-            BookInfoBottomSheet(
-                bookInformation = uiState.bookInformation,
-                bookVolumes = uiState.bookVolumes,
-                sheetState = infoBottomSheetState,
-                onDismissRequest = { showInfoBottomSheet = false }
-            )
-        }
-
-        if (showBookmarkMatchBottomSheet) {
-            LinovelibBookmarkMatchBottomSheet(
-                sheetState = bookmarkMatchBottomSheetState,
-                bookmarkTitle = uiState.bookmarkUiState.chapterTitle,
-                bookVolumes = uiState.bookVolumes,
-                selectedVolumeId = bookmarkMatchSelectedVolumeId,
-                onChangeSelectedVolumeId = { bookmarkMatchSelectedVolumeId = it },
-                onDismissRequest = { showBookmarkMatchBottomSheet = false },
-                onClickChapter = { chapterId ->
-                    onMatchLinovelibBookmark(chapterId)
-                    showBookmarkMatchBottomSheet = false
-                }
-            )
-        }
-
     }
 }
 
@@ -334,7 +346,7 @@ private fun DetailContentSkeleton(modifier: Modifier = Modifier) {
     var started by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        delay(500.milliseconds)
+        delay(0.5.seconds)
         started = true
     }
 
@@ -450,6 +462,7 @@ private val itemVerticalPadding = 8.dp
 private fun DetailContent(
     modifier: Modifier = Modifier,
     uiState: DetailUiState,
+    bookInformation: BookInformation,
     lazyListState: LazyListState,
     onClickChapter: (String) -> Unit,
     cacheBook: (String) -> Unit,
@@ -457,8 +470,8 @@ private fun DetailContent(
     onClickTag: (String) -> Unit,
     onClickCover: (Uri) -> Unit,
     onClickShowInfo: () -> Unit,
-    onClickWebView: (() -> Unit)? = null,
-    onClickUnresolvedBookmark: () -> Unit = {}
+    onClickWebView: (() -> Unit)?,
+    onClickUnresolvedBookmark: () -> Unit
 ) {
     var hideReadChapters by remember { mutableStateOf(false) }
     val deferred = 6
@@ -478,7 +491,7 @@ private fun DetailContent(
     ) {
         if (visible >= 1) item {
             BookCardBlock(
-                bookInformation = uiState.bookInformation,
+                bookInformation = bookInformation,
                 modifier = Modifier
                     .fadeInOnce("book")
                     .graphicsLayer {
@@ -492,7 +505,7 @@ private fun DetailContent(
         if (visible >= 2) item {
             TagsBlock(
                 modifier = Modifier.fadeInOnce("tags"),
-                bookInformation = uiState.bookInformation,
+                bookInformation = bookInformation,
                 onClickTag = onClickTag
             )
         }
@@ -503,8 +516,8 @@ private fun DetailContent(
                 isInBookshelf = uiState.isInBookshelf,
                 isCached = uiState.isCached,
                 downloadItem = uiState.downloadItem,
-                onClickAddToBookShelf = { requestAddBookToBookshelf(uiState.bookInformation.id) },
-                onClickCache = { cacheBook(uiState.bookInformation.id) },
+                onClickAddToBookShelf = { requestAddBookToBookshelf(bookInformation.id) },
+                onClickCache = { cacheBook(bookInformation.id) },
                 onClickShowInfo = onClickShowInfo,
                 onClickWebView = onClickWebView
             )
@@ -526,7 +539,7 @@ private fun DetailContent(
         if (visible >= 4) item {
             IntroBlock(
                 modifier = Modifier.fadeInOnce("intro"),
-                description = uiState.bookInformation.description
+                description = bookInformation.description
             )
         }
 
@@ -551,13 +564,26 @@ private fun DetailContent(
             }
         }
 
-        if (visible >= 6) item {
-            AnimatedVisibility(
-                modifier = Modifier.fadeInOnce("loading"),
-                visible = uiState.bookVolumes.volumes.isEmpty(),
-                enter = fadeIn(tween(300, 1000)),
-                exit = shrinkVertically() + fadeOut()
-            ) {
+        if (visible >= 6) {
+            uiState.bookVolumes?.onOk { bookVolumes ->
+                items(
+                    items = bookVolumes.volumes,
+                    key = { it.volumeId }
+                ) { volume ->
+                    VolumeItem(
+                        modifier = Modifier.fadeInOnce(volume.volumeId),
+                        volume = volume,
+                        hideReadChapters = hideReadChapters,
+                        readCompletedChapterIds = uiState.userReadingData?.currentChapterReadingProgressMap?.filterValues { it >= 1f }?.keys?.toList() ?: emptyList(),
+                        onClickChapter = onClickChapter,
+                        volumesSize = bookVolumes.volumes.size,
+                        lastReadingChapterId = uiState.userReadingData?.lastReadChapterId,
+                        bookmarkChapterId = uiState.bookmarkUiState.chapterId
+                    )
+                }
+            }?.onErr {
+                //TODO 错误显示
+            } ?: item {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -567,22 +593,6 @@ private fun DetailContent(
                     Loading()
                 }
             }
-        }
-
-        if (visible >= 6) items(
-            items = uiState.bookVolumes.volumes,
-            key = { it.volumeId }
-        ) { volume ->
-            VolumeItem(
-                modifier = Modifier.fadeInOnce(volume.volumeId),
-                volume = volume,
-                hideReadChapters = hideReadChapters,
-                readCompletedChapterIds = uiState.userReadingData.currentChapterReadingProgressMap.filterValues { it >= 1f }.keys.toList(),
-                onClickChapter = onClickChapter,
-                volumesSize = uiState.bookVolumes.volumes.size,
-                lastReadingChapterId = uiState.userReadingData.lastReadChapterId,
-                bookmarkChapterId = uiState.bookmarkUiState.chapterId
-            )
         }
 
         item {
@@ -637,7 +647,12 @@ private fun TopBar(
                         maxLines = 1,
                         style = typography.displayLarge,
                         modifier = Modifier
-                            .offset { IntOffset(0, (-offset * titleProgress).roundToPx()) }
+                            .offset {
+                                IntOffset(
+                                    x = 0,
+                                    y = (-offset * titleProgress).toPx().toInt()
+                                )
+                            }
                             .graphicsLayer { alpha = 1f - titleProgress }
                     )
                     Text(
@@ -646,7 +661,12 @@ private fun TopBar(
                         style = typography.displayLarge,
                         modifier = Modifier
                             .horizontalScroll(rememberScrollState())
-                            .offset { IntOffset(0, (offset * (1f - titleProgress)).roundToPx()) }
+                            .offset {
+                                IntOffset(
+                                    x = 0,
+                                    y = (offset * (1f - titleProgress)).toPx().toInt()
+                                )
+                            }
                             .graphicsLayer { alpha = titleProgress }
                     )
                 }
@@ -911,7 +931,7 @@ private fun QuickOperationsBlock(
     onClickAddToBookShelf: () -> Unit,
     onClickCache: () -> Unit,
     onClickShowInfo: () -> Unit,
-    onClickWebView: (() -> Unit)? = null
+    onClickWebView: (() -> Unit)?
 ) {
     val bookmark = painterResource(R.drawable.bookmark_add_24px)
     val filledBookmark = painterResource(R.drawable.filled_bookmark_add_24px)
@@ -976,7 +996,7 @@ private fun QuickOperationsBlock(
         if (onClickWebView != null) {
             QuickOperationButton(
                 icon = openInNew,
-                title = stringResource(R.string.action_webview),
+                title = stringResource(R.string.linovelib_web_book_title),
                 onClick = onClickWebView,
                 modifier = Modifier.weight(1f)
             )
@@ -997,9 +1017,9 @@ private fun LinovelibBookmarkBlock(
             .clip(RoundedCornerShape(16.dp))
             .background(colorScheme.surfaceContainerLow)
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             modifier = Modifier.size(24.dp),
@@ -1037,143 +1057,58 @@ private fun LinovelibBookmarkBlock(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LinovelibBookmarkMatchBottomSheet(
-    sheetState: SheetState,
+private fun LinovelibBookmarkMatchDialog(
     bookmarkTitle: String,
-    bookVolumes: BookVolumes,
-    selectedVolumeId: String,
-    onChangeSelectedVolumeId: (String) -> Unit,
+    bookVolumes: io.nightfish.lightnovelreader.api.book.BookVolumes,
     onDismissRequest: () -> Unit,
     onClickChapter: (String) -> Unit
 ) {
-    ModalBottomSheet(
+    val chapters = remember(bookVolumes) {
+        bookVolumes.volumes.flatMap { it.chapters }
+    }
+    AlertDialog(
         onDismissRequest = onDismissRequest,
-        sheetState = sheetState
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.75f)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.star_24px),
-                    tint = colorScheme.primary,
-                    contentDescription = null
+        title = {
+            Text(stringResource(R.string.linovelib_bookmark_match_title))
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = stringResource(
+                        R.string.linovelib_bookmark_match_remote_title,
+                        bookmarkTitle
+                    ),
+                    style = typography.bodyMedium
                 )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.linovelib_bookmark_match_title),
-                        style = typography.displayMedium,
-                        fontWeight = FontWeight.W600
-                    )
-                    Text(
-                        text = stringResource(R.string.linovelib_bookmark_match_remote_title, bookmarkTitle),
-                        style = typography.bodyMedium,
-                        color = colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            val isEmpty = bookVolumes.volumes.all { it.chapters.isEmpty() }
-            if (isEmpty) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = stringResource(R.string.linovelib_bookmark_match_empty_catalog),
-                        style = typography.bodyMedium,
-                        color = colorScheme.onSurfaceVariant
-                    )
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                ) {
-                    items(
-                        items = bookVolumes.volumes,
-                        key = { it.volumeId }
-                    ) { volume ->
-                        val expanded = selectedVolumeId == volume.volumeId
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .animateContentSize(animationSpec = tween(durationMillis = 200))
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        onChangeSelectedVolumeId(
-                                            if (selectedVolumeId == volume.volumeId) ""
-                                            else volume.volumeId
-                                        )
-                                    }
-                                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                if (chapters.isEmpty()) {
+                    Text(stringResource(R.string.linovelib_bookmark_match_empty_catalog))
+                } else {
+                    LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
+                        items(chapters, key = { it.id }) { chapter ->
+                            TextButton(
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = { onClickChapter(chapter.id) }
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = volume.volumeTitle,
-                                        style = typography.titleMedium,
-                                        fontWeight = FontWeight.W600,
-                                        color = colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = stringResource(R.string.info_volume_chapters_count, volume.chapters.size),
-                                        style = typography.labelMedium,
-                                        color = colorScheme.secondary
-                                    )
-                                }
-                                Icon(
-                                    modifier = Modifier
-                                        .size(16.dp)
-                                        .rotate(if (expanded) -90f else 90f),
-                                    painter = painterResource(R.drawable.arrow_forward_ios_24px),
-                                    tint = colorScheme.onSurface,
-                                    contentDescription = null
+                                Text(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    text = chapter.title,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
                                 )
-                            }
-
-                            if (expanded) {
-                                volume.chapters.forEach { chapter ->
-                                    Text(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable { onClickChapter(chapter.id) }
-                                            .padding(horizontal = 28.dp, vertical = 12.dp),
-                                        text = chapter.title,
-                                        style = typography.titleSmall,
-                                        color = colorScheme.onSurfaceVariant,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
                             }
                         }
                     }
                 }
             }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text(stringResource(R.string.cancel))
+            }
         }
-    }
+    )
 }
 
 @Composable
@@ -1259,7 +1194,7 @@ private fun VolumeItem(
     readCompletedChapterIds: List<String>,
     onClickChapter: (String) -> Unit,
     volumesSize: Int,
-    lastReadingChapterId: String,
+    lastReadingChapterId: String?,
     bookmarkChapterId: String
 ) {
     val readIds = remember(readCompletedChapterIds) { readCompletedChapterIds.toSet() }
@@ -1392,16 +1327,7 @@ private fun ChapterItem(
                     )
                 }
             }
-            if (isBookmarked)
-                Icon(
-                    modifier = Modifier
-                        .padding(start = 22.dp)
-                        .size(24.dp),
-                    painter = painterResource(R.drawable.star_24px),
-                    tint = colorScheme.tertiary,
-                    contentDescription = "linovelib_bookmark"
-                )
-            else if (isLastRead)
+            if (isLastRead) {
                 Icon(
                     modifier = Modifier
                         .padding(start = 22.dp)
@@ -1410,6 +1336,17 @@ private fun ChapterItem(
                     tint = colorScheme.primary,
                     contentDescription = "last_read"
                 )
+            }
+            if (isBookmarked) {
+                Icon(
+                    modifier = Modifier
+                        .padding(start = 22.dp)
+                        .size(24.dp),
+                    painter = painterResource(R.drawable.star_24px),
+                    tint = colorScheme.tertiary,
+                    contentDescription = "linovelib_bookmark"
+                )
+            }
 
         }
     }

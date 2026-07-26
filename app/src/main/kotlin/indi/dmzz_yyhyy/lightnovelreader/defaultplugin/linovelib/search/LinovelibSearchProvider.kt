@@ -42,7 +42,7 @@ class LinovelibSearchProvider(
                 )
                 val books = websiteDataSource.parseSearchBooks(document)
                 if (books.isNotEmpty()) {
-                    books.forEach { emit(SearchResult.MultipleBook(it)) }
+                    books.forEach { emit(SearchResult.MultipleBook(it.id)) }
                     emit(SearchResult.End())
                     return@flow
                 }

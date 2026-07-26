@@ -2,7 +2,6 @@
 
 package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.scroll
 
-import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -13,14 +12,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListItemInfo
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
@@ -29,13 +28,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -49,12 +47,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
-import indi.dmzz_yyhyy.lightnovelreader.BuildConfig
+import com.github.michaelbull.result.get
+import com.github.michaelbull.result.map
+import com.github.michaelbull.result.onErr
+import com.github.michaelbull.result.onOk
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ChapterEndContext
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderChapterEnd
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.toChapterEndContext
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentError
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentLoading
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiState
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.Loading
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data.MenuOptions
 import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
@@ -62,140 +66,8 @@ import indi.dmzz_yyhyy.lightnovelreader.utils.readerTextColor
 import indi.dmzz_yyhyy.lightnovelreader.utils.rememberReaderBackgroundPainter
 import indi.dmzz_yyhyy.lightnovelreader.utils.rememberReaderFontFamily
 import indi.dmzz_yyhyy.lightnovelreader.utils.showSnackbar
-import io.nightfish.lightnovelreader.api.book.ChapterContent
-import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlin.math.abs
-
-private const val DEBUG_READER_SCROLL = false
-private const val READER_SCROLL_LOG_TAG = "ReaderScrollDbg"
-private val VOLUME_TITLE_REGEX = Regex("^(第[一二三四五六七八九十]+卷)\\s+(.*)")
-
-@Suppress("SimplifyBooleanWithConstants")
-private inline fun debugScrollLog(message: () -> String) {
-    if (BuildConfig.DEBUG && DEBUG_READER_SCROLL) Log.d(READER_SCROLL_LOG_TAG, message())
-}
-
-private fun List<ChapterContent?>.idsSummary(): String = mapIndexed { index, content ->
-    "$index:${content?.id ?: "null"}"
-}.joinToString(prefix = "[", postfix = "]")
-
-private fun List<LazyListItemInfo>.itemsSummary(limit: Int = 8): String {
-    val suffix = if (size > limit) ",...+${size - limit}" else ""
-    return take(limit).joinToString(prefix = "[", postfix = "$suffix]") { item ->
-        "${item.index}:${item.key}@${item.offset}+${item.size}"
-    }
-}
-
-private fun loopBackgroundBaseOffsetPx(listState: LazyListState, screenHeightPx: Int): Int {
-    if (screenHeightPx <= 0) return 0
-    val firstVisibleOffset = listState.layoutInfo.visibleItemsInfo.firstOrNull()?.offset
-        ?: -listState.firstVisibleItemScrollOffset
-    return firstVisibleOffset % screenHeightPx
-}
-
-@Composable
-private fun LoopReaderBackground(
-    listState: LazyListState,
-    screenHeightPx: Int,
-    painter: Painter
-) {
-    val density = LocalDensity.current
-    val screenHeightDp = with(density) { screenHeightPx.toDp() }
-    Image(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(screenHeightDp)
-            .graphicsLayer {
-                translationY = (loopBackgroundBaseOffsetPx(listState, screenHeightPx) + screenHeightPx).toFloat()
-            },
-        painter = painter,
-        contentDescription = null,
-        contentScale = ContentScale.Crop
-    )
-    Image(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(screenHeightDp)
-            .graphicsLayer {
-                translationY = loopBackgroundBaseOffsetPx(listState, screenHeightPx).toFloat()
-            },
-        painter = painter,
-        contentDescription = null,
-        contentScale = ContentScale.Crop
-    )
-}
-
-private sealed interface ScrollContentRenderItem {
-    val content: ChapterContent
-    val key: String
-
-    data class Header(
-        override val content: ChapterContent
-    ) : ScrollContentRenderItem {
-        override val key = scrollContentItemKey(content.id, ScrollContentItemType.Header)
-    }
-
-    data class Component(
-        override val content: ChapterContent,
-        val index: Int,
-        val component: AbstractContentComponent<*>
-    ) : ScrollContentRenderItem {
-        override val key = scrollContentItemKey(content.id, ScrollContentItemType.Component, index)
-    }
-
-    data class Footer(
-        override val content: ChapterContent
-    ) : ScrollContentRenderItem {
-        override val key = scrollContentItemKey(content.id, ScrollContentItemType.Footer)
-    }
-}
-
-private data class RestoreTarget(
-    val globalIndex: Int,
-    val itemProgress: Float,
-    val expectedItemSize: Int = 0
-)
-
-private data class RestoreItemResult(
-    val item: LazyListItemInfo,
-    val layoutStable: Boolean
-)
-
-private fun ScrollContentRenderItem.matches(anchor: ScrollReadingAnchor, componentCount: Int): Boolean = when (this) {
-    is ScrollContentRenderItem.Header -> anchor.parsedItemType == ScrollContentItemType.Header
-    is ScrollContentRenderItem.Component ->
-        anchor.parsedItemType == ScrollContentItemType.Component &&
-                index == anchor.componentIndex &&
-                (anchor.componentCount < 0 || anchor.componentCount == componentCount)
-    is ScrollContentRenderItem.Footer -> anchor.parsedItemType == ScrollContentItemType.Footer
-}
-
-private fun compatibleRestoreViewport(savedViewportHeight: Int, currentViewportHeight: Int): Boolean {
-    if (savedViewportHeight <= 0 || currentViewportHeight <= 0) return false
-    val larger = maxOf(savedViewportHeight, currentViewportHeight)
-    return abs(savedViewportHeight - currentViewportHeight).toFloat() / larger <= 0.15f
-}
-
-private suspend fun LazyListState.waitForRestoreItem(
-    index: Int,
-    expectedSize: Int
-): RestoreItemResult? {
-    val visibleItem = { layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } }
-    if (expectedSize <= 0) {
-        return snapshotFlow { visibleItem() }
-            .filter { it != null }
-            .first()
-            ?.let { RestoreItemResult(it, layoutStable = true) }
-    }
-    val minimumExpectedSize = (expectedSize * 85 / 100).coerceAtLeast(1)
-    return snapshotFlow { visibleItem() }
-        .filter { item -> item != null && item.size >= minimumExpectedSize }
-        .first()
-        ?.let { RestoreItemResult(it, layoutStable = true) }
-}
 
 @Composable
 fun ScrollContentComponent(
@@ -238,21 +110,11 @@ fun ScrollContentTextComponent(
     onClickChapterComments: ((ChapterEndContext) -> Unit)?
 ) {
     val snackbarHostState = LocalSnackbarHost.current
+    val density = LocalDensity.current
     val screenHeight = LocalResources.current.displayMetrics.heightPixels
-    val textColor = readerTextColor(settingState)
-    val fontFamily = rememberReaderFontFamily(settingState.fontFamilyUriUserData)
     val listState = uiState.lazyListState
+    val scope = rememberCoroutineScope()
     var lazyColumnSize by remember { mutableStateOf(IntSize(0, 0)) }
-    val renderItems = buildList {
-        uiState.contentList.forEach { content ->
-            if (content == null) return@forEach
-            if (settingState.isUsingContinuousScrolling) add(ScrollContentRenderItem.Header(content))
-            uiState.contentComponentsMap[content.id]?.forEachIndexed { index, component ->
-                add(ScrollContentRenderItem.Component(content, index, component))
-            }
-            add(ScrollContentRenderItem.Footer(content))
-        }
-    }
 
     val reachedTopMsg = stringResource(R.string.reader_reached_top)
     val prevChapterLabel = stringResource(R.string.previous_chapter)
@@ -262,94 +124,18 @@ fun ScrollContentTextComponent(
     val reachedStartMsg = stringResource(R.string.reader_reached_start)
     val reachedEndMsg = stringResource(R.string.reader_reached_end)
 
-    LaunchedEffect(listState, uiState.restoreVersion, renderItems.size) {
-        val restoringVersion = uiState.restoreVersion
-        debugScrollLog {
-            "restoreEffect start version=$restoringVersion should=${uiState.shouldRestoreProgress} " +
-                    "reading=${uiState.readingContentId} restore=${uiState.restoreProgress} " +
-                    "content=${uiState.contentList.idsSummary()} visible=${listState.layoutInfo.visibleItemsInfo.itemsSummary()}"
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo }.first { it.isNotEmpty() }
+        withFrameNanos {  }
+        listState.scrollToItem(1)
+        val item = uiState.lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == uiState.readingChapterId } ?: return@LaunchedEffect
+        snapshotFlow { lazyColumnSize }.first { lazyColumnSize.height > 0 }
+        val offset = if (uiState.readingProgress <= 0f) {
+            0
+        } else {
+            (item.size * uiState.readingProgress).toInt() - lazyColumnSize.height
         }
-        if (!uiState.shouldRestoreProgress) return@LaunchedEffect
-        val chapterItems = renderItems.withIndex()
-            .filter { it.value.content.id == uiState.readingContentId }
-        if (chapterItems.isEmpty()) return@LaunchedEffect
-        snapshotFlow { lazyColumnSize }
-            .filter { lazyColumnSize.height > 0 }
-            .first()
-        val anchorTarget = uiState.restoreAnchor
-            ?.takeIf { it.chapterId == uiState.readingContentId }
-            ?.let { anchor ->
-                val componentCount = uiState.contentComponentsMap[anchor.chapterId]?.size ?: 0
-                chapterItems
-                    .firstOrNull { it.value.matches(anchor, componentCount) }
-                    ?.let {
-                        RestoreTarget(
-                            globalIndex = it.index,
-                            itemProgress = anchor.itemProgress.coerceIn(0f, 1f),
-                            expectedItemSize = if (compatibleRestoreViewport(anchor.viewportHeight, lazyColumnSize.height)) {
-                                anchor.itemSize
-                            } else {
-                                0
-                            }
-                        )
-                    }
-            }
-        val restoreTarget = anchorTarget ?: run {
-            val componentItems = chapterItems.filter { it.value is ScrollContentRenderItem.Component }
-            val progressTarget = scrollContentRestoreTarget(
-                progress = uiState.restoreProgress,
-                componentIndices = componentItems.map { it.index },
-                headerIndex = chapterItems
-                    .firstOrNull { it.value is ScrollContentRenderItem.Header }
-                    ?.index,
-                footerIndex = chapterItems
-                    .firstOrNull { it.value is ScrollContentRenderItem.Footer }
-                    ?.index,
-                fallbackIndex = chapterItems.last().index,
-                componentHeights = uiState.componentHeightsByChapterId[uiState.readingContentId].orEmpty(),
-                defaultComponentHeight = screenHeight
-            )
-            RestoreTarget(
-                globalIndex = progressTarget.itemIndex,
-                itemProgress = progressTarget.itemProgress
-            )
-        }
-        snapshotFlow { listState.layoutInfo.totalItemsCount }
-            .filter { it > restoreTarget.globalIndex }
-            .first()
-        debugScrollLog {
-            "restoreEffect targetReady version=$restoringVersion reading=${uiState.readingContentId} " +
-                    "target=${restoreTarget.globalIndex}@${restoreTarget.itemProgress} visible=${listState.layoutInfo.visibleItemsInfo.itemsSummary()}"
-        }
-        withFrameNanos { }
-        listState.scrollToItem(restoreTarget.globalIndex)
-        val restoreItem = listState.waitForRestoreItem(
-            index = restoreTarget.globalIndex,
-            expectedSize = restoreTarget.expectedItemSize
-        ) ?: run {
-            debugScrollLog {
-                "restoreEffect targetMissing version=$restoringVersion reading=${uiState.readingContentId} " +
-                        "target=${restoreTarget.globalIndex} visible=${listState.layoutInfo.visibleItemsInfo.itemsSummary()}"
-            }
-            return@LaunchedEffect
-        }
-        val item = restoreItem.item
-        val rawOffset = (item.size * restoreTarget.itemProgress).toInt() - lazyColumnSize.height
-        val offset = rawOffset.coerceAtLeast(0)
-        debugScrollLog {
-            "restoreEffect scroll version=$restoringVersion reading=${uiState.readingContentId} " +
-                    "matched=${item.index}:${item.key}@${item.offset}+${item.size} lazySize=${lazyColumnSize.width}x${lazyColumnSize.height} " +
-                    "restore=${uiState.restoreProgress} targetProgress=${restoreTarget.itemProgress} rawOffset=$rawOffset computedOffset=$offset " +
-                    "layoutStable=${restoreItem.layoutStable} content=${uiState.contentList.idsSummary()}"
-        }
-        listState.scrollToItem(restoreTarget.globalIndex, offset)
-        withFrameNanos { }
-        debugScrollLog {
-            "restoreEffect complete version=$restoringVersion firstIndex=${listState.firstVisibleItemIndex} " +
-                    "firstOffset=${listState.firstVisibleItemScrollOffset} layoutStable=${restoreItem.layoutStable} " +
-                    "visible=${listState.layoutInfo.visibleItemsInfo.itemsSummary()}"
-        }
-        uiState.completeProgressRestore(restoringVersion, restoreItem.layoutStable)
+        listState.scrollToItem(1, offset)
     }
     LaunchedEffect(listState) {
         var atTop = false
@@ -369,18 +155,10 @@ fun ScrollContentTextComponent(
                             lastVisible.index == totalCount - 1 &&
                             (lastVisible.offset + lastVisible.size) <= layoutInfo.viewportEndOffset
 
-                    debugScrollLog {
-                        "idleLayout total=$totalCount viewport=${layoutInfo.viewportStartOffset}..${layoutInfo.viewportEndOffset} " +
-                                "first=$firstIndex@$firstOffset last=${lastVisible?.index}:${lastVisible?.key}@${lastVisible?.offset}+${lastVisible?.size} " +
-                                "isAtTop=$isAtTop isAtBottom=$isAtBottom reading=${uiState.readingContentId} " +
-                                "restoreVersion=${uiState.restoreVersion} shouldRestore=${uiState.shouldRestoreProgress} " +
-                                "content=${uiState.contentList.idsSummary()} visible=${layoutInfo.visibleItemsInfo.itemsSummary()}"
-                    }
-
                     when {
                         isAtTop -> {
                             if (atTop) {
-                                if (uiState.readingChapterContent.hasPrevChapter())
+                                if (uiState.readingChapterContent?.map { it.hasPrevChapter() }?.get() == true)
                                     launch {
                                         showSnackbar(
                                             coroutineScope = this,
@@ -404,7 +182,7 @@ fun ScrollContentTextComponent(
 
                         isAtBottom -> {
                             if (atBottom) {
-                                if (uiState.readingChapterContent.hasNextChapter())
+                                if (uiState.readingChapterContent?.map { it.hasNextChapter() }?.get() == true)
                                     launch {
                                         showSnackbar(
                                             coroutineScope = this,
@@ -436,10 +214,33 @@ fun ScrollContentTextComponent(
     }
 
     if (settingState.enableBackgroundImage && settingState.backgroundImageDisplayMode == MenuOptions.ReaderBgImageDisplayModeOptions.Loop) {
-        LoopReaderBackground(
-            listState = listState,
-            screenHeightPx = screenHeight,
-            painter = rememberReaderBackgroundPainter(settingState)
+        Image(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(with(density) {
+                    screenHeight.toDp()
+                })
+                .offset(y = with(density) {
+                    ((uiState.lazyListState.layoutInfo.visibleItemsInfo.getOrNull(0)?.offset
+                        ?: 0) % screenHeight + screenHeight).toDp()
+                }),
+            painter = rememberReaderBackgroundPainter(settingState),
+            contentDescription = null,
+            contentScale = ContentScale.Crop
+        )
+        Image(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(with(density) {
+                    screenHeight.toDp()
+                })
+                .offset(y = with(density) {
+                    ((uiState.lazyListState.layoutInfo.visibleItemsInfo.getOrNull(0)?.offset
+                        ?: 0) % screenHeight).toDp()
+                }),
+            painter = rememberReaderBackgroundPainter(settingState),
+            contentDescription = null,
+            contentScale = ContentScale.Crop
         )
     }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
@@ -468,107 +269,131 @@ fun ScrollContentTextComponent(
                     )
                 }
                 .onGloballyPositioned {
-                    if (lazyColumnSize == it.size) return@onGloballyPositioned
-                    debugScrollLog {
-                        "lazyColumnSize old=${lazyColumnSize.width}x${lazyColumnSize.height} new=${it.size.width}x${it.size.height} " +
-                                "viewport=${listState.layoutInfo.viewportStartOffset}..${listState.layoutInfo.viewportEndOffset} " +
-                                "first=${listState.firstVisibleItemIndex}@${listState.firstVisibleItemScrollOffset} " +
-                                "reading=${uiState.readingContentId} content=${uiState.contentList.idsSummary()}"
+                    scope.launch {
+                        withFrameNanos { }
+                        uiState.setLazyColumnSize(it.size)
+                        lazyColumnSize = it.size
                     }
-                    uiState.setLazyColumnSize(it.size)
-                    lazyColumnSize = it.size
                 },
             state = listState,
         ) {
-            items(
-                items = renderItems,
-                key = { it.key },
-                contentType = {
-                    when (it) {
-                        is ScrollContentRenderItem.Header -> "chapter-header"
-                        is ScrollContentRenderItem.Component -> "chapter-component:${it.component.id}"
-                        is ScrollContentRenderItem.Footer -> "chapter-footer"
+            itemsIndexed(
+                items = uiState.contentList,
+                key = { index, pair -> pair?.first ?: "placeholder-$index" }
+            ) { index, pair ->
+                pair?.second.let { result ->
+                    uiState.contentList.getOrNull(index + 1)?.second?.get()?.let {
+                        if (!it.hasPrevChapter()) return@itemsIndexed
                     }
-                }
-            ) { item ->
-                when (item) {
-                    is ScrollContentRenderItem.Header -> {
-                        val content = item.content
-                        val matchResult = VOLUME_TITLE_REGEX.find(content.title)
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 36.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            if (matchResult != null) {
-                                val (volumeTitle, chapterTitle) = matchResult.destructured
-                                Text(
-                                    text = volumeTitle,
-                                    textAlign = TextAlign.Center,
-                                    fontSize = (settingState.fontSize + 2).sp,
-                                    fontWeight = FontWeight.Medium,
-                                    fontFamily = fontFamily,
-                                    color = textColor,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                Text(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 8.dp),
-                                    text = chapterTitle,
-                                    textAlign = TextAlign.Center,
-                                    fontSize = (settingState.fontSize + 6).sp,
-                                    lineHeight = (settingState.fontSize + settingState.fontLineHeight + 6).sp,
-                                    fontWeight = FontWeight((settingState.fontWeigh.toInt() + 100)),
-                                    fontFamily = fontFamily,
-                                    color = textColor
-                                )
-                            } else {
-                                Text(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 8.dp),
-                                    text = content.title,
-                                    textAlign = TextAlign.Center,
-                                    fontSize = (settingState.fontSize + 6).sp,
-                                    lineHeight = (settingState.fontSize + settingState.fontLineHeight + 6).sp,
-                                    fontWeight = FontWeight((settingState.fontWeigh.toInt() + 100)),
-                                    fontFamily = fontFamily,
-                                    color = textColor
-                                )
-                            }
-                            Box(
-                                modifier = Modifier.fillMaxWidth(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                HorizontalDivider(
-                                    modifier = Modifier.width(48.dp),
-                                    color = textColor
-                                )
-                            }
-                            Spacer(Modifier.height(16.dp))
-                        }
+                    uiState.contentList.getOrNull(index - 1)?.second?.get()?.let {
+                        if (!it.hasNextChapter()) return@itemsIndexed
                     }
-
-                    is ScrollContentRenderItem.Component -> {
-                        item.component.Content(Modifier.fillMaxWidth())
-                    }
-
-                    is ScrollContentRenderItem.Footer -> {
-                        if (onClickChapterComments == null) {
-                            Spacer(Modifier.height(1.dp))
-                        } else {
-                            ReaderChapterEnd(
-                                context = item.content.toChapterEndContext(bookId),
-                                nextChapterTitle = chapterTitleById[item.content.nextChapter],
-                                contentColor = textColor,
-                                onClickComments = onClickChapterComments
-                            )
-                        }
-                    }
+                    result?.onOk {
+                        TextContent(
+                            modifier = modifier,
+                            settingState = settingState,
+                            content = it,
+                            bookId = bookId,
+                            nextChapterTitle = chapterTitleById[it.nextChapter],
+                            onClickChapterComments = onClickChapterComments
+                        )
+                    }?.onErr {
+                        ChapterContentError(it)
+                    } ?: ChapterContentLoading()
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun TextContent(
+    modifier: Modifier,
+    settingState: SettingState,
+    content: ChapterContentUiState,
+    bookId: String,
+    nextChapterTitle: String?,
+    onClickChapterComments: ((ChapterEndContext) -> Unit)?
+) {
+    val density = LocalDensity.current
+    val screenHeight = LocalResources.current.displayMetrics.heightPixels
+    val textColor = readerTextColor(settingState)
+    val fontFamily = rememberReaderFontFamily(settingState.fontFamilyUriUserData)
+    Column(
+        Modifier.defaultMinSize(
+            minHeight = with(density) {
+                screenHeight.toDp()
+            }
+        )
+    ) {
+        if (settingState.isUsingContinuousScrolling) {
+            val titleRegex = Regex("^(第[一二三四五六七八九十]+卷)\\s+(.*)")
+            val matchResult = titleRegex.find(content.title)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 36.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                if (matchResult != null) {
+                    val (volumeTitle, chapterTitle) = matchResult.destructured
+                    Text(
+                        text = volumeTitle,
+                        textAlign = TextAlign.Center,
+                        fontSize = (settingState.fontSize + 2).sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = fontFamily,
+                        color = textColor,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp),
+                        text = chapterTitle,
+                        textAlign = TextAlign.Center,
+                        fontSize = (settingState.fontSize + 6).sp,
+                        lineHeight = (settingState.fontSize + settingState.fontLineHeight + 6).sp,
+                        fontWeight = FontWeight((settingState.fontWeigh.toInt() + 100)),
+                        fontFamily = fontFamily,
+                        color = textColor
+                    )
+                } else {
+                    Text(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp),
+                        text = content.title,
+                        textAlign = TextAlign.Center,
+                        fontSize = (settingState.fontSize + 6).sp,
+                        lineHeight = (settingState.fontSize + settingState.fontLineHeight + 6).sp,
+                        fontWeight = FontWeight((settingState.fontWeigh.toInt() + 100)),
+                        fontFamily = fontFamily,
+                        color = textColor
+                    )
+                }
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    HorizontalDivider(
+                        modifier = Modifier.width(48.dp),
+                        color = textColor
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+        }
+        for (component in content.content) {
+            component.Content(modifier)
+        }
+        onClickChapterComments?.let { onClickComments ->
+            ReaderChapterEnd(
+                context = content.toChapterEndContext(bookId),
+                nextChapterTitle = nextChapterTitle,
+                contentColor = textColor,
+                onClickComments = onClickComments
+            )
         }
     }
 }
