@@ -13,6 +13,9 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentViewModel
 import indi.dmzz_yyhyy.lightnovelreader.utils.throttleLatest
+import io.nightfish.lightnovelreader.api.book.ChapterContent
+import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
+import io.nightfish.lightnovelreader.api.content.component.ImageComponentData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -25,7 +28,9 @@ class ScrollContentViewModel(
     val coroutineScope: CoroutineScope,
     val settingState: SettingState,
     val contentComponentRepository: ContentComponentRepository,
-    val updateReadingProgress: (ReadingProgressSnapshot) -> Unit
+    val updateReadingProgress: (ReadingProgressSnapshot) -> Unit,
+    val imagePreloadWidth: () -> Int = { 0 },
+    val preloadImageComponentHeight: suspend (ImageComponentData, Int) -> Int? = { _, _ -> null }
 ) : ContentViewModel {
     private var progressScrollLoadJob: Job? = null
     private var lazyColumnSize = IntSize(0, 0)
@@ -33,13 +38,17 @@ class ScrollContentViewModel(
     private var collectPrevChapterJob: Job? = null
     private var collectCurrentChapterJob: Job? = null
     private var collectNextChapterJob: Job? = null
+    private val imageHeightPreloadedKeys = mutableSetOf<String>()
 
     override val uiState: MutableScrollContentUiSate = MutableScrollContentUiSate(
         loadPrevChapter = ::loadPrevChapter,
         loadNextChapter = ::loadNextChapter,
         changeChapter = { changeChapter(it) },
-        setLazyColumnSize = {
-            lazyColumnSize = it
+        setLazyColumnSize = { size ->
+            if (lazyColumnSize.width > 0 && lazyColumnSize.width != size.width) {
+                imageHeightPreloadedKeys.clear()
+            }
+            lazyColumnSize = size
         },
         writeProgressRightNow = ::writeProgressRightNow
     )
@@ -109,6 +118,37 @@ class ScrollContentViewModel(
         }
     }
 
+    private fun imagePreloadWidthPx(): Int = lazyColumnSize.width
+        .takeIf { it > 0 }
+        ?: imagePreloadWidth().coerceAtLeast(0)
+
+    private suspend fun preloadChapterImageHeights(
+        chapterId: String,
+        components: List<AbstractContentComponent<*>>
+    ) {
+        val widthPx = imagePreloadWidthPx()
+        if (uiState.bookId.isBlank() || chapterId.isBlank() || widthPx <= 0) return
+        val preloadKey = "${uiState.bookId}/$chapterId/$widthPx"
+        if (!imageHeightPreloadedKeys.add(preloadKey)) return
+
+        components.forEach { component ->
+            val data = component.data as? ImageComponentData ?: return@forEach
+            preloadImageComponentHeight(data, widthPx)
+        }
+    }
+
+    private suspend fun ChapterContent.toUiState(): ChapterContentUiState {
+        val components = contentComponentRepository.getContentDataFromJson(content).components
+        preloadChapterImageHeights(id, components)
+        return ChapterContentUiState(
+            id = id,
+            title = title,
+            content = components,
+            sourceContent = content,
+            prevChapter = prevChapter,
+            nextChapter = nextChapter
+        )
+    }
 
     private fun writeProgressRightNow() {
         publishReadingProgress(uiState.readingChapterId ?: return, uiState.readingProgress)
@@ -201,6 +241,7 @@ class ScrollContentViewModel(
     }
 
     override fun changeBookId(id: String) {
+        if (uiState.bookId != id) imageHeightPreloadedKeys.clear()
         uiState.bookId = id
     }
 
@@ -255,16 +296,8 @@ class ScrollContentViewModel(
         collectCurrentChapterJob?.cancel()
         collectCurrentChapterJob = coroutineScope.launch(Dispatchers.IO) {
             bookRepository.getChapterContentFlow(id, uiState.bookId).collect { result ->
-                uiState.contentList[1] = id to result.map {
-                    ChapterContentUiState(
-                        id = it.id,
-                        title = it.title,
-                        content = contentComponentRepository.getContentDataFromJson(it.content).components,
-                        sourceContent = it.content,
-                        prevChapter = it.prevChapter,
-                        nextChapter = it.nextChapter
-                    )
-                }
+                val chapterContentUiState = result.get()?.toUiState()
+                uiState.contentList[1] = id to result.map { chapterContentUiState!! }
                 result.onOk { chapterContent ->
                     bookRepository.updateUserReadingData(uiState.bookId) { userReadingData ->
                         uiState.readingProgress = if (restoreProgress) {
@@ -296,16 +329,8 @@ class ScrollContentViewModel(
         collectCurrentChapterJob?.cancel()
         collectCurrentChapterJob = coroutineScope.launch(Dispatchers.IO) {
             bookRepository.getChapterContentFlow(id, uiState.bookId).collect { result ->
-                uiState.contentList[1] = id to result.map {
-                    ChapterContentUiState(
-                        id = it.id,
-                        title = it.title,
-                        content = contentComponentRepository.getContentDataFromJson(it.content).components,
-                        sourceContent = it.content,
-                        prevChapter = it.prevChapter,
-                        nextChapter = it.nextChapter
-                    )
-                }
+                val chapterContentUiState = result.get()?.toUiState()
+                uiState.contentList[1] = id to result.map { chapterContentUiState!! }
                 result.onOk { chapterContent ->
                     bookRepository.updateUserReadingData(uiState.bookId) { userReadingData ->
                         uiState.readingProgress = if (restoreProgress) {
@@ -352,19 +377,8 @@ class ScrollContentViewModel(
     ) = coroutineScope.launch {
             bookRepository.getChapterContentFlow(chapterId, uiState.bookId)
                 .collect { content ->
-                    var loadedContent: ChapterContentUiState? = null
-                    uiState.contentList[index] = chapterId to content.map {
-                        ChapterContentUiState(
-                            id = it.id,
-                            title = it.title,
-                            content = contentComponentRepository.getContentDataFromJson(it.content).components,
-                            sourceContent = it.content,
-                            prevChapter = it.prevChapter,
-                            nextChapter = it.nextChapter
-                        ).also { chapterContentUiState ->
-                            loadedContent = chapterContentUiState
-                        }
-                    }
+                    val loadedContent = content.get()?.toUiState()
+                    uiState.contentList[index] = chapterId to content.map { loadedContent!! }
                     loadedContent?.let { onLoaded(it) }
                 }
         }

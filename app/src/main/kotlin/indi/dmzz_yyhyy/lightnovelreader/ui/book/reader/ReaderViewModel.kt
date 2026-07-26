@@ -27,6 +27,8 @@ import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.sync.LinovelibSy
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentViewModel
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip.FlipPageContentViewModel
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.scroll.ScrollContentViewModel
+import indi.dmzz_yyhyy.lightnovelreader.ui.components.preloadReaderImageHeight
+import io.nightfish.lightnovelreader.api.content.component.ImageComponentData
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -82,6 +84,19 @@ class ReaderViewModel @Inject constructor(
     private var chapterId = ""
     private var restoreProgressOnNextContentViewModelChange = true
     val coroutineScope = CoroutineScope(Dispatchers.IO)
+
+    private fun scrollImagePreloadWidthPx(): Int =
+        applicationContext.resources.displayMetrics.widthPixels.coerceAtLeast(1)
+
+    private suspend fun preloadScrollImageComponentHeight(
+        data: ImageComponentData,
+        widthPx: Int
+    ): Int? = preloadReaderImageHeight(
+        context = applicationContext,
+        imageUri = data.uri,
+        widthPx = widthPx,
+        header = webBookDataSourceProvider.value.imageHeader
+    )
 
     var bookId = ""
         set(value) {
@@ -156,7 +171,9 @@ class ReaderViewModel @Inject constructor(
                         coroutineScope = viewModelScope,
                         settingState = settingState,
                         updateReadingProgress = ::saveReadingProgress,
-                        contentComponentRepository = contentComponentRepository
+                        contentComponentRepository = contentComponentRepository,
+                        imagePreloadWidth = ::scrollImagePreloadWidthPx,
+                        preloadImageComponentHeight = ::preloadScrollImageComponentHeight
                     )
                     contentViewModel?.changeBookId(bookId)
                     contentViewModel?.changeChapter(
