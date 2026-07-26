@@ -5,6 +5,7 @@ import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibJso
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import java.time.LocalDateTime
 
 class LinovelibAccountDataSource(
     private val jsoup: LinovelibJsoup,
@@ -72,6 +73,8 @@ class LinovelibAccountDataSource(
     data class LinovelibRemoteBook(
         val bookId: String,
         val title: String = "",
+        val coverUrl: String = "",
+        val lastUpdated: LocalDateTime = LocalDateTime.MIN,
         val bookmarkChapterId: String = "",
         val bookmarkChapterTitle: String = "",
         val bookmarkHref: String = "",
@@ -170,10 +173,18 @@ class LinovelibAccountDataSource(
                 ?: selectFirst(".book-title")?.text()?.cleanBookcaseText()
                 ?: selectFirst("img[alt]")?.attr("alt")?.cleanBookcaseText()
                 ?: ""
+            val coverUrl = selectFirst("img.book-cover, img")?.let { image ->
+                image.absOrAttr("data-src").ifBlank { image.absOrAttr("src") }
+            }.orEmpty()
+            val lastUpdated = selectFirst("a.mybook-to-new time, time.book-meta-r")
+                ?.parseBookcaseDate()
+                ?: LocalDateTime.MIN
             val bookmark = extractBookcaseBookmark(bookId)
             return LinovelibRemoteBook(
                 bookId = bookId,
                 title = title,
+                coverUrl = coverUrl,
+                lastUpdated = lastUpdated,
                 bookmarkChapterId = bookmark.chapterId,
                 bookmarkChapterTitle = bookmark.title,
                 bookmarkHref = bookmark.href,
@@ -261,6 +272,19 @@ class LinovelibAccountDataSource(
         private fun Element.absOrAttr(attribute: String): String =
             absUrl(attribute).ifBlank { attr(attribute) }.replace("&amp;", "&")
 
+        private fun Element.parseBookcaseDate(): LocalDateTime {
+            val year = selectFirst("rt")?.text()?.trim()?.toIntOrNull()
+                ?: Regex("(?:19|20)\\d{2}").find(text())?.value?.toIntOrNull()
+                ?: return LocalDateTime.MIN
+            val monthDay = Regex("(\\d{1,2})月(\\d{1,2})日").find(text())
+                ?: return LocalDateTime.MIN
+            val month = monthDay.groups[1]?.value?.toIntOrNull() ?: return LocalDateTime.MIN
+            val day = monthDay.groups[2]?.value?.toIntOrNull() ?: return LocalDateTime.MIN
+            return runCatching {
+                LocalDateTime.of(year, month, day, 0, 0)
+            }.getOrDefault(LocalDateTime.MIN)
+        }
+
         private fun String.cleanBookcaseText(): String =
             replace(' ', ' ')
                 .replace('　', ' ')
@@ -281,12 +305,18 @@ class LinovelibAccountDataSource(
 
         private fun MutableMap<String, LinovelibRemoteBook>.mergeRemoteBook(book: LinovelibRemoteBook) {
             val old = this[book.bookId]
-            this[book.bookId] = when {
-                old == null -> book
-                old.bookmarkChapterId.isBlank() && book.bookmarkChapterId.isNotBlank() -> book.copy(title = book.title.ifBlank { old.title })
-                old.bookmarkChapterTitle.isBlank() && book.bookmarkChapterTitle.isNotBlank() -> book.copy(title = book.title.ifBlank { old.title })
-                old.title.isBlank() && book.title.isNotBlank() -> old.copy(title = book.title)
-                else -> old
+            this[book.bookId] = if (old == null) {
+                book
+            } else {
+                old.copy(
+                    title = old.title.ifBlank { book.title },
+                    coverUrl = old.coverUrl.ifBlank { book.coverUrl },
+                    lastUpdated = maxOf(old.lastUpdated, book.lastUpdated),
+                    bookmarkChapterId = old.bookmarkChapterId.ifBlank { book.bookmarkChapterId },
+                    bookmarkChapterTitle = old.bookmarkChapterTitle.ifBlank { book.bookmarkChapterTitle },
+                    bookmarkHref = old.bookmarkHref.ifBlank { book.bookmarkHref },
+                    progress = maxOf(old.progress, book.progress)
+                )
             }
         }
     }

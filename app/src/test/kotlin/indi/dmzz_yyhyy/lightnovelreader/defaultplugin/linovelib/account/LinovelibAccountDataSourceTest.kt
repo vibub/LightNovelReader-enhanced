@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDateTime
 
 class LinovelibAccountDataSourceTest {
     @Test
@@ -57,6 +58,33 @@ class LinovelibAccountDataSourceTest {
 
         assertEquals("2547", book.bookId)
         assertEquals("关于我在无意间被隔壁的天使变成废柴这件事", book.title)
+    }
+
+    @Test
+    fun parseBooksFromHtmlExtractsCoverAndLatestUpdateDate() {
+        val book = LinovelibAccountDataSource.parseBooksFromHtml(
+            bookshelfHtml(
+                items = listOf(
+                    bookItem(
+                        bid = "9514047",
+                        aid = "2727",
+                        title = "我们不可能成为恋人！绝对不行。 (※似乎可行？)",
+                        bookmark = "",
+                        latestCid = "297832",
+                        latestTitle = "间章 第1.4章 快乐的快乐的文化祭 筹备与创造篇",
+                        coverUrl = "https://m.bilinovel.com/files/article/image/2/2727/2727s.jpg?1778785543",
+                        latestYear = 2026,
+                        latestMonthDay = "03月06日"
+                    )
+                )
+            )
+        ).single()
+
+        assertEquals(
+            "https://m.bilinovel.com/files/article/image/2/2727/2727s.jpg?1778785543",
+            book.coverUrl
+        )
+        assertEquals(LocalDateTime.of(2026, 3, 6, 0, 0), book.lastUpdated)
     }
 
     @Test
@@ -280,15 +308,24 @@ class LinovelibAccountDataSourceTest {
         bookmark: String,
         latestCid: String,
         latestTitle: String,
-        goonHref: String? = null
+        goonHref: String? = null,
+        coverUrl: String = "",
+        latestYear: Int? = null,
+        latestMonthDay: String = ""
     ): String {
         val goonHrefAttribute = goonHref?.let { " href=\"$it\"" }.orEmpty()
+        val coverDataSource = coverUrl.takeIf { it.isNotBlank() }
+            ?.let { " data-src=\"$it\"" }
+            .orEmpty()
+        val latestDate = latestYear?.let {
+            "<time class=\"book-meta-r\"><ruby>$latestMonthDay<rt>$it</rt></ruby></time>"
+        }.orEmpty()
         return """
             <li class="book-li">
               <div class="book-layout">
                 <div class="rel">
                   <a href="https://m.bilinovel.com/modules/article/readbookcase.php?bid=$bid&amp;aid=$aid&amp;acode=test" class="mybook-to-detail">
-                    <img src="cover.jpg" class="book-cover" alt="$title">
+                    <img src="cover.jpg"$coverDataSource class="book-cover" alt="$title">
                   </a>
                   <a href="https://m.bilinovel.com/novel/$aid/catalog" class="book-title-x">
                     <h4 class="book-title">$title</h4>
@@ -299,7 +336,7 @@ class LinovelibAccountDataSourceTest {
                 </a>
                 <div class="rel">
                   <a href="https://m.bilinovel.com/modules/article/readbookcase.php?bid=$bid&amp;aid=$aid&amp;cid=$latestCid" class="mybook-to-new">
-                    <div class="book-meta"><p class="ell">$latestTitle</p></div>
+                    <div class="book-meta">$latestDate<p class="ell">$latestTitle</p></div>
                   </a>
                 </div>
               </div>

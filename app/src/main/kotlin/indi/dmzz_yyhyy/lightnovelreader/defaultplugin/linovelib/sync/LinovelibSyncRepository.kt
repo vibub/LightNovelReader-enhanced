@@ -19,7 +19,6 @@ import io.nightfish.lightnovelreader.api.bookshelf.BookshelfSortType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.Instant
-import java.time.LocalDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -233,13 +232,16 @@ internal fun resolveLinovelibSyncBookInformation(
         id = remoteBook.bookId,
         title = resolveLinovelibSyncBookTitle(remoteBook.bookId, remoteBook.title),
         subtitle = "",
-        coverUri = Uri.EMPTY,
+        coverUri = LinovelibJsoup.normalizeCoverUrl(remoteBook.coverUrl)
+            .takeIf { it.isNotBlank() }
+            ?.let(Uri::parse)
+            ?: Uri.EMPTY,
         author = "",
         description = "",
         tags = emptyList(),
         publishingHouse = "",
         wordCount = WordCount(0),
-        lastUpdated = LocalDateTime.MIN,
+        lastUpdated = remoteBook.lastUpdated,
         isComplete = false
     )
 

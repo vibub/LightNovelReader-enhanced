@@ -229,8 +229,8 @@ internal fun BookshelfHomeContent(
             }
             var initialScrollApplied by remember(uiState.selectedBookshelfId) { mutableStateOf(false) }
 
-            LaunchedEffect(uiState.selectedBookshelfId, selectedBookshelfUiState.allBookFlows) {
-                if (initialScrollApplied || selectedBookshelfUiState.allBookFlows.isEmpty()) return@LaunchedEffect
+            LaunchedEffect(uiState.selectedBookshelfId, sortedAllBooks.isNotEmpty()) {
+                if (initialScrollApplied || sortedAllBooks.isEmpty()) return@LaunchedEffect
                 listState.scrollToItem(0)
                 initialScrollApplied = true
             }

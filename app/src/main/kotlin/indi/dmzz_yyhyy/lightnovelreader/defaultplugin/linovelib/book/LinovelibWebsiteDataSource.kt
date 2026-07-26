@@ -30,10 +30,50 @@ class LinovelibWebsiteDataSource(
 ) {
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-M-d")
 
-    suspend fun getBookInformation(id: String): BookInformation = runCatching {
+    @Volatile
+    private var preferMobileBookInformationUntilMillis = 0L
+
+    suspend fun getBookInformation(id: String): BookInformation {
         val bookId = id.normalizeBookId()
         require(bookId.isNotBlank()) { "Invalid Linovelib book id: $id" }
-        val document = jsoup.getDocument(LinovelibConstants.detailUrl(bookId))
+        if (System.currentTimeMillis() < preferMobileBookInformationUntilMillis) {
+            return getMobileBookInformation(bookId)
+        }
+        return try {
+            parseBookInformation(
+                bookId = bookId,
+                document = jsoup.getDocument(
+                    url = LinovelibConstants.detailUrl(bookId),
+                    retryTime = 0,
+                    coolDownOnCloudflare = false
+                )
+            )
+        } catch (throwable: Throwable) {
+            if (throwable is CancellationException) throw throwable
+            preferMobileBookInformationUntilMillis =
+                System.currentTimeMillis() + MOBILE_BOOK_INFORMATION_FALLBACK_MILLIS
+            try {
+                getMobileBookInformation(bookId)
+            } catch (mobileThrowable: Throwable) {
+                if (mobileThrowable is CancellationException) throw mobileThrowable
+                mobileThrowable.addSuppressed(throwable)
+                throw mobileThrowable
+            }
+        }
+    }
+
+    private suspend fun getMobileBookInformation(bookId: String): BookInformation =
+        parseBookInformation(
+            bookId = bookId,
+            document = jsoup.getDocument(
+                url = LinovelibConstants.mobileDetailUrl(bookId),
+                referer = LinovelibConstants.MOBILE_BASE_URL,
+                retryTime = 1,
+                userAgentMode = LinovelibJsoup.UserAgentMode.Mobile
+            )
+        )
+
+    private fun parseBookInformation(bookId: String, document: Document): BookInformation {
         if (document.text().contains("作品已下架") || document.title().contains("404")) {
             error("Linovelib book $bookId is unavailable")
         }
@@ -62,8 +102,11 @@ class LinovelibWebsiteDataSource(
             ?: document.labelValue("更新")
             ?: document.labelValue("最后更新")
             ?: ""
-        val wordText = document.labelValue("字数") ?: document.labelValue("全文长度") ?: ""
-        BookInformation(
+        val wordText = document.labelValue("字数")
+            ?: document.labelValue("全文长度")
+            ?: Regex("\\d+(?:\\.\\d+)?\\s*[万千]?字").find(document.text())?.value
+            ?: ""
+        return BookInformation(
             id = bookId,
             title = title.cleanText(),
             subtitle = "",
@@ -71,13 +114,14 @@ class LinovelibWebsiteDataSource(
             author = author.cleanText(),
             description = description,
             tags = tags,
-            publishingHouse = document.labelValue("文库")?.cleanText() ?: "",
+            publishingHouse = (
+                document.metaContent("og:novel:category")
+                    ?: document.labelValue("文库")
+                )?.cleanText() ?: "",
             wordCount = WordCount(wordText.parseWordCount()),
             lastUpdated = updateText.parseDateTime(),
             isComplete = statusText.contains("完结") || statusText.contains("已完成")
         )
-    }.getOrElse {
-        throw it
     }
 
     internal fun parseBookCoverUrl(document: Document): String = document.firstCoverImageUrl()
@@ -544,6 +588,7 @@ class LinovelibWebsiteDataSource(
 
     companion object {
         private const val MAX_CHAPTER_PAGE = 30
+        private const val MOBILE_BOOK_INFORMATION_FALLBACK_MILLIS = 10 * 60 * 1000L
         private val COVER_IMAGE_SELECTORS = listOf(
             ".book-img img",
             ".book-cover img",
