@@ -7,9 +7,6 @@ import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.explore.Linoveli
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibBlockedException
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibJsoup
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.search.LinovelibSearchProvider
-import io.nightfish.lightnovelreader.api.book.BookInformation
-import io.nightfish.lightnovelreader.api.book.BookVolumes
-import io.nightfish.lightnovelreader.api.book.ChapterContent
 import io.nightfish.lightnovelreader.api.error.mapAsWebRequestError
 import io.nightfish.lightnovelreader.api.userdata.UserDataRepositoryApi
 import io.nightfish.lightnovelreader.api.util.Cache
@@ -33,15 +30,22 @@ class LinovelibApi(
     private val mutableOffline = MutableStateFlow(false)
 
     override val id = LinovelibConstants.SOURCE_ID
-    override val cache: Cache = Cache(timeout = 2 * 60 * 60 * 1000)
-    override val permits: Int = 3
+    override val cache: Cache = Cache(
+        maxCountEachType = 50,
+        timeout = 2 * 60 * 60 * 1000
+    )
+    override val permits: Int = 1
 
     override val offLine: Boolean
         get() = mutableOffline.value
 
     override val isOffLineFlow: StateFlow<Boolean> = mutableOffline
 
-    override val searchProvider: SearchProvider = LinovelibSearchProvider(jsoup, websiteDataSource)
+    override val searchProvider: SearchProvider = LinovelibSearchProvider(
+        jsoup,
+        websiteDataSource,
+        cache
+    )
     override val explorePageProvider: ExplorePageProvider = LinovelibExplorePageProvider(jsoup, websiteDataSource)
 
     override val imageHeader: Map<String, String>

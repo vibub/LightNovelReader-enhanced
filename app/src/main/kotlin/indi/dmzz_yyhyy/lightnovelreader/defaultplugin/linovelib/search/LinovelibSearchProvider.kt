@@ -4,6 +4,7 @@ import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstan
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book.LinovelibWebsiteDataSource
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibBlockedException
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibJsoup
+import io.nightfish.lightnovelreader.api.util.Cache
 import io.nightfish.lightnovelreader.api.util.local
 import io.nightfish.lightnovelreader.api.web.search.AbstractSearchProvider
 import io.nightfish.lightnovelreader.api.web.search.SearchResult
@@ -16,7 +17,8 @@ import java.net.URLEncoder
 
 class LinovelibSearchProvider(
     private val jsoup: LinovelibJsoup,
-    private val websiteDataSource: LinovelibWebsiteDataSource
+    private val websiteDataSource: LinovelibWebsiteDataSource,
+    private val cache: Cache
 ) : AbstractSearchProvider() {
     init {
         registerSearchType(SEARCH_BY_NAME, "按书名搜索".local(), "请输入书本名称".local())
@@ -42,7 +44,10 @@ class LinovelibSearchProvider(
                 )
                 val books = websiteDataSource.parseSearchBooks(document)
                 if (books.isNotEmpty()) {
-                    books.forEach { emit(SearchResult.MultipleBook(it.id)) }
+                    books.forEach { bookInformation ->
+                        cache.cache(bookInformation.id.hashCode(), bookInformation)
+                        emit(SearchResult.MultipleBook(bookInformation.id))
+                    }
                     emit(SearchResult.End())
                     return@flow
                 }

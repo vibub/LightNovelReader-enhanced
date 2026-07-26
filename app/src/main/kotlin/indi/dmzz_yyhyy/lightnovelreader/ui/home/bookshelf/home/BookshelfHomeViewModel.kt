@@ -10,6 +10,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
+import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.onOk
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -19,13 +20,20 @@ import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.work.ImportDataWork
 import indi.dmzz_yyhyy.lightnovelreader.data.work.SaveBookshelfWork
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.bookshelf.toBookshelfUiState
+import io.nightfish.lightnovelreader.api.book.BookInformation
+import io.nightfish.lightnovelreader.api.book.BookVolumes
+import io.nightfish.lightnovelreader.api.bookshelf.BookshelfBookMetadata
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfSortType
+import io.nightfish.lightnovelreader.api.error.WebRequestError
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -60,6 +68,43 @@ class BookshelfHomeViewModel @Inject constructor(
     )
     val uiState: BookshelfHomeUiState = _uiState
     private val bookshelfOrderUserData = userDataRepository.intListUserData(UserDataPath.BookshelfOrder.path)
+    private val bookInformationFlows =
+        mutableMapOf<String, Flow<Result<BookInformation, WebRequestError>>>()
+    private val bookVolumesFlows =
+        mutableMapOf<String, Flow<Result<BookVolumes, WebRequestError>>>()
+    private val bookMetadataFlows = mutableMapOf<String, Flow<BookshelfBookMetadata?>>()
+
+    private fun getBookInformationFlow(
+        id: String
+    ): Flow<Result<BookInformation, WebRequestError>> = bookInformationFlows.getOrPut(id) {
+        bookRepository.getBookshelfBookInformationFlow(id)
+            .shareIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+                replay = 1
+            )
+    }
+
+    private fun getBookVolumesFlow(
+        id: String
+    ): Flow<Result<BookVolumes, WebRequestError>> = bookVolumesFlows.getOrPut(id) {
+        bookRepository.getBookVolumesFlow(id)
+            .shareIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+                replay = 1
+            )
+    }
+
+    private fun getBookMetadataFlow(id: String): Flow<BookshelfBookMetadata?> =
+        bookMetadataFlows.getOrPut(id) {
+            bookshelfRepository.getBookshelfBookMetadataFlow(id)
+                .shareIn(
+                    scope = viewModelScope,
+                    started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+                    replay = 1
+                )
+        }
 
     fun load() {
         viewModelScope.launch(Dispatchers.IO) {
@@ -72,7 +117,11 @@ class BookshelfHomeViewModel @Inject constructor(
                 }
             }.map { list ->
                 list.map {
-                    it.toBookshelfUiState(bookRepository, bookshelfRepository)
+                    it.toBookshelfUiState(
+                        getBookInformationFlow = ::getBookInformationFlow,
+                        getBookVolumesFlow = ::getBookVolumesFlow,
+                        getBookshelfBookMetadataFlow = ::getBookMetadataFlow
+                    )
                 }
             }.collect { bookshelfUiStates ->
                 if (_uiState.selectedBookshelf == null)

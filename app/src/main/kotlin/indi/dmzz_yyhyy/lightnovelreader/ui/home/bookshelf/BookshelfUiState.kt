@@ -4,9 +4,10 @@ import androidx.compose.runtime.Stable
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.map
 import com.github.michaelbull.result.zip
-import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
-import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
+import io.nightfish.lightnovelreader.api.book.BookInformation
+import io.nightfish.lightnovelreader.api.book.BookVolumes
 import io.nightfish.lightnovelreader.api.bookshelf.Bookshelf
+import io.nightfish.lightnovelreader.api.bookshelf.BookshelfBookMetadata
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfSortType
 import io.nightfish.lightnovelreader.api.error.WebRequestError
 import kotlinx.coroutines.flow.Flow
@@ -25,7 +26,11 @@ data class BookshelfUiState(
     val updatedBookFlows: List<Pair<String, Flow<Result<BookshelfBookItem, WebRequestError>>>>
 )
 
-fun Bookshelf.toBookshelfUiState(bookRepository: BookRepository, bookshelfRepository: BookshelfRepository) = BookshelfUiState(
+fun Bookshelf.toBookshelfUiState(
+    getBookInformationFlow: (String) -> Flow<Result<BookInformation, WebRequestError>>,
+    getBookVolumesFlow: (String) -> Flow<Result<BookVolumes, WebRequestError>>,
+    getBookshelfBookMetadataFlow: (String) -> Flow<BookshelfBookMetadata?>
+) = BookshelfUiState(
     id = this.id,
     name = this.name,
     sortType = this.sortType,
@@ -33,8 +38,8 @@ fun Bookshelf.toBookshelfUiState(bookRepository: BookRepository, bookshelfReposi
     autoCache = this.autoCache,
     systemUpdateReminder = this.systemUpdateReminder,
     allBookFlows = this.allBookIds.map { id ->
-        val bookInformationFlow = bookRepository.getBookshelfBookInformationFlow(id)
-        val bookshelfBookMetadataFlow = bookshelfRepository.getBookshelfBookMetadataFlow(id)
+        val bookInformationFlow = getBookInformationFlow(id)
+        val bookshelfBookMetadataFlow = getBookshelfBookMetadataFlow(id)
         id to bookInformationFlow.combine(bookshelfBookMetadataFlow) { result, bookshelfBookMetadata ->
             result.map {
                 BookshelfBookItem(
@@ -46,8 +51,8 @@ fun Bookshelf.toBookshelfUiState(bookRepository: BookRepository, bookshelfReposi
         }
     },
     pinnedBookFlows = this.pinnedBookIds.map { id ->
-        val bookInformationFlow = bookRepository.getBookshelfBookInformationFlow(id)
-        val bookshelfBookMetadataFlow = bookshelfRepository.getBookshelfBookMetadataFlow(id)
+        val bookInformationFlow = getBookInformationFlow(id)
+        val bookshelfBookMetadataFlow = getBookshelfBookMetadataFlow(id)
         id to bookInformationFlow.combine(bookshelfBookMetadataFlow) { result, bookshelfBookMetadata ->
             result.map {
                 BookshelfBookItem(
@@ -59,9 +64,9 @@ fun Bookshelf.toBookshelfUiState(bookRepository: BookRepository, bookshelfReposi
         }
     },
     updatedBookFlows = this.updatedBookIds.map { id ->
-        val bookInformationFlow = bookRepository.getBookshelfBookInformationFlow(id)
-        val bookVolumesFlow = bookRepository.getBookVolumesFlow(id)
-        val bookshelfBookMetadataFlow = bookshelfRepository.getBookshelfBookMetadataFlow(id)
+        val bookInformationFlow = getBookInformationFlow(id)
+        val bookVolumesFlow = getBookVolumesFlow(id)
+        val bookshelfBookMetadataFlow = getBookshelfBookMetadataFlow(id)
         id to combine(bookshelfBookMetadataFlow, bookInformationFlow, bookVolumesFlow) { bookshelfBookMetadata, bookInformationResult, bookVolumesResult ->
             zip({ bookInformationResult }, { bookVolumesResult }) { bookInformation, bookVolumes ->
                 BookshelfBookItem(
