@@ -20,7 +20,6 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -63,6 +62,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.absoluteValue
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -116,42 +116,65 @@ private fun SimpleFlipPageTextComponent(
     val resources = LocalResources.current
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
-    var contentKey by remember { mutableIntStateOf(0) }
-    var slippedContentComponentList by remember { mutableStateOf(emptyList<AbstractContentComponent<*>>()) }
-    LaunchedEffect(chapterContent.content, resources, density) {
-        scope.launch(Dispatchers.IO) {
-            val width = resources.displayMetrics
-                .widthPixels
-                .minus(
-                    with(density) {
-                        (paddingValues.calculateStartPadding(layoutDirection) + paddingValues.calculateEndPadding(layoutDirection)).toPx()
-                    }.toInt()
-                )
-            val height = resources.displayMetrics
-                .heightPixels
-                .minus(
-                    with(density) {
-                        (paddingValues.calculateTopPadding() + paddingValues.calculateBottomPadding()).toPx()
-                    }.toInt()
-                )
-            val key = chapterContent.hashCode() + width + height
-            if (key == contentKey) return@launch
+    val chapterId = chapterContent.id
+    val contentComponents = chapterContent.content
+    var slippedContentComponentList by remember(
+        chapterId,
+        contentComponents,
+        resources,
+        density,
+        paddingValues,
+        layoutDirection
+    ) {
+        mutableStateOf(emptyList<AbstractContentComponent<*>>())
+    }
+    LaunchedEffect(
+        chapterId,
+        contentComponents,
+        resources,
+        density,
+        paddingValues,
+        layoutDirection
+    ) {
+        val width = resources.displayMetrics
+            .widthPixels
+            .minus(
+                with(density) {
+                    (paddingValues.calculateStartPadding(layoutDirection) +
+                        paddingValues.calculateEndPadding(layoutDirection)).toPx()
+                }.toInt()
+            )
+        val height = resources.displayMetrics
+            .heightPixels
+            .minus(
+                with(density) {
+                    (paddingValues.calculateTopPadding() +
+                        paddingValues.calculateBottomPadding()).toPx()
+                }.toInt()
+            )
+        slippedContentComponentList = withContext(Dispatchers.IO) {
             val result = mutableListOf<AbstractContentComponent<*>>()
-            chapterContent.content.forEach {
-                if (it is AbstractDivisibleContentComponent<*, *>) {
-                    result.addAll(it.split(height, width))
+            for (component in contentComponents) {
+                if (component is AbstractDivisibleContentComponent<*, *>) {
+                    result.addAll(component.split(height, width))
                 } else {
-                    result.add(it)
+                    result.add(component)
                 }
             }
-            slippedContentComponentList = result
-            val totalPageCount = result.size + if (onClickChapterComments != null) 1 else 0
-            uiState.updatePageState(
-                chapterContent.id,
-                PagerState { totalPageCount },
-                result.size
-            )
+            result
         }
+    }
+    val contentPageCount = slippedContentComponentList.size
+    val totalPageCount = contentPageCount + if (onClickChapterComments != null) 1 else 0
+    val pagerState = remember(chapterId, slippedContentComponentList, totalPageCount) {
+        PagerState { totalPageCount }
+    }
+    LaunchedEffect(chapterId, pagerState, contentPageCount) {
+        uiState.updatePageState(
+            chapterId,
+            pagerState,
+            contentPageCount
+        )
     }
     val focusRequester = remember { FocusRequester() }
     val snackbarHostState = LocalSnackbarHost.current
@@ -238,7 +261,7 @@ private fun SimpleFlipPageTextComponent(
             )
     ) {
         HorizontalPager(
-            state = uiState.pagerState,
+            state = pagerState,
             key = { it },
             modifier = modifier
                 .focusRequester(focusRequester)
@@ -251,16 +274,16 @@ private fun SimpleFlipPageTextComponent(
                             KeyEventType.KeyDown -> {
                                 focusRequester.requestFocus()
                                 if (event.nativeKeyEvent.repeatCount == 0) {
-                                    if (event.key == Key.VolumeUp) lastPage(uiState.pagerState)
-                                    else nextPage(uiState.pagerState)
+                                    if (event.key == Key.VolumeUp) lastPage(pagerState)
+                                    else nextPage(pagerState)
 
                                     if (intervalMs > 0) {
                                         volumeJob?.cancel()
                                         volumeJob = scope.launch {
                                             while (isActive) {
                                                 delay(intervalMs.milliseconds)
-                                                if (event.key == Key.VolumeUp) lastPage(uiState.pagerState)
-                                                else nextPage(uiState.pagerState)
+                                                if (event.key == Key.VolumeUp) lastPage(pagerState)
+                                                else nextPage(pagerState)
                                             }
                                         }
                                     }
@@ -297,8 +320,8 @@ private fun SimpleFlipPageTextComponent(
                         onTap = {
                             if (settingState.isUsingFlipPage && settingState.isUsingClickFlipPage)
                                 when {
-                                    it.x < screenWidthPx / 3f -> lastPage(uiState.pagerState)
-                                    it.x > screenWidthPx * 2f / 3f -> nextPage(uiState.pagerState)
+                                    it.x < screenWidthPx / 3f -> lastPage(pagerState)
+                                    it.x > screenWidthPx * 2f / 3f -> nextPage(pagerState)
                                     else -> changeIsImmersive.invoke()
                                 }
                             else changeIsImmersive.invoke()

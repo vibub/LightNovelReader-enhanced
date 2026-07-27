@@ -748,12 +748,16 @@ internal fun Document.hasIncompleteLinovelibChapterContent(): Boolean {
 }
 
 internal fun extractLinovelibScriptPage(document: Document, name: String): String? {
-    val names = when (name) {
+    val namePattern = when (name) {
         "prevpage" -> listOf("prevpage", "url_previous")
         "nextpage" -> listOf("nextpage", "url_next")
         else -> listOf(name)
-    }.joinToString("|") { Regex.escape(it) }
-    val regex = Regex("""\b(?:var\s+)?(?:$names)\s*[:=]\s*["']([^"']*)["']""")
+    }.joinToString(
+        separator = "|",
+        prefix = "(?:",
+        postfix = ")"
+    ) { Regex.escape(it) }
+    val regex = Regex("""\b(?:var\s+)?$namePattern\s*[:=]\s*["']([^"']*)["']""")
     return document.select("script")
         .asSequence()
         .map { script -> script.data().ifBlank { script.html() } }
