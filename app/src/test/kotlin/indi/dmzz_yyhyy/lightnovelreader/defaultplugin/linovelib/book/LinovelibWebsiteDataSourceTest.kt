@@ -160,6 +160,24 @@ class LinovelibWebsiteDataSourceTest {
     }
 
     @Test
+    fun mobileChapterContentSelectorAndIncompleteMarkerAreSupported() {
+        val completeDocument = Jsoup.parse(
+            """
+            <html><body><div id="acontent"><p>完整正文</p></div></body></html>
+            """.trimIndent()
+        )
+        val incompleteDocument = Jsoup.parse(
+            """
+            <html><body><div id="acontent"><p>部分正文……（內容加載失敗！請刷新或更換瀏覽器）</p></div></body></html>
+            """.trimIndent()
+        )
+
+        assertEquals("完整正文", completeDocument.linovelibChapterContentElement()?.text())
+        assertFalse(completeDocument.hasIncompleteLinovelibChapterContent())
+        assertTrue(incompleteDocument.hasIncompleteLinovelibChapterContent())
+    }
+
+    @Test
     fun parseVolumesResolvesJavascriptCidChapterFromNextChapter() = runBlocking {
         val document = Jsoup.parse(
             """
@@ -188,6 +206,33 @@ class LinovelibWebsiteDataSourceTest {
         assertEquals("义妹生活 8", volumes.single().volumeTitle)
         assertEquals(listOf("186487", "186488", "186489"), volumes.single().chapters.map { it.id })
         assertEquals("序幕 浅村悠太", volumes.single().chapters[1].title)
+    }
+
+    @Test
+    fun parseVolumesSupportsMobileCatalogAndJavascriptCidOne() = runBlocking {
+        val document = Jsoup.parse(
+            """
+            <html><body><div id="volumes">
+              <div class="catalog-volume"><ul class="volume-chapters">
+                <li class="chapter-bar"><a href="/novel/2727/vol_129092.html"><h3>我们不可能成为恋人！绝对不行。 1</h3></a></li>
+                <li class="chapter-li jsChapter"><a href="/novel/2727/129093.html"><span>序章</span></a></li>
+                <li class="chapter-li jsChapter"><a href="javascript:cid(1)"><span>第一章</span></a></li>
+                <li class="chapter-li jsChapter"><a href="/novel/2727/129095.html"><span>第二章</span></a></li>
+              </ul></div>
+            </div></body></html>
+            """.trimIndent(),
+            "https://m.bilinovel.com/novel/2727/catalog"
+        )
+        val dataSource = LinovelibWebsiteDataSource(LinovelibJsoup())
+
+        val volumes = dataSource.parseVolumes(document, "2727") { previousChapterId, nextChapterId ->
+            assertEquals("129093", previousChapterId)
+            assertEquals("129095", nextChapterId)
+            "129094"
+        }
+
+        assertEquals("我们不可能成为恋人！绝对不行。 1", volumes.single().volumeTitle)
+        assertEquals(listOf("129093", "129094", "129095"), volumes.single().chapters.map { it.id })
     }
 
     @Test
@@ -427,6 +472,22 @@ class LinovelibWebsiteDataSourceTest {
         assertEquals("1843_4", extractLinovelibChapterPageId("8", extractLinovelibScriptPage(document, "prevpage")!!))
         assertEquals("/novel/8/1844.html", extractLinovelibScriptPage(document, "nextpage"))
         assertNull(document.nextLinovelibChapterPageId("8", "1843", 6))
+    }
+
+    @Test
+    fun extractLinovelibScriptPageSupportsMobileReadParams() {
+        val document = Jsoup.parse(
+            """
+            <script>
+              var ReadParams={url_previous:'/novel/2727/129093.html',url_next:'/novel/2727/129093_3.html'};
+            </script>
+            """.trimIndent(),
+            "https://m.bilinovel.com/novel/2727/129093_2.html"
+        )
+
+        assertEquals("/novel/2727/129093.html", extractLinovelibScriptPage(document, "prevpage"))
+        assertEquals("/novel/2727/129093_3.html", extractLinovelibScriptPage(document, "nextpage"))
+        assertEquals("129093_3", document.nextLinovelibChapterPageId("2727", "129093", 3))
     }
 
     @Test

@@ -31,12 +31,12 @@ class LinovelibWebsiteDataSource(
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-M-d")
 
     @Volatile
-    private var preferMobileBookInformationUntilMillis = 0L
+    private var preferMobileMetadataUntilMillis = 0L
 
     suspend fun getBookInformation(id: String): BookInformation {
         val bookId = id.normalizeBookId()
         require(bookId.isNotBlank()) { "Invalid Linovelib book id: $id" }
-        if (System.currentTimeMillis() < preferMobileBookInformationUntilMillis) {
+        if (System.currentTimeMillis() < preferMobileMetadataUntilMillis) {
             return getMobileBookInformation(bookId)
         }
         return try {
@@ -50,8 +50,8 @@ class LinovelibWebsiteDataSource(
             )
         } catch (throwable: Throwable) {
             if (throwable is CancellationException) throw throwable
-            preferMobileBookInformationUntilMillis =
-                System.currentTimeMillis() + MOBILE_BOOK_INFORMATION_FALLBACK_MILLIS
+            preferMobileMetadataUntilMillis =
+                System.currentTimeMillis() + MOBILE_METADATA_FALLBACK_MILLIS
             try {
                 getMobileBookInformation(bookId)
             } catch (mobileThrowable: Throwable) {
@@ -137,25 +137,103 @@ class LinovelibWebsiteDataSource(
         return description.cleanDescription()
     }
 
-    suspend fun getBookVolumes(id: String): BookVolumes = runCatching {
+    suspend fun getBookVolumes(id: String): BookVolumes {
         val bookId = id.normalizeBookId()
         require(bookId.isNotBlank()) { "Invalid Linovelib book id: $id" }
-        val document = jsoup.getDocument(LinovelibConstants.catalogUrl(bookId), referer = LinovelibConstants.detailUrl(bookId))
-        val volumes = parseVolumes(document, bookId)
+        if (System.currentTimeMillis() < preferMobileMetadataUntilMillis) {
+            return getMobileBookVolumes(bookId)
+        }
+        return try {
+            parseBookVolumes(
+                bookId = bookId,
+                document = jsoup.getDocument(
+                    url = LinovelibConstants.catalogUrl(bookId),
+                    referer = LinovelibConstants.detailUrl(bookId),
+                    retryTime = 0,
+                    coolDownOnCloudflare = false
+                ),
+                useMobile = false
+            )
+        } catch (throwable: Throwable) {
+            if (throwable is CancellationException) throw throwable
+            preferMobileMetadataUntilMillis =
+                System.currentTimeMillis() + MOBILE_METADATA_FALLBACK_MILLIS
+            try {
+                getMobileBookVolumes(bookId)
+            } catch (mobileThrowable: Throwable) {
+                if (mobileThrowable is CancellationException) throw mobileThrowable
+                mobileThrowable.addSuppressed(throwable)
+                throw mobileThrowable
+            }
+        }
+    }
+
+    private suspend fun getMobileBookVolumes(bookId: String): BookVolumes =
+        parseBookVolumes(
+            bookId = bookId,
+            document = jsoup.getDocument(
+                url = LinovelibConstants.mobileCatalogUrl(bookId),
+                referer = LinovelibConstants.mobileDetailUrl(bookId),
+                retryTime = 1,
+                userAgentMode = LinovelibJsoup.UserAgentMode.Mobile
+            ),
+            useMobile = true
+        )
+
+    private suspend fun parseBookVolumes(
+        bookId: String,
+        document: Document,
+        useMobile: Boolean
+    ): BookVolumes {
+        val volumes = parseVolumes(document, bookId) { previousChapterId, nextChapterId ->
+            resolveMissingCatalogChapterId(
+                bookId = bookId,
+                previousChapterId = previousChapterId,
+                nextChapterId = nextChapterId,
+                useMobile = useMobile
+            )
+        }
         require(isUsableLinovelibCatalog(volumes)) {
             "Linovelib book $bookId has no catalog chapters"
         }
-        BookVolumes(bookId, volumes)
-    }.getOrElse {
-        throw it
+        return BookVolumes(bookId, volumes)
     }
 
-    suspend fun getChapterContent(chapterId: String, bookId: String): ChapterContent = runCatching {
+    suspend fun getChapterContent(chapterId: String, bookId: String): ChapterContent {
         val normalizedBookId = bookId.normalizeBookId()
         val normalizedChapterId = chapterId.normalizeChapterId()
         require(normalizedBookId.isNotBlank() && normalizedChapterId.isNotBlank()) {
             "Invalid Linovelib chapter id: $bookId/$chapterId"
         }
+        return try {
+            getChapterContentFromSite(
+                bookId = normalizedBookId,
+                chapterId = normalizedChapterId,
+                useMobile = false
+            )
+        } catch (throwable: Throwable) {
+            if (throwable is CancellationException) throw throwable
+            try {
+                getChapterContentFromSite(
+                    bookId = normalizedBookId,
+                    chapterId = normalizedChapterId,
+                    useMobile = true
+                )
+            } catch (mobileThrowable: Throwable) {
+                if (mobileThrowable is CancellationException) throw mobileThrowable
+                mobileThrowable.addSuppressed(throwable)
+                throw mobileThrowable
+            }
+        }
+    }
+
+    private suspend fun getChapterContentFromSite(
+        bookId: String,
+        chapterId: String,
+        useMobile: Boolean
+    ): ChapterContent {
+        val normalizedBookId = bookId
+        val normalizedChapterId = chapterId
         val builder = ContentBuilder()
         val parserWarnings = mutableListOf<String>()
         val seenPageSignatures = mutableSetOf<String>()
@@ -173,11 +251,15 @@ class LinovelibWebsiteDataSource(
         var previousPageChapterId = ""
         while (page <= MAX_CHAPTER_PAGE) {
             val currentPageChapterId = pageChapterId
-            val document = jsoup.getDocument(
-                LinovelibConstants.chapterUrl(normalizedBookId, currentPageChapterId),
-                referer = LinovelibConstants.catalogUrl(normalizedBookId),
-                retryTime = if (page == 1) 2 else 1
+            val document = getChapterDocument(
+                bookId = normalizedBookId,
+                chapterId = currentPageChapterId,
+                useMobile = useMobile,
+                retryTime = if (page == 1) 0 else 1
             )
+            if (document.hasIncompleteLinovelibChapterContent()) {
+                error("Linovelib chapter $normalizedBookId/$normalizedChapterId page $currentPageChapterId is incomplete")
+            }
             val scriptPrevPage = extractLinovelibScriptPage(document, "prevpage")
             val scriptPrevPageId = scriptPrevPage?.let { extractLinovelibChapterPageId(normalizedBookId, it) }
             if (page == 1) {
@@ -187,9 +269,8 @@ class LinovelibWebsiteDataSource(
                 error("Linovelib chapter $normalizedBookId/$normalizedChapterId page $currentPageChapterId has unexpected prevpage $scriptPrevPageId")
             }
             if (title.isBlank()) title = document.firstText("h1", ".chapter-title", ".bookname h1") ?: ""
-            val content = document.selectFirst("#TextContent") ?: document.selectFirst("#textcontent")
-            ?: document.selectFirst(".chapter-content") ?: document.selectFirst("#content")
-            ?: error("Linovelib chapter $normalizedBookId/$normalizedChapterId page $currentPageChapterId has no content")
+            val content = document.linovelibChapterContentElement()
+                ?: error("Linovelib chapter $normalizedBookId/$normalizedChapterId page $currentPageChapterId has no content")
             val signature = content.linovelibChapterPageSignature()
             if (signature.isBlank() || !seenPageSignatures.add(signature)) {
                 if (page == 1) break
@@ -242,15 +323,13 @@ class LinovelibWebsiteDataSource(
         } else {
             ChapterNavigation()
         }
-        ChapterContent(
+        return ChapterContent(
             id = normalizedChapterId,
             title = cleanTitle.ifBlank { navigation.currentTitle },
             content = content,
             prevChapter = lastChapterId.ifBlank { navigation.lastChapterId }.takeIf { it.isNotBlank() },
             nextChapter = nextChapterId.ifBlank { navigation.nextChapterId }.takeIf { it.isNotBlank() }
         )
-    }.getOrElse {
-        throw it
     }
 
     fun parseSearchBooks(document: Document): List<BookInformation> {
@@ -332,22 +411,55 @@ class LinovelibWebsiteDataSource(
         return if (chapters.isEmpty()) emptyList() else listOf(Volume(bookId, "正文", chapters))
     }
 
+    private suspend fun getChapterDocument(
+        bookId: String,
+        chapterId: String,
+        useMobile: Boolean,
+        retryTime: Int
+    ): Document = jsoup.getDocument(
+        url = if (useMobile) {
+            LinovelibConstants.mobileChapterUrl(bookId, chapterId)
+        } else {
+            LinovelibConstants.chapterUrl(bookId, chapterId)
+        },
+        referer = if (useMobile) {
+            LinovelibConstants.mobileCatalogUrl(bookId)
+        } else {
+            LinovelibConstants.catalogUrl(bookId)
+        },
+        retryTime = retryTime,
+        userAgentMode = if (useMobile) {
+            LinovelibJsoup.UserAgentMode.Mobile
+        } else {
+            LinovelibJsoup.UserAgentMode.Desktop
+        },
+        coolDownOnCloudflare = useMobile
+    )
+
     private suspend fun resolveMissingCatalogChapterId(
         bookId: String,
         previousChapterId: String?,
-        nextChapterId: String?
+        nextChapterId: String?,
+        useMobile: Boolean = false
     ): String? {
         nextChapterId?.let { id ->
-            resolveMissingCatalogChapterIdFromNext(bookId, id)?.let { return it }
+            resolveMissingCatalogChapterIdFromNext(bookId, id, useMobile)?.let { return it }
         }
-        return previousChapterId?.let { resolveMissingCatalogChapterIdFromPrevious(bookId, it) }
+        return previousChapterId?.let {
+            resolveMissingCatalogChapterIdFromPrevious(bookId, it, useMobile)
+        }
     }
 
-    private suspend fun resolveMissingCatalogChapterIdFromNext(bookId: String, nextChapterId: String): String? =
+    private suspend fun resolveMissingCatalogChapterIdFromNext(
+        bookId: String,
+        nextChapterId: String,
+        useMobile: Boolean
+    ): String? =
         runCatching {
-            val document = jsoup.getDocument(
-                LinovelibConstants.chapterUrl(bookId, nextChapterId),
-                referer = LinovelibConstants.catalogUrl(bookId),
+            val document = getChapterDocument(
+                bookId = bookId,
+                chapterId = nextChapterId,
+                useMobile = useMobile,
                 retryTime = 1
             )
             extractLinovelibScriptPage(document, "prevpage")
@@ -358,31 +470,35 @@ class LinovelibWebsiteDataSource(
             null
         }
 
-    private suspend fun resolveMissingCatalogChapterIdFromPrevious(bookId: String, previousChapterId: String): String? =
-        runCatching {
-            val baseChapterId = previousChapterId.substringBefore('_')
-            var page = 1
-            var pageChapterId = previousChapterId
-            while (page <= MAX_CHAPTER_PAGE) {
-                val document = jsoup.getDocument(
-                    LinovelibConstants.chapterUrl(bookId, pageChapterId),
-                    referer = LinovelibConstants.catalogUrl(bookId),
-                    retryTime = if (page == 1) 2 else 1
-                )
-                val scriptNextPageId = extractLinovelibScriptPage(document, "nextpage")
-                    ?.let { extractLinovelibChapterPageId(bookId, it) }
-                val nextPageChapterId = document.nextLinovelibChapterPageId(bookId, baseChapterId, page + 1)
-                if (nextPageChapterId == null) {
-                    return@runCatching scriptNextPageId?.toLinovelibAdjacentChapterId(baseChapterId)
-                }
-                pageChapterId = nextPageChapterId
-                page++
+    private suspend fun resolveMissingCatalogChapterIdFromPrevious(
+        bookId: String,
+        previousChapterId: String,
+        useMobile: Boolean
+    ): String? = runCatching {
+        val baseChapterId = previousChapterId.substringBefore('_')
+        var page = 1
+        var pageChapterId = previousChapterId
+        while (page <= MAX_CHAPTER_PAGE) {
+            val document = getChapterDocument(
+                bookId = bookId,
+                chapterId = pageChapterId,
+                useMobile = useMobile,
+                retryTime = if (page == 1) 0 else 1
+            )
+            val scriptNextPageId = extractLinovelibScriptPage(document, "nextpage")
+                ?.let { extractLinovelibChapterPageId(bookId, it) }
+            val nextPageChapterId = document.nextLinovelibChapterPageId(bookId, baseChapterId, page + 1)
+            if (nextPageChapterId == null) {
+                return@runCatching scriptNextPageId?.toLinovelibAdjacentChapterId(baseChapterId)
             }
-            null
-        }.getOrElse { error ->
-            if (error is CancellationException) throw error
-            null
+            pageChapterId = nextPageChapterId
+            page++
         }
+        null
+    }.getOrElse { error ->
+        if (error is CancellationException) throw error
+        null
+    }
 
     private suspend fun List<List<LinovelibCatalogChapterCandidate>>.resolveMissingCatalogChapters(
         missingChapterIdResolver: suspend (previousChapterId: String?, nextChapterId: String?) -> String?
@@ -455,7 +571,7 @@ class LinovelibWebsiteDataSource(
         if (href.isLinovelibVolumeHref()) return null
         val title = text().cleanText().ifBlank { attr("title").cleanText() }
         if (title.isBlank()) return null
-        if (href.contains("cid(0)", ignoreCase = true)) {
+        if (JAVASCRIPT_CID_REGEX.containsMatchIn(href)) {
             return LinovelibCatalogChapterCandidate(id = null, title = title)
         }
         if (href.startsWith("javascript:", ignoreCase = true)) return null
@@ -588,7 +704,11 @@ class LinovelibWebsiteDataSource(
 
     companion object {
         private const val MAX_CHAPTER_PAGE = 30
-        private const val MOBILE_BOOK_INFORMATION_FALLBACK_MILLIS = 10 * 60 * 1000L
+        private const val MOBILE_METADATA_FALLBACK_MILLIS = 10 * 60 * 1000L
+        private val JAVASCRIPT_CID_REGEX = Regex(
+            """^javascript:\s*cid\(\d+\)""",
+            RegexOption.IGNORE_CASE
+        )
         private val COVER_IMAGE_SELECTORS = listOf(
             ".book-img img",
             ".book-cover img",
@@ -615,8 +735,25 @@ internal fun isUsableLinovelibCatalog(volumes: List<Volume>): Boolean =
 
 internal fun hasRenderableLinovelibChapterContent(componentCount: Int): Boolean = componentCount > 0
 
+internal fun Document.linovelibChapterContentElement(): Element? =
+    selectFirst("#TextContent")
+        ?: selectFirst("#textcontent")
+        ?: selectFirst("#acontent")
+        ?: selectFirst(".chapter-content")
+        ?: selectFirst("#content")
+
+internal fun Document.hasIncompleteLinovelibChapterContent(): Boolean {
+    val pageText = text()
+    return "內容加載失敗" in pageText || "内容加载失败" in pageText
+}
+
 internal fun extractLinovelibScriptPage(document: Document, name: String): String? {
-    val regex = Regex("""\b(?:var\s+)?${Regex.escape(name)}\s*=\s*["']([^"']*)["']""")
+    val names = when (name) {
+        "prevpage" -> listOf("prevpage", "url_previous")
+        "nextpage" -> listOf("nextpage", "url_next")
+        else -> listOf(name)
+    }.joinToString("|") { Regex.escape(it) }
+    val regex = Regex("""\b(?:var\s+)?(?:$names)\s*[:=]\s*["']([^"']*)["']""")
     return document.select("script")
         .asSequence()
         .map { script -> script.data().ifBlank { script.html() } }

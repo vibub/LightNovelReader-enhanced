@@ -32,8 +32,9 @@ object LinovelibConstants {
             "&pid=${page.coerceAtLeast(1)}" +
             "&ajax_request=1"
 
-    // ── 移动端 URL（WebView 浏览）──
+    // ── 移动端 URL（WebView 浏览与解析回退）──
     fun mobileDetailUrl(bookId: String): String = "$MOBILE_BASE_URL/novel/${bookId.normalizeBookId()}.html"
+    fun mobileCatalogUrl(bookId: String): String = "$MOBILE_BASE_URL/novel/${bookId.normalizeBookId()}/catalog"
     fun mobileChapterUrl(bookId: String, chapterId: String): String =
         "$MOBILE_BASE_URL/novel/${bookId.normalizeBookId()}/${chapterId.normalizeChapterId()}.html"
     fun loginUrl(): String = MOBILE_BASE_URL
