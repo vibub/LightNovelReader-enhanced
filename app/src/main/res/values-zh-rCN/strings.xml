@@ -88,6 +88,8 @@
     <string name="offline_desc">当前无法获取在线数据，请刷新重试\n检查源网站连通性，或者换个网络试试</string>
     <string name="saved_to_pictures_dir">已保存到 Pictures/LightNovelReader/%s</string>
     <string name="save_failed">保存失败</string>
+    <string name="reader_custom_font_load_failed">自定义字体加载失败，已恢复为默认字体。</string>
+    <string name="reader_custom_background_load_failed">自定义背景加载失败，已恢复为默认背景。</string>
     <string name="reader_first_page">已经是第一页了</string>
     <string name="reader_reached_top">已经到顶了</string>
     <string name="reader_last_page">已经是最后一页了</string>
@@ -103,14 +105,14 @@
     <string name="plugin_invalid_desc">无法获取插件信息，插件可能无效或损坏</string>
     <string name="plugin_disabled">不可用</string>
     <string name="plugin_disabled_desc">调整设置需要启用插件</string>
-    <string name="confirm_exit">确认退出？</string>
-    <string name="hint_unsaved_changes_will_be_lost">如果现在退出，您未保存的更改将会丢失。</string>
     <string name="local_book_clear_options">删除选项</string>
     <string name="local_book_clear_index">删除 卷和章节目录</string>
     <string name="local_book_clear_content">删除 章节内容</string>
     <string name="local_book_clear_reading">删除 阅读记录</string>
     <string name="local_book_clear_confirm_title">确认删除</string>
     <string name="local_book_clear_confirm_content">如果你继续，选中的内容将会被删除且会释放 %1$s 的存储空间。\n你可以之后重新导入或者下载内容。\n操作不可撤回。</string>
+    <string name="confirm_exit">确认退出？</string>
+    <string name="hint_unsaved_changes_will_be_lost">如果现在退出，您未保存的更改将会丢失。</string>
     <!-- Snackbar Hints -->
     <string name="cache_book_started">开始缓存：%1$s</string>
     <string name="cache_book_running">此书本正在缓存中</string>
@@ -137,7 +139,6 @@
     <string name="settings_get_updates">检查更新</string>
     <string name="settings_get_updates_desc">检查并安装最新版本</string>
     <string name="settings_distribution_platform">更新分发平台</string>
-    <string name="settings_distribution_platform_settings_desc"><!--reserved--></string>
     <string name="reader_settings">阅读设置</string>
     <string name="settings_reader_font_size">字体大小</string>
     <string name="settings_reader_line_spacing">行间距</string>
@@ -474,7 +475,8 @@
     <string name="dialog_slider_custom">输入值</string>
     <string name="dialog_slider_custom_illegal_value">请输入合法的数值</string>
     <string name="dialog_color_picker">调色盘</string>
-    <string name="dialog_color_picker_desc">选择一个颜色用于阅读器背景。</string>
+    <string name="dialog_color_picker_background_desc">选择阅读器背景颜色。</string>
+    <string name="dialog_color_picker_text_desc">选择阅读器文字颜色。</string>
     <!-- Plugin -->
     <string name="plugin_delete_title">删除 %1$s</string>
     <string name="plugin_install_preparing">正在准备…</string>
@@ -733,4 +735,7 @@
     <string name="chapter_comments_unknown_user">未知用户</string>
     <string name="chapter_comments_avatar_description">%1$s 的头像</string>
     <string name="chapter_comments_quote">%1$s：%2$s</string>
+    <string name="restart">重新启动</string>
+    <string name="current_web_data_source_not_founded">找不到当前网页数据源，请检查插件和数据源设置。</string>
+    <string name="never_read">从未阅读</string>
 </resources>

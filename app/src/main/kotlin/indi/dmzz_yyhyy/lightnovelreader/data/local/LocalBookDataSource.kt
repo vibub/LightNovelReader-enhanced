@@ -54,7 +54,7 @@ class LocalBookDataSource @Inject constructor(
         chapterContentDao.update(sourceId, bookId, chapterContent)
 
     override suspend fun getUserReadingData(id: String) = userReadingDataDao.getEntity(id).let {
-        it ?: return@let UserReadingData.new(id)
+        it ?: return@let UserReadingData(id)
         UserReadingData(
             it.id,
             if (it.lastReadTime == LocalDateTime.MIN) null else it.lastReadTime,
@@ -106,7 +106,7 @@ class LocalBookDataSource @Inject constructor(
                 it.currentChapterReadingProgressMap,
                 it.maxChapterReadingProgressMap
             )
-        } ?: UserReadingData.new(id)
+        } ?: UserReadingData(id)
         val new = update(userReadingData)
         userReadingDataDao.insert(
             id = new.id,

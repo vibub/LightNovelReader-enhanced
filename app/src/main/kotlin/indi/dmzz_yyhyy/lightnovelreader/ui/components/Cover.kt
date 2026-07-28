@@ -35,9 +35,41 @@ fun Cover(
     width: Dp,
     height: Dp,
     uri: Uri,
+    title: String,
     rounded: Dp = 8.dp,
     animate: Boolean = true,
     showLoadingIndicator: Boolean = true,
+) {
+    Box(
+        modifier = Modifier
+            .size(width, height)
+            .graphicsLayer {
+                shape = RoundedCornerShape(rounded)
+                clip = true
+            }
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+    ) {
+        if (uri == Uri.EMPTY) {
+            DefaultBookCover(title = title, width = width, height = height)
+        } else {
+            RemoteBookCover(
+                width = width,
+                height = height,
+                uri = uri,
+                animate = animate,
+                showLoadingIndicator = showLoadingIndicator,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RemoteBookCover(
+    width: Dp,
+    height: Dp,
+    uri: Uri,
+    animate: Boolean,
+    showLoadingIndicator: Boolean,
 ) {
     val imageHeaderGetter = LocalImageHeaderGetter.current
     val context = LocalContext.current
@@ -60,42 +92,41 @@ fun Cover(
                 }.build()
             )
             .build()
-
     }
-    Box(
-        modifier = Modifier
-            .size(width, height)
-            .graphicsLayer {
-                shape = RoundedCornerShape(rounded)
-                clip = true
-            }
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-    ) {
-        if (!showLoadingIndicator) {
-            AsyncImage(
-                model = request,
-                contentDescription = "cover",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.size(width, height),
-            )
-        } else {
-            SubcomposeAsyncImage(
-                model = request,
-                contentDescription = "cover",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.size(width, height),
-                loading = {
-                    Box(
-                        modifier = Modifier.size(width, height),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(width.times(0.3f))
-                        )
-                    }
-                },
-            )
-        }
+
+    if (!showLoadingIndicator) {
+        AsyncImage(
+            model = request,
+            contentDescription = "cover",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.size(width, height),
+        )
+    } else {
+        SubcomposeAsyncImage(
+            model = request,
+            contentDescription = "cover",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.size(width, height),
+            loading = {
+                Box(
+                    modifier = Modifier
+                        .size(width, height)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(width.times(0.3f))
+                    )
+                }
+            },
+            error = {
+                Box(
+                    modifier = Modifier
+                        .size(width, height)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                )
+            },
+        )
     }
 }
