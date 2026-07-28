@@ -152,6 +152,13 @@ class BookRepository @Inject constructor(
         }
     }
 
+    internal suspend fun getLocalBookshelfBookInformation(
+        ids: List<String>
+    ): Map<String, BookInformation> = localBookDataSource.getBookInformationByIds(ids)
+        .mapValues { (_, bookInformation) ->
+            textProcessingRepository.processBookInformation { bookInformation }
+        }
+
     internal fun getBookshelfBookInformationFlow(
         id: String,
         priority: WebDataSourcePriority = WebDataSourcePriority.Default

@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import coil3.compose.AsyncImage
 import coil3.compose.SubcomposeAsyncImage
 import coil3.network.NetworkHeaders
 import coil3.network.httpHeaders
@@ -30,19 +31,26 @@ import io.nightfish.lightnovelreader.api.image.ImagePostProcessingPipeline
 import kotlinx.coroutines.Dispatchers
 
 @Composable
-fun Cover(width: Dp, height: Dp, uri: Uri, rounded: Dp = 8.dp) {
+fun Cover(
+    width: Dp,
+    height: Dp,
+    uri: Uri,
+    rounded: Dp = 8.dp,
+    animate: Boolean = true,
+    showLoadingIndicator: Boolean = true,
+) {
     val imageHeaderGetter = LocalImageHeaderGetter.current
     val context = LocalContext.current
     val headers = imageHeaderGetter()
     val imageTransPostProcessingViewModel = hiltViewModel<ImageTransPostProcessingViewModel>()
-    val request = remember(uri, headers) {
+    val request = remember(uri, headers, animate) {
         val transformations = imageTransPostProcessingViewModel
             .imageTransPostProcessingManager
             .getCoil3Transformations(ImagePostProcessingPipeline.bookCover, uri)
         ImageRequest.Builder(context)
             .data(uri)
             .transformations(transformations)
-            .crossfade(true)
+            .crossfade(animate)
             .memoryCachePolicy(CachePolicy.ENABLED)
             .networkCachePolicy(CachePolicy.ENABLED)
             .interceptorCoroutineContext(Dispatchers.Default)
@@ -61,33 +69,33 @@ fun Cover(width: Dp, height: Dp, uri: Uri, rounded: Dp = 8.dp) {
                 shape = RoundedCornerShape(rounded)
                 clip = true
             }
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
     ) {
-        SubcomposeAsyncImage(
-            model = request,
-            contentDescription = "cover",
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.size(width, height),
-            loading = {
-                Box(
-                    modifier = Modifier
-                        .size(width, height)
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(width.times(0.3f))
-                    )
-                }
-            },
-            error = {
-                Box(
-                    modifier = Modifier
-                        .size(width, height)
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                )
-            },
-
-        )
+        if (!showLoadingIndicator) {
+            AsyncImage(
+                model = request,
+                contentDescription = "cover",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(width, height),
+            )
+        } else {
+            SubcomposeAsyncImage(
+                model = request,
+                contentDescription = "cover",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(width, height),
+                loading = {
+                    Box(
+                        modifier = Modifier.size(width, height),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(width.times(0.3f))
+                        )
+                    }
+                },
+            )
+        }
     }
 }

@@ -84,7 +84,9 @@ fun BookCardContent(
                         width = 94.dp,
                         height = 144.dp,
                         uri = bookInformation.coverUri,
-                        rounded = 8.dp
+                        rounded = 8.dp,
+                        animate = false,
+                        showLoadingIndicator = false,
                     )
 
                     if (!latestChapterTitle.isNullOrBlank()) {

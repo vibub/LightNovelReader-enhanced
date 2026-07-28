@@ -1,17 +1,8 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.home.bookshelf
 
 import androidx.compose.runtime.Stable
-import com.github.michaelbull.result.Result
-import com.github.michaelbull.result.map
-import com.github.michaelbull.result.zip
-import io.nightfish.lightnovelreader.api.book.BookInformation
-import io.nightfish.lightnovelreader.api.book.BookVolumes
 import io.nightfish.lightnovelreader.api.bookshelf.Bookshelf
-import io.nightfish.lightnovelreader.api.bookshelf.BookshelfBookMetadata
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfSortType
-import io.nightfish.lightnovelreader.api.error.WebRequestError
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
 
 @Stable
 data class BookshelfUiState(
@@ -21,64 +12,19 @@ data class BookshelfUiState(
     val sortReversed: Boolean,
     val autoCache: Boolean,
     val systemUpdateReminder: Boolean,
-    val allBookFlows: List<Pair<String, Flow<Result<BookshelfBookItem, WebRequestError>>>>,
-    val pinnedBookFlows: List<Pair<String, Flow<Result<BookshelfBookItem, WebRequestError>>>>,
-    val updatedBookFlows: List<Pair<String, Flow<Result<BookshelfBookItem, WebRequestError>>>>
+    val allBookIds: List<String>,
+    val pinnedBookIds: List<String>,
+    val updatedBookIds: List<String>
 )
 
-fun Bookshelf.toBookshelfUiState(
-    getBookInformationFlow: (String) -> Flow<Result<BookInformation, WebRequestError>>,
-    getBookVolumesFlow: (String) -> Flow<Result<BookVolumes, WebRequestError>>,
-    getBookshelfBookMetadataFlow: (String) -> Flow<BookshelfBookMetadata?>
-) = BookshelfUiState(
-    id = this.id,
-    name = this.name,
-    sortType = this.sortType,
-    sortReversed = this.sortReversed,
-    autoCache = this.autoCache,
-    systemUpdateReminder = this.systemUpdateReminder,
-    allBookFlows = this.allBookIds.map { id ->
-        val bookInformationFlow = getBookInformationFlow(id)
-        val bookshelfBookMetadataFlow = getBookshelfBookMetadataFlow(id)
-        id to bookInformationFlow.combine(bookshelfBookMetadataFlow) { result, bookshelfBookMetadata ->
-            result.map {
-                BookshelfBookItem(
-                    id = id,
-                    bookshelfBookMetadata = bookshelfBookMetadata,
-                    bookInformation = it,
-                )
-            }
-        }
-    },
-    pinnedBookFlows = this.pinnedBookIds.map { id ->
-        val bookInformationFlow = getBookInformationFlow(id)
-        val bookshelfBookMetadataFlow = getBookshelfBookMetadataFlow(id)
-        id to bookInformationFlow.combine(bookshelfBookMetadataFlow) { result, bookshelfBookMetadata ->
-            result.map {
-                BookshelfBookItem(
-                    id = id,
-                    bookshelfBookMetadata = bookshelfBookMetadata,
-                    bookInformation = it,
-                )
-            }
-        }
-    },
-    updatedBookFlows = this.updatedBookIds.map { id ->
-        val bookInformationFlow = getBookInformationFlow(id)
-        val bookVolumesFlow = getBookVolumesFlow(id)
-        val bookshelfBookMetadataFlow = getBookshelfBookMetadataFlow(id)
-        id to combine(bookshelfBookMetadataFlow, bookInformationFlow, bookVolumesFlow) { bookshelfBookMetadata, bookInformationResult, bookVolumesResult ->
-            zip({ bookInformationResult }, { bookVolumesResult }) { bookInformation, bookVolumes ->
-                BookshelfBookItem(
-                    id = id,
-                    bookshelfBookMetadata = bookshelfBookMetadata,
-                    bookInformation = bookInformation,
-                    lastUpdatedChapterTitle = bookVolumes.volumes.lastOrNull()?.let { volume ->
-                        val title = volume.chapters.lastOrNull()?.title ?: return@let null
-                        "${volume.volumeTitle} $title"
-                    }
-                )
-            }
-        }
-    }
+fun Bookshelf.toBookshelfUiState() = BookshelfUiState(
+    id = id,
+    name = name,
+    sortType = sortType,
+    sortReversed = sortReversed,
+    autoCache = autoCache,
+    systemUpdateReminder = systemUpdateReminder,
+    allBookIds = allBookIds,
+    pinnedBookIds = pinnedBookIds,
+    updatedBookIds = updatedBookIds
 )

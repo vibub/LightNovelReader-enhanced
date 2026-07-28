@@ -27,6 +27,13 @@ class LocalBookDataSource @Inject constructor(
     private val userReadingDataUpdateMutex = Mutex()
 
     override suspend fun getBookInformation(id: String): BookInformation? = bookInformationDao.get(id)
+
+    suspend fun getBookInformationByIds(ids: List<String>): Map<String, BookInformation> =
+        ids.distinct()
+            .chunked(500)
+            .flatMap { bookInformationDao.getByIds(it) }
+            .associateBy(BookInformation::id)
+
     override suspend fun updateBookInformation(info: BookInformation) = bookInformationDao.insert(info)
     override suspend fun getBookVolumes(id: String): BookVolumes? = bookVolumesDao.getBookVolumes(id)
     override suspend fun updateBookVolumes(bookVolumes: BookVolumes) =

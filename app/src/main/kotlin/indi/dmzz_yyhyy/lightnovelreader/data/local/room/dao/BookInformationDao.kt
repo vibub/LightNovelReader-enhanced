@@ -38,26 +38,19 @@ interface BookInformationDao {
     @Query("select * from book_information")
     suspend fun getAllEntities(): List<BookInformationEntity>
 
+    @Query("select * from book_information where id in (:ids)")
+    suspend fun getEntities(ids: List<String>): List<BookInformationEntity>
+
     @Query("delete from book_information where id in (:ids)")
     suspend fun deleteByIds(ids: List<String>)
 
     @Transaction
-    suspend fun get(id: String): BookInformation? {
-        val entity = getEntity(id) ?: return null
-        return BookInformation(
-            entity.id,
-            entity.title,
-            entity.subtitle,
-            entity.coverUri,
-            entity.author,
-            entity.description,
-            entity.tags,
-            entity.publishingHouse,
-            entity.wordCount,
-            entity.lastUpdated,
-            entity.isComplete,
-        )
-    }
+    suspend fun get(id: String): BookInformation? = getEntity(id)?.toBookInformation()
+
+    @Transaction
+    suspend fun getByIds(ids: List<String>): List<BookInformation> =
+        if (ids.isEmpty()) emptyList()
+        else getEntities(ids).map(BookInformationEntity::toBookInformation)
 
     @Transaction
     suspend fun has(id: String): Boolean {
@@ -67,3 +60,17 @@ interface BookInformationDao {
     @Query("delete from book_information")
     suspend fun clear()
 }
+
+private fun BookInformationEntity.toBookInformation() = BookInformation(
+    id,
+    title,
+    subtitle,
+    coverUri,
+    author,
+    description,
+    tags,
+    publishingHouse,
+    wordCount,
+    lastUpdated,
+    isComplete,
+)

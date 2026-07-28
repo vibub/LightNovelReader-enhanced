@@ -10,7 +10,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
-import com.github.michaelbull.result.Result
+import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -19,22 +19,30 @@ import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.work.ImportDataWork
 import indi.dmzz_yyhyy.lightnovelreader.data.work.SaveBookshelfWork
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.bookshelf.BookshelfCardSnapshot
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.bookshelf.lastChapterTitleOrNull
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.bookshelf.toBookshelfUiState
-import io.nightfish.lightnovelreader.api.book.BookInformation
-import io.nightfish.lightnovelreader.api.book.BookVolumes
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfBookMetadata
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfSortType
-import io.nightfish.lightnovelreader.api.error.WebRequestError
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
+import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.shareIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import java.util.Collections
 import javax.inject.Inject
 
 @HiltViewModel
@@ -68,33 +76,36 @@ class BookshelfHomeViewModel @Inject constructor(
     )
     val uiState: BookshelfHomeUiState = _uiState
     private val bookshelfOrderUserData = userDataRepository.intListUserData(UserDataPath.BookshelfOrder.path)
-    private val bookInformationFlows =
-        mutableMapOf<String, Flow<Result<BookInformation, WebRequestError>>>()
-    private val bookVolumesFlows =
-        mutableMapOf<String, Flow<Result<BookVolumes, WebRequestError>>>()
     private val bookMetadataFlows = mutableMapOf<String, Flow<BookshelfBookMetadata?>>()
+    private val cardSnapshots = mutableMapOf<String, MutableStateFlow<BookshelfCardSnapshot>>()
+    private val detailRefreshJobs = mutableMapOf<String, Job>()
+    private val volumeRefreshJobs = mutableMapOf<String, Job>()
+    private val locallyLoadedBookIds = mutableSetOf<String>()
+    private val refreshedBookIds = Collections.synchronizedSet(mutableSetOf<String>())
+    private val loadedVolumeIds = Collections.synchronizedSet(mutableSetOf<String>())
+    private val prefetchSemaphore = Semaphore(2)
+    @Volatile
+    private var knownBookshelfBookIds = emptySet<String>()
+    private var visibleWindow = BookshelfVisibleWindow()
+    private var sortRequestedBookIds = emptySet<String>()
+    private var loadJob: Job? = null
 
-    private fun getBookInformationFlow(
-        id: String
-    ): Flow<Result<BookInformation, WebRequestError>> = bookInformationFlows.getOrPut(id) {
-        bookRepository.getBookshelfBookInformationFlow(id)
-            .shareIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
-                replay = 1
-            )
-    }
+    internal val dataSources = BookshelfHomeDataSources(
+        cardSnapshot = ::getCardSnapshot,
+        metadataFlow = ::getBookMetadataFlow,
+        updateVisibleWindow = ::updateVisibleWindow,
+        requestBookInformation = ::requestBookInformation,
+    )
 
-    private fun getBookVolumesFlow(
-        id: String
-    ): Flow<Result<BookVolumes, WebRequestError>> = bookVolumesFlows.getOrPut(id) {
-        bookRepository.getBookVolumesFlow(id)
-            .shareIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
-                replay = 1
-            )
-    }
+    private fun getCardSnapshot(id: String): StateFlow<BookshelfCardSnapshot> =
+        synchronized(cardSnapshots) {
+            cardSnapshots.getOrPut(id) { MutableStateFlow(BookshelfCardSnapshot()) }
+        }
+
+    private fun getMutableCardSnapshot(id: String): MutableStateFlow<BookshelfCardSnapshot> =
+        synchronized(cardSnapshots) {
+            cardSnapshots.getOrPut(id) { MutableStateFlow(BookshelfCardSnapshot()) }
+        }
 
     private fun getBookMetadataFlow(id: String): Flow<BookshelfBookMetadata?> =
         bookMetadataFlows.getOrPut(id) {
@@ -106,8 +117,176 @@ class BookshelfHomeViewModel @Inject constructor(
                 )
         }
 
-    fun load() {
+    private fun updateBookshelfBookIds(bookIds: Set<String>) {
+        val removedIds = knownBookshelfBookIds - bookIds
+        knownBookshelfBookIds = bookIds
+        removedIds.forEach(::clearBookSnapshot)
+
+        val idsToLoad = bookIds - locallyLoadedBookIds
+        if (idsToLoad.isEmpty()) return
+        locallyLoadedBookIds += idsToLoad
         viewModelScope.launch(Dispatchers.IO) {
+            val localInformation = bookRepository.getLocalBookshelfBookInformation(idsToLoad.toList())
+            idsToLoad.forEach { id ->
+                if (id !in knownBookshelfBookIds) return@forEach
+                val information = localInformation[id]
+                if (information != null) {
+                    getMutableCardSnapshot(id).update { snapshot ->
+                        snapshot.copy(
+                            bookInformation = information,
+                            loading = false,
+                            error = null,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun clearBookSnapshot(id: String) {
+        synchronized(detailRefreshJobs) { detailRefreshJobs.remove(id) }?.cancel()
+        synchronized(volumeRefreshJobs) { volumeRefreshJobs.remove(id) }?.cancel()
+        synchronized(cardSnapshots) { cardSnapshots.remove(id) }
+        bookMetadataFlows.remove(id)
+        locallyLoadedBookIds.remove(id)
+        refreshedBookIds.remove(id)
+        loadedVolumeIds.remove(id)
+    }
+
+    private fun updateVisibleWindow(window: BookshelfVisibleWindow) {
+        visibleWindow = window
+        updateDetailRequests()
+        updateVolumeRequests()
+    }
+
+    private fun requestBookInformation(bookIds: List<String>) {
+        sortRequestedBookIds = bookIds.toSet()
+        updateDetailRequests()
+    }
+
+    private fun updateDetailRequests() {
+        val targetIds = (visibleWindow.detailBookIds + sortRequestedBookIds)
+            .filterTo(linkedSetOf()) { it in knownBookshelfBookIds }
+        synchronized(detailRefreshJobs) {
+            detailRefreshJobs.keys
+                .filterNot(targetIds::contains)
+                .mapNotNull(detailRefreshJobs::remove)
+                .forEach(Job::cancel)
+        }
+        targetIds.forEach(::startDetailRefresh)
+    }
+
+    private fun startDetailRefresh(id: String) {
+        if (id in refreshedBookIds) return
+        synchronized(detailRefreshJobs) {
+            if (detailRefreshJobs[id]?.isActive == true) return
+            val job = viewModelScope.launch(Dispatchers.IO, start = kotlinx.coroutines.CoroutineStart.LAZY) {
+                var succeeded = false
+                try {
+                    prefetchSemaphore.withPermit {
+                        bookRepository.getBookshelfBookInformationFlow(
+                            id = id,
+                            priority = WebDataSourcePriority.Low
+                        ).collect { result ->
+                            result.onOk { information ->
+                                succeeded = true
+                                getMutableCardSnapshot(id).update { snapshot ->
+                                    snapshot.copy(
+                                        bookInformation = information,
+                                        loading = false,
+                                        error = null,
+                                    )
+                                }
+                            }.onErr { error ->
+                                getMutableCardSnapshot(id).update { snapshot ->
+                                    snapshot.copy(loading = false, error = error)
+                                }
+                            }
+                        }
+                    }
+                    if (succeeded) refreshedBookIds += id
+                } catch (exception: CancellationException) {
+                    throw exception
+                }
+            }
+            detailRefreshJobs[id] = job
+            job.invokeOnCompletion {
+                synchronized(detailRefreshJobs) {
+                    if (detailRefreshJobs[id] === job) detailRefreshJobs.remove(id)
+                }
+            }
+            job.start()
+        }
+    }
+
+    private fun updateVolumeRequests() {
+        val targetIds = visibleWindow.updatedBookIds
+            .filterTo(linkedSetOf()) { it in knownBookshelfBookIds }
+        synchronized(volumeRefreshJobs) {
+            volumeRefreshJobs.keys
+                .filterNot(targetIds::contains)
+                .mapNotNull(volumeRefreshJobs::remove)
+                .forEach(Job::cancel)
+        }
+        targetIds.forEach(::startVolumeRefresh)
+    }
+
+    private fun startVolumeRefresh(id: String) {
+        if (id in loadedVolumeIds) return
+        synchronized(volumeRefreshJobs) {
+            if (volumeRefreshJobs[id]?.isActive == true) return
+            val job = viewModelScope.launch(Dispatchers.IO, start = kotlinx.coroutines.CoroutineStart.LAZY) {
+                var succeeded = false
+                try {
+                    prefetchSemaphore.withPermit {
+                        bookRepository.getBookVolumesFlow(
+                            id = id,
+                            priority = WebDataSourcePriority.Low
+                        ).collect { result ->
+                            result.onOk {
+                                succeeded = true
+                                val title = result.lastChapterTitleOrNull()
+                                getMutableCardSnapshot(id).update { snapshot ->
+                                    snapshot.copy(
+                                        lastUpdatedChapterTitle = mergeLatestChapterTitle(
+                                            previousTitle = snapshot.lastUpdatedChapterTitle,
+                                            requestedTitle = title,
+                                            requestSucceeded = true,
+                                        )
+                                    )
+                                }
+                            }.onErr {
+                                getMutableCardSnapshot(id).update { snapshot ->
+                                    snapshot.copy(
+                                        lastUpdatedChapterTitle = mergeLatestChapterTitle(
+                                            previousTitle = snapshot.lastUpdatedChapterTitle,
+                                            requestedTitle = null,
+                                            requestSucceeded = false,
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    if (succeeded) loadedVolumeIds += id
+                } catch (exception: CancellationException) {
+                    throw exception
+                }
+            }
+            volumeRefreshJobs[id] = job
+            job.invokeOnCompletion {
+                synchronized(volumeRefreshJobs) {
+                    if (volumeRefreshJobs[id] === job) volumeRefreshJobs.remove(id)
+                }
+            }
+            job.start()
+        }
+    }
+
+    fun load() {
+        if (loadJob?.isActive == true) return
+
+        loadJob = viewModelScope.launch(Dispatchers.IO) {
             val bookshelfIdsFlow = bookshelfRepository.getAllBookshelvesFlow()
             val savedOrderFlow = bookshelfOrderUserData.getFlowWithDefault(emptyList())
             combine(bookshelfIdsFlow, savedOrderFlow) { bookshelves, savedOrder ->
@@ -115,26 +294,27 @@ class BookshelfHomeViewModel @Inject constructor(
                 bookshelves.sortedBy {
                     stableIndexMap[it.id] ?: Int.MAX_VALUE
                 }
-            }.map { list ->
-                list.map {
-                    it.toBookshelfUiState(
-                        getBookInformationFlow = ::getBookInformationFlow,
-                        getBookVolumesFlow = ::getBookVolumesFlow,
-                        getBookshelfBookMetadataFlow = ::getBookMetadataFlow
-                    )
-                }
+            }.map { bookshelves ->
+                bookshelves.map { it.toBookshelfUiState() }
             }.collect { bookshelfUiStates ->
                 if (_uiState.selectedBookshelf == null)
                     bookshelfUiStates.getOrNull(0)?.let {
                         changePage(it.id)
                     }
                 _uiState.bookshelfList = bookshelfUiStates
+                updateBookshelfBookIds(
+                    bookshelfUiStates.flatMapTo(linkedSetOf()) { it.allBookIds }
+                )
             }
         }
     }
 
     fun changePage(bookshelfId: Int) {
         _uiState.selectedBookshelfId = bookshelfId
+        visibleWindow = BookshelfVisibleWindow()
+        sortRequestedBookIds = emptySet()
+        updateDetailRequests()
+        updateVolumeRequests()
     }
 
     fun changeSortType(sortType: BookshelfSortType) {
@@ -162,7 +342,7 @@ class BookshelfHomeViewModel @Inject constructor(
         _uiState.selectedBookshelfId = bookshelfId
         if (bookshelf.sortType != BookshelfSortType.Default) return
         _uiState.reorderBookIds.clear()
-        _uiState.reorderBookIds.addAll(bookshelf.allBookFlows)
+        _uiState.reorderBookIds.addAll(bookshelf.allBookIds)
         _uiState.reorderMode = true
     }
 
@@ -172,7 +352,7 @@ class BookshelfHomeViewModel @Inject constructor(
             viewModelScope.launch(Dispatchers.IO) {
                 bookshelfRepository.updateBookshelf(_uiState.selectedBookshelfId) { oldBookshelf ->
                     oldBookshelf.copy(
-                        allBookIds = reorderedIds.map { it.first }
+                        allBookIds = reorderedIds
                     )
                 }
             }
@@ -235,9 +415,7 @@ class BookshelfHomeViewModel @Inject constructor(
     }
 
     fun selectAllBooks() {
-        val allBookIds = _uiState.selectedBookshelf?.allBookFlows?.map {
-            it.first
-        } ?: return
+        val allBookIds = _uiState.selectedBookshelf?.allBookIds ?: return
         if (_uiState.selectedBookIds.size == allBookIds.size) {
             _uiState.selectedBookIds.clear()
             return
@@ -248,9 +426,7 @@ class BookshelfHomeViewModel @Inject constructor(
 
     fun pinSelectedBooks() {
         viewModelScope.launch(Dispatchers.IO) {
-            val pinnedBookIds = _uiState.selectedBookshelf?.pinnedBookFlows?.map {
-                it.first
-            } ?: return@launch
+            val pinnedBookIds = _uiState.selectedBookshelf?.pinnedBookIds ?: return@launch
             val newPinnedBooksIds = _uiState.selectedBookIds
                 .filter { pinnedBookIds.contains(it) }
                 .let { removeList ->

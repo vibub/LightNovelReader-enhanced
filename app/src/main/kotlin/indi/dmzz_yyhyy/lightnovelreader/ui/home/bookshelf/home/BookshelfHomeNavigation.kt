@@ -48,7 +48,7 @@ fun NavGraphBuilder.bookshelfHomeDestination(sharedTransitionScope: SharedTransi
                 override val onBookClick: (String) -> Unit = navController::navigateToBookDetailDestination
                 override val onRemove: () -> Unit = {
                     bookshelfHomeViewModel.removeSelectedBooks()
-                    if (bookshelfHomeViewModel.uiState.selectedBookshelf?.allBookFlows?.isEmpty() == true) {
+                    if (bookshelfHomeViewModel.uiState.selectedBookshelf?.allBookIds?.isEmpty() == true) {
                         bookshelfHomeViewModel.disableSelectMode()
                     }
                 }
@@ -60,7 +60,8 @@ fun NavGraphBuilder.bookshelfHomeDestination(sharedTransitionScope: SharedTransi
         }
         BookshelfHomeScreen(
             init = bookshelfHomeViewModel::load,
-            uiState = uiState
+            uiState = uiState,
+            dataSources = bookshelfHomeViewModel.dataSources
         )
     }
 

@@ -41,6 +41,7 @@ import java.io.File
 fun BookshelfHomeScreen(
     init: () -> Unit,
     uiState: BookshelfHomeUiState,
+    dataSources: BookshelfHomeDataSources,
 ) {
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -137,6 +138,7 @@ fun BookshelfHomeScreen(
 
         BookshelfHomeContent(
             uiState = uiState,
+            dataSources = dataSources,
             listState = listState,
             scrollBehavior = scrollBehavior
         )

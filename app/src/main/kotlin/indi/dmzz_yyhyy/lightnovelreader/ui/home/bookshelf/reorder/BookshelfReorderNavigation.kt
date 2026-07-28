@@ -22,6 +22,7 @@ fun NavGraphBuilder.bookshelfReorderDestination() {
         BookshelfReorderBooksScreen(
             bookshelfId = route.id,
             uiState = bookshelfHomeViewModel.uiState,
+            dataSources = bookshelfHomeViewModel.dataSources,
             prepare = bookshelfHomeViewModel::enableReorderMode,
             onExit = bookshelfHomeViewModel::disableReorderMode,
             moveBook = bookshelfHomeViewModel::moveBook,

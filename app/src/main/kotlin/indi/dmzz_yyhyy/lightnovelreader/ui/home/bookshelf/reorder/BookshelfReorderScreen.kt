@@ -47,17 +47,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.github.michaelbull.result.Result
-import com.github.michaelbull.result.onOk
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.Cover
-import indi.dmzz_yyhyy.lightnovelreader.ui.home.bookshelf.BookshelfBookItem
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.bookshelf.BookshelfUiState
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.bookshelf.home.BookshelfHomeDataSources
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.bookshelf.home.BookshelfHomeUiState
 import indi.dmzz_yyhyy.lightnovelreader.utils.bottomBarSpacer
 import indi.dmzz_yyhyy.lightnovelreader.utils.navigationBarSpacer
-import io.nightfish.lightnovelreader.api.error.WebRequestError
-import kotlinx.coroutines.flow.Flow
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
@@ -66,6 +62,7 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 fun BookshelfReorderBooksScreen(
     bookshelfId: Int,
     uiState: BookshelfHomeUiState,
+    dataSources: BookshelfHomeDataSources,
     prepare: (Int) -> Unit,
     onExit: () -> Unit,
     moveBook: (Int, Int) -> Unit,
@@ -88,6 +85,7 @@ fun BookshelfReorderBooksScreen(
         )
         BookshelfReorderContent(
             reorderBooks = uiState.reorderBookIds,
+            dataSources = dataSources,
             nestedScrollConnection = TopAppBarDefaults.pinnedScrollBehavior().nestedScrollConnection,
             moveBook = moveBook,
         )
@@ -146,7 +144,8 @@ fun BookshelfReorderBookshelvesScreen(
 
 @Composable
 fun BookshelfReorderContent(
-    reorderBooks: List<Pair<String, Flow<Result<BookshelfBookItem, WebRequestError>>>>,
+    reorderBooks: List<String>,
+    dataSources: BookshelfHomeDataSources,
     nestedScrollConnection: NestedScrollConnection,
     moveBook: (Int, Int) -> Unit,
 ) {
@@ -170,12 +169,12 @@ fun BookshelfReorderContent(
     ) {
         items(
             items = reorderBooks,
-            key = { it.first }
-        ) { pair ->
-            ReorderableItem(reorderableLazyListState, key = pair.first) { isDragging ->
-                val result by pair.second.collectAsStateWithLifecycle(null)
+            key = { it }
+        ) { id ->
+            ReorderableItem(reorderableLazyListState, key = id) { isDragging ->
+                val snapshot by dataSources.cardSnapshot(id).collectAsStateWithLifecycle()
                 val elevation by animateDpAsState(if (isDragging) 4.dp else 0.dp)
-                result?.onOk { item ->
+                snapshot.bookInformation?.let { bookInformation ->
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -198,7 +197,9 @@ fun BookshelfReorderContent(
                                     Cover(
                                         width = 60.dp,
                                         height = 88.dp,
-                                        uri = item.bookInformation.coverUri
+                                        uri = bookInformation.coverUri,
+                                        animate = false,
+                                        showLoadingIndicator = false,
                                     )
                                 }
 
@@ -209,14 +210,14 @@ fun BookshelfReorderContent(
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Text(
-                                        text = item.bookInformation.title,
+                                        text = bookInformation.title,
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis,
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.W600
                                     )
                                     Text(
-                                        text = item.bookInformation.author,
+                                        text = bookInformation.author,
                                         style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = FontWeight.W500,
                                         letterSpacing = 0.15.sp,
@@ -328,7 +329,7 @@ fun BookshelfListReorderContent(
                                 fontWeight = FontWeight.W600
                             )
                             Text(
-                                text = stringResource(R.string.n_books, bookshelf.allBookFlows.size),
+                                text = stringResource(R.string.n_books, bookshelf.allBookIds.size),
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
