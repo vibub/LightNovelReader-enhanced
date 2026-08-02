@@ -26,7 +26,9 @@ local.properties
 
 # 本地 Claude Code、索引和调试资料
 .claude/
+.agents/
 CLAUDE.md
+AGENTS.md
 .codegraph/
 docs/superpowers/
 .idea/studiobot.xml
