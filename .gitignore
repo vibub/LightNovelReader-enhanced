@@ -23,6 +23,7 @@ local.properties
 /proxy/build/**
 /compiler/build/**
 /build/**
+/artifacts/
 
 # 本地 Claude Code、索引和调试资料
 .claude/

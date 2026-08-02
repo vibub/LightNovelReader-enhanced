@@ -13,6 +13,7 @@ import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.map
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
+import indi.dmzz_yyhyy.lightnovelreader.BuildConfig
 import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalBookDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.text.TextProcessingRepository
@@ -129,6 +130,7 @@ class BookRepository @Inject constructor(
         val local = localBookDataSource.getBookInformation(id)
             ?.takeIf(::isUsableBookInformation)
         local?.let { emit(Ok(it)) }
+        if (BuildConfig.BENCHMARK && local != null) return@flow
         val remote = webBookDataSource.getBookInformation(id, priority)
             .onOk { remote ->
                 localBookDataSource.updateBookInformation(remote)
@@ -181,6 +183,7 @@ class BookRepository @Inject constructor(
         val local = localBookDataSource.getBookVolumes(id)
             ?.takeIf(::isUsableBookVolumes)
         local?.let { emit(Ok(it)) }
+        if (BuildConfig.BENCHMARK && local != null) return@flow
         val remote = webBookDataSource.getBookVolumes(id, priority)
             .onOk { remote ->
                 localBookDataSource.updateBookVolumes(remote)
@@ -204,6 +207,7 @@ class BookRepository @Inject constructor(
         val local = localBookDataSource.getChapterContent(sourceId, bookId, chapterId)
             ?.takeIf(::isUsableChapterContent)
         local?.let { emit(Ok(it)) }
+        if (BuildConfig.BENCHMARK && local != null) return@flow
         if (!shouldRequestRemoteChapter(local != null, isChapterRecentlyFetched(sourceId, bookId, chapterId))) {
             return@flow
         }

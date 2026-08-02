@@ -15,16 +15,6 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        exclusiveContent {
-            forRepository {
-                maven {
-                    setUrl("https://maven.aliyun.com/repository/public")
-                }
-            }
-            filter {
-                includeGroup("com.github.promeg")
-            }
-        }
         maven { setUrl("https://jitpack.io") }
     }
 }
@@ -36,3 +26,4 @@ include(":proxy")
 include(":api")
 include(":plugin:js")
 include(":compiler")
+include(":benchmark")
