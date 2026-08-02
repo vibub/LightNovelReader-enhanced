@@ -32,19 +32,9 @@ fun UpdatesSettingsList(
         painter = painterResource(R.drawable.alt_route_24px),
         title = stringResource(R.string.settings_update_channel),
         description = stringResource(R.string.settings_update_channel_desc),
-        options = MenuOptions.UpdatePlatformOptions
-            .getOptionWithValueOrDefault(settingState.distributionPlatformKey)
-            .value,
+        options = MenuOptions.GitHubUpdateChannelOptions,
         selectedOptionKey = settingState.updateChannelKey,
         onOptionChange = settingState.updateChannelKeyUserData::asynchronousSet
-    )
-    SettingsMenuEntry(
-        modifier = Modifier.background(colorScheme.surfaceContainer),
-        painter = painterResource(R.drawable.outline_explore_24px),
-        title = stringResource(R.string.settings_distribution_platform),
-        options = MenuOptions.UpdatePlatformOptions,
-        selectedOptionKey = settingState.distributionPlatformKey,
-        onOptionChange = settingState.distributionPlatformKeyUserData::asynchronousSet
     )
     SettingsClickableEntry(
         modifier = Modifier.background(colorScheme.surfaceContainer),

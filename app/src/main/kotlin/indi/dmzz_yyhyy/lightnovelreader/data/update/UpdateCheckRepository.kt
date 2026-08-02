@@ -88,16 +88,14 @@ class UpdateCheckRepository @Inject constructor(
         if (checkJob != null && checkJob!!.isActive) return
         checkJob = coroutineScope.launch {
             val updateChannelKey = userDataRepository.stringUserData(UserDataPath.Settings.App.UpdateChannel.path).get() ?: MenuOptions.UpdateChannelOptions.DEVELOPMENT
-            val platformOption = MenuOptions.UpdatePlatformOptions.getOptionWithValueOrDefault(
-                userDataRepository.stringUserData(UserDataPath.Settings.App.DistributionPlatform.path).get()
-            )
-            val distributionPlatform = platformOption.key
+            // 本 fork 仅使用 GitHub 发布渠道，忽略已保存的分发平台设置
+            val distributionPlatform = MenuOptions.UpdatePlatformOptions.GitHub
             Log.i("UpdateChecker", "Checking for updates from $distributionPlatform/$updateChannelKey")
             release = null
             mutableAvailable.emit(false)
             _updatePhase.update { "已请求更新，等待 $distributionPlatform 应答" }
             try {
-                val parser = platformOption.value
+                val parser = MenuOptions.GitHubUpdateChannelOptions
                     .getOptionWithValueOrDefault(updateChannelKey).value
                 val checkedRelease = withTimeout(CHECK_TIMEOUT_SECONDS.seconds) {
                     runInterruptible(Dispatchers.IO) {
