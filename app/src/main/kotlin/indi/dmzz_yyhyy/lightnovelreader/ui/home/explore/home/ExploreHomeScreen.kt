@@ -35,8 +35,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MediumTopAppBar
+import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Tab
+import androidx.compose.material3.TabIndicatorScope
 import androidx.compose.material3.TabRowDefaults.SecondaryIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
@@ -135,37 +137,11 @@ fun ExploreHomeScreen(
             ) {
                 val selectedIndex = exploreHomeUiState.selectedPage
                 Column {
-                    PrimaryTabRow(
-                        selectedTabIndex = selectedIndex,
-                        indicator = {
-                            SecondaryIndicator(
-                                modifier = Modifier
-                                    .tabIndicatorOffset(
-                                        selectedTabIndex = selectedIndex,
-                                        matchContentSize = true
-                                    )
-                                    .height(4.dp)
-                                    .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp)),
-                                color = MaterialTheme.colorScheme.secondary
-                            )
-                        }
-                    ) {
-                        exploreHomeUiState.pageTitles.forEachIndexed { index, title ->
-                            Tab(
-                                selected = selectedIndex == index,
-                                onClick = {
-                                    changePage(index)
-                                },
-                                text = {
-                                    Text(
-                                        text = title,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            )
-                        }
-                    }
+                    ExplorePageTabRow(
+                        titles = exploreHomeUiState.pageTitles,
+                        selectedIndex = selectedIndex,
+                        changePage = changePage
+                    )
 
                     var showEmptyPage by remember { mutableStateOf(false) }
 
@@ -253,6 +229,56 @@ fun TopBar(
             scrolledContainerColor = MaterialTheme.colorScheme.background
         )
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExplorePageTabRow(
+    titles: List<String>,
+    selectedIndex: Int,
+    changePage: (Int) -> Unit
+) {
+    val indicator: @Composable TabIndicatorScope.() -> Unit = {
+        SecondaryIndicator(
+            modifier = Modifier
+                .tabIndicatorOffset(
+                    selectedTabIndex = selectedIndex,
+                    matchContentSize = true
+                )
+                .height(4.dp)
+                .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp)),
+            color = MaterialTheme.colorScheme.secondary
+        )
+    }
+    val tabs: @Composable () -> Unit = {
+        titles.forEachIndexed { index, title ->
+            Tab(
+                selected = selectedIndex == index,
+                onClick = { changePage(index) },
+                text = {
+                    Text(
+                        text = title,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            )
+        }
+    }
+
+    if (titles.size > 3) {
+        PrimaryScrollableTabRow(
+            selectedTabIndex = selectedIndex,
+            indicator = indicator,
+            tabs = tabs
+        )
+    } else {
+        PrimaryTabRow(
+            selectedTabIndex = selectedIndex,
+            indicator = indicator,
+            tabs = tabs
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)

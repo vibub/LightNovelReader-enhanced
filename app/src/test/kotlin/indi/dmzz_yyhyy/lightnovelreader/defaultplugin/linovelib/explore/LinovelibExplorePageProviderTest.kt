@@ -1,135 +1,140 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.explore
 
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book.LinovelibWebsiteDataSource
-import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibBlockedException
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibJsoup
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LinovelibExplorePageProviderTest {
     @Test
-    fun desktopResultAtLimitSkipsMobileSource() = runBlocking {
-        var mobileCalled = false
+    fun providerRegistersHomepageSectionsInWebpageOrder() {
+        val jsoup = LinovelibJsoup()
+        val provider = LinovelibExplorePageProvider(
+            jsoup = jsoup,
+            websiteDataSource = LinovelibWebsiteDataSource(jsoup)
+        )
 
-        val books = loadLinovelibExploreBooks(onError = {}) { source ->
-            when (source) {
-                LinovelibExploreSource.Desktop -> (1..12).map { book(it.toString()) }
-                LinovelibExploreSource.Mobile -> {
-                    mobileCalled = true
-                    emptyList()
+        assertEquals(
+            LinovelibExploreSection.entries.map { it.pageId },
+            provider.explorePageIdList
+        )
+        assertEquals(
+            LinovelibExploreSection.entries.map { it.title },
+            provider.explorePageIdList.map { provider.exploreTapPageDataSourceMap.getValue(it).title }
+        )
+    }
+
+    @Test
+    fun loaderSharesDesktopSnapshotAcrossSections() = runBlocking {
+        var desktopLoads = 0
+        val loader = LinovelibExploreHomepageLoader(
+            loadDesktopSnapshot = {
+                desktopLoads++
+                snapshot(
+                    LinovelibExploreSection.HomeRecommended to listOf(book("1")),
+                    LinovelibExploreSection.NewBooks to listOf(book("2"))
+                )
+            },
+            loadMobileRecommendations = { error("mobile fallback should not be called") },
+            onError = {}
+        )
+
+        assertEquals(listOf("1"), loader.getBooks(LinovelibExploreSection.HomeRecommended).map { it.id })
+        assertEquals(listOf("2"), loader.getBooks(LinovelibExploreSection.NewBooks).map { it.id })
+        assertEquals(1, desktopLoads)
+    }
+
+    @Test
+    fun invalidationForcesDesktopReloadWithinCacheDuration() = runBlocking {
+        var desktopLoads = 0
+        val loader = LinovelibExploreHomepageLoader(
+            loadDesktopSnapshot = {
+                desktopLoads++
+                snapshot(
+                    LinovelibExploreSection.HomeRecommended to listOf(book(desktopLoads.toString()))
+                )
+            },
+            loadMobileRecommendations = { emptyList() },
+            onError = {}
+        )
+
+        assertEquals("1", loader.getBooks(LinovelibExploreSection.HomeRecommended).single().id)
+        loader.invalidate()
+        assertEquals("2", loader.getBooks(LinovelibExploreSection.HomeRecommended).single().id)
+        assertEquals(2, desktopLoads)
+    }
+
+    @Test
+    fun expiredDesktopFailureKeepsPreviousSnapshot() = runBlocking {
+        var now = 0L
+        var desktopLoads = 0
+        val loader = LinovelibExploreHomepageLoader(
+            loadDesktopSnapshot = {
+                desktopLoads++
+                if (desktopLoads == 1) {
+                    snapshot(LinovelibExploreSection.Popular to listOf(book("3")))
+                } else {
+                    error("desktop failed")
                 }
-            }
-        }
+            },
+            loadMobileRecommendations = { error("mobile fallback should not replace old cache") },
+            currentTimeMillis = { now },
+            onError = {}
+        )
 
-        assertEquals((1..12).map(Int::toString), books.map { it.id })
-        assertFalse(mobileCalled)
+        assertEquals("3", loader.getBooks(LinovelibExploreSection.Popular).single().id)
+        now += LinovelibExploreHomepageLoader.DEFAULT_CACHE_DURATION_MILLIS + 1
+        assertEquals("3", loader.getBooks(LinovelibExploreSection.Popular).single().id)
+        assertEquals(2, desktopLoads)
     }
 
     @Test
-    fun desktopResultOverLimitKeepsFirstTwelve() = runBlocking {
-        val books = loadLinovelibExploreBooks(onError = {}) { source ->
-            if (source == LinovelibExploreSource.Desktop) {
-                (1..15).map { book(it.toString()) }
-            } else {
-                error("mobile source should not be called")
-            }
-        }
+    fun firstDesktopFailureCachesMobileRecommendationsOnlyForHomeTab() = runBlocking {
+        var desktopLoads = 0
+        var mobileLoads = 0
+        val loader = LinovelibExploreHomepageLoader(
+            loadDesktopSnapshot = {
+                desktopLoads++
+                error("desktop failed")
+            },
+            loadMobileRecommendations = {
+                mobileLoads++
+                listOf(book(""), book("4"), book("4", "duplicate"), book("5"))
+            },
+            onError = {}
+        )
 
-        assertEquals((1..12).map(Int::toString), books.map { it.id })
-    }
-
-    @Test
-    fun mobileSourceSupplementsPartialDesktopResult() = runBlocking {
-        val books = loadLinovelibExploreBooks(onError = {}) { source ->
-            when (source) {
-                LinovelibExploreSource.Desktop -> listOf(book("1"), book("2"), book("3"))
-                LinovelibExploreSource.Mobile -> listOf(book("2", "mobile-2"), book("4"), book("5"))
-            }
-        }
-
-        assertEquals(listOf("1", "2", "3", "4", "5"), books.map { it.id })
-        assertEquals("2", books[1].title)
-    }
-
-    @Test
-    fun blockedDesktopSourceFallsBackToMobileSource() = runBlocking {
-        val books = loadLinovelibExploreBooks(onError = {}) { source ->
-            when (source) {
-                LinovelibExploreSource.Desktop -> throw LinovelibBlockedException("blocked")
-                LinovelibExploreSource.Mobile -> listOf(book("4"), book("5"))
-            }
-        }
-
-        assertEquals(listOf("4", "5"), books.map { it.id })
-    }
-
-    @Test
-    fun failedDesktopSourceFallsBackToMobileSource() = runBlocking {
-        val books = loadLinovelibExploreBooks(onError = {}) { source ->
-            when (source) {
-                LinovelibExploreSource.Desktop -> error("desktop failed")
-                LinovelibExploreSource.Mobile -> listOf(book("4"), book("5"))
-            }
-        }
-
-        assertEquals(listOf("4", "5"), books.map { it.id })
-    }
-
-    @Test
-    fun failedMobileSourceKeepsPartialDesktopResult() = runBlocking {
-        val books = loadLinovelibExploreBooks(onError = {}) { source ->
-            when (source) {
-                LinovelibExploreSource.Desktop -> listOf(book("1"), book("2"))
-                LinovelibExploreSource.Mobile -> error("mobile failed")
-            }
-        }
-
-        assertEquals(listOf("1", "2"), books.map { it.id })
-    }
-
-    @Test
-    fun failedSourcesReturnEmptyResult() = runBlocking {
-        val books = loadLinovelibExploreBooks(onError = {}) {
-            error("source failed")
-        }
-
-        assertTrue(books.isEmpty())
+        assertEquals(
+            listOf("4", "5"),
+            loader.getBooks(LinovelibExploreSection.HomeRecommended).map { it.id }
+        )
+        assertTrue(loader.getBooks(LinovelibExploreSection.NewBooks).isEmpty())
+        assertEquals(1, desktopLoads)
+        assertEquals(1, mobileLoads)
     }
 
     @Test
     fun cancellationIsNotSwallowed() {
+        val loader = LinovelibExploreHomepageLoader(
+            loadDesktopSnapshot = { throw CancellationException("cancelled") },
+            loadMobileRecommendations = { emptyList() },
+            onError = {}
+        )
+
         assertThrows(CancellationException::class.java) {
             runBlocking {
-                loadLinovelibExploreBooks(onError = {}) {
-                    throw CancellationException("cancelled")
-                }
+                loader.getBooks(LinovelibExploreSection.HomeRecommended)
             }
         }
     }
 
-    @Test
-    fun blankAndDuplicateBookIdsAreFilteredBeforeSupplementing() = runBlocking {
-        val books = loadLinovelibExploreBooks(onError = {}) { source ->
-            when (source) {
-                LinovelibExploreSource.Desktop -> listOf(
-                    book(""),
-                    book("1", "desktop-1"),
-                    book("1", "desktop-duplicate")
-                )
-                LinovelibExploreSource.Mobile -> listOf(
-                    book("1", "mobile-1"),
-                    book("2")
-                )
-            }
-        }
-
-        assertEquals(listOf("1", "2"), books.map { it.id })
-        assertEquals("desktop-1", books.first().title)
-    }
+    private fun snapshot(
+        vararg sections: Pair<LinovelibExploreSection, List<LinovelibWebsiteDataSource.LinovelibExploreBook>>
+    ): LinovelibExploreSnapshot = LinovelibExploreSnapshot(mapOf(*sections))
 
     private fun book(
         id: String,
@@ -139,6 +144,6 @@ class LinovelibExplorePageProviderTest {
             id = id,
             title = title,
             author = "author-$id",
-            coverUrl = "/files/article/image/$id.jpg"
+            coverUrl = ""
         )
 }

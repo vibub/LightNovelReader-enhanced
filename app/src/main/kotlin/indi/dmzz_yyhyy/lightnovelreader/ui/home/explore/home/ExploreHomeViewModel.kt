@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import indi.dmzz_yyhyy.lightnovelreader.data.explore.ExploreRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.explore.RefreshableExploreTapPageDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.text.TextProcessingRepository
 import io.nightfish.lightnovelreader.api.web.explore.ExplorePageProvider
 import kotlinx.coroutines.Dispatchers
@@ -75,6 +76,13 @@ class ExploreHomeViewModel @Inject constructor(
     }
 
     fun refresh() {
+        if (explorePageProvider is ExplorePageProvider.DefaultExplorePageProvider) {
+            explorePageProvider.explorePageIdList
+                .getOrNull(_uiState.selectedPage)
+                ?.let(explorePageProvider.exploreTapPageDataSourceMap::get)
+                ?.let { it as? RefreshableExploreTapPageDataSource }
+                ?.invalidateCache()
+        }
         _uiState.explorePageBooksRawList = emptyList()
         loadPage(_uiState.selectedPage, forceRefresh = true)
     }
