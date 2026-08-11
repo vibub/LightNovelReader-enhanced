@@ -377,6 +377,12 @@ private fun ExploreRowSection(
                 .padding(vertical = 4.dp)
                 .fillMaxWidth()
                 .height(46.dp)
+                .then(
+                    row.expandedPageDataSourceId
+                        ?.takeIf { row.expandable }
+                        ?.let { id -> Modifier.clickable { onClickExpand(id) } }
+                        ?: Modifier
+                )
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

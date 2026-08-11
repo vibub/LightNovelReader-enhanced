@@ -9,26 +9,53 @@ import kotlinx.coroutines.sync.withLock
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 
-internal enum class LinovelibExploreSection(
+internal enum class LinovelibExplorePage(
     val pageId: String,
     val title: String
 ) {
-    HomeRecommended("home-recommended", "首页推荐"),
-    NewBooks("new-books", "新书精选"),
-    Popular("popular", "热门小说"),
-    ClassicCompleted("classic-completed", "经典完本"),
-    CompletedRecommended("completed-recommended", "完本推荐"),
-    RecentUpdates("recent-updates", "最近更新")
+    Home("home", "首页"),
+    Ranking("ranking", "榜单"),
+    PublishingHouse("publishing-house", "文库")
+}
+
+internal enum class LinovelibExploreSection(
+    val page: LinovelibExplorePage,
+    val title: String
+) {
+    HomeRecommended(LinovelibExplorePage.Home, "首页推荐"),
+    NewBooks(LinovelibExplorePage.Home, "新书精选"),
+    Popular(LinovelibExplorePage.Home, "热门小说"),
+    ClassicCompleted(LinovelibExplorePage.Home, "经典完本"),
+    CompletedRecommended(LinovelibExplorePage.Home, "完本推荐"),
+    RecentUpdates(LinovelibExplorePage.Home, "最近更新"),
+    StrongRecommended(LinovelibExplorePage.Ranking, "强推榜"),
+    NewBookRanking(LinovelibExplorePage.Ranking, "新书榜"),
+    HotRanking(LinovelibExplorePage.Ranking, "热点榜")
+}
+
+internal data class LinovelibExplorePublishingHouse(
+    val id: String,
+    val title: String,
+    val pageUrl: String,
+    val books: List<LinovelibWebsiteDataSource.LinovelibExploreBook>
+) {
+    val expandedPageDataSourceId: String = "linovelib-wenku-$id"
 }
 
 internal data class LinovelibExploreSnapshot(
-    private val booksBySection: Map<LinovelibExploreSection, List<LinovelibWebsiteDataSource.LinovelibExploreBook>>
+    private val booksBySection: Map<LinovelibExploreSection, List<LinovelibWebsiteDataSource.LinovelibExploreBook>>,
+    val publishingHouses: List<LinovelibExplorePublishingHouse> = emptyList()
 ) {
     operator fun get(section: LinovelibExploreSection): List<LinovelibWebsiteDataSource.LinovelibExploreBook> =
         booksBySection[section].orEmpty()
 
+    fun sections(page: LinovelibExplorePage): List<Pair<LinovelibExploreSection, List<LinovelibWebsiteDataSource.LinovelibExploreBook>>> =
+        LinovelibExploreSection.entries
+            .filter { it.page == page }
+            .map { it to get(it) }
+
     val hasBooks: Boolean
-        get() = booksBySection.values.any { it.isNotEmpty() }
+        get() = booksBySection.values.any { it.isNotEmpty() } || publishingHouses.any { it.books.isNotEmpty() }
 
     companion object {
         fun empty(): LinovelibExploreSnapshot = LinovelibExploreSnapshot(emptyMap())
@@ -43,18 +70,17 @@ internal data class LinovelibExploreSnapshot(
 
 internal object LinovelibExploreHomepageParser {
     fun parse(document: Document): LinovelibExploreSnapshot {
-        val recommendedContainers = listOfNotNull(
-            document.selectFirst("#index_tpic"),
-            document.findSectionContainer("强推榜", "tab-lists")
-        )
+        val popularContainer = document.findSectionContainer("热门小说", "tab-lists-two")
         return LinovelibExploreSnapshot(
-            linkedMapOf(
-                LinovelibExploreSection.HomeRecommended to recommendedContainers.parseExploreBooks(),
+            booksBySection = linkedMapOf(
+                LinovelibExploreSection.HomeRecommended to listOfNotNull(
+                    document.selectFirst("#index_tpic")
+                ).parseExploreBooks(),
                 LinovelibExploreSection.NewBooks to listOfNotNull(
                     document.findSectionContainer("新书精选", "tab-lists-two")
                 ).parseExploreBooks(),
                 LinovelibExploreSection.Popular to listOfNotNull(
-                    document.findSectionContainer("热门小说", "tab-lists-two")
+                    popularContainer?.selectFirst(".pic-blank-scroll")
                 ).parseExploreBooks(),
                 LinovelibExploreSection.ClassicCompleted to listOfNotNull(
                     document.findSectionContainer("经典完本", "top-two-blank-left")
@@ -64,8 +90,18 @@ internal object LinovelibExploreHomepageParser {
                 ).parseExploreBooks(),
                 LinovelibExploreSection.RecentUpdates to listOfNotNull(
                     document.selectFirst(".new_chapter")
+                ).parseExploreBooks(),
+                LinovelibExploreSection.StrongRecommended to listOfNotNull(
+                    document.findSectionContainer("强推榜", "tab-lists")
+                ).parseExploreBooks(),
+                LinovelibExploreSection.NewBookRanking to listOfNotNull(
+                    document.findSectionContainer("新书榜", "tab-lists")
+                ).parseExploreBooks(),
+                LinovelibExploreSection.HotRanking to listOfNotNull(
+                    document.findSectionContainer("热点榜", "tab-lists")
                 ).parseExploreBooks()
-            )
+            ),
+            publishingHouses = popularContainer.parseExplorePublishingHouses()
         )
     }
 }
@@ -88,30 +124,29 @@ internal class LinovelibExploreHomepageLoader(
         invalidated = true
     }
 
-    suspend fun getBooks(section: LinovelibExploreSection): List<LinovelibWebsiteDataSource.LinovelibExploreBook> =
-        mutex.withLock {
-            val now = currentTimeMillis()
-            cachedSnapshot
-                ?.takeIf { !invalidated && now < cacheExpiresAtMillis }
-                ?.let { return@withLock it[section] }
+    suspend fun getSnapshot(): LinovelibExploreSnapshot = mutex.withLock {
+        val now = currentTimeMillis()
+        cachedSnapshot
+            ?.takeIf { !invalidated && now < cacheExpiresAtMillis }
+            ?.let { return@withLock it }
 
-            val previousSnapshot = cachedSnapshot
-            val snapshot = try {
-                loadDesktopSnapshot().also {
-                    check(it.hasBooks) { "Linovelib desktop homepage has no recognized explore books" }
-                }
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Throwable) {
-                onError(error)
-                previousSnapshot ?: loadMobileFallback()
+        val previousSnapshot = cachedSnapshot
+        val snapshot = try {
+            loadDesktopSnapshot().also {
+                check(it.hasBooks) { "Linovelib desktop homepage has no recognized explore books" }
             }
-
-            cachedSnapshot = snapshot
-            cacheExpiresAtMillis = now + cacheDurationMillis
-            invalidated = false
-            snapshot[section]
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            onError(error)
+            previousSnapshot ?: loadMobileFallback()
         }
+
+        cachedSnapshot = snapshot
+        cacheExpiresAtMillis = now + cacheDurationMillis
+        invalidated = false
+        snapshot
+    }
 
     private suspend fun loadMobileFallback(): LinovelibExploreSnapshot = try {
         LinovelibExploreSnapshot.recommended(
@@ -146,6 +181,31 @@ private fun Document.findSectionContainer(title: String, ancestorClass: String):
         }
         ?.ancestors()
         ?.firstOrNull { it.hasClass(ancestorClass) }
+
+private fun Element?.parseExplorePublishingHouses(): List<LinovelibExplorePublishingHouse> = this
+    ?.select(".cate-blank .cate-cell")
+    ?.mapNotNull { cell ->
+        val pageAnchor = cell.select("a[href]")
+            .firstOrNull { PUBLISHING_HOUSE_PAGE_REGEX.containsMatchIn(it.attr("href")) }
+            ?: return@mapNotNull null
+        val pageMatch = PUBLISHING_HOUSE_PAGE_REGEX.find(pageAnchor.attr("href"))
+            ?: return@mapNotNull null
+        val id = pageMatch.groups[1]?.value.orEmpty()
+        val title = cell.selectFirst(".top-title-two .title, .title")
+            ?.text()
+            ?.cleanExploreText()
+            .orEmpty()
+        val books = listOfNotNull(cell.selectFirst(".lists")).parseExploreBooks()
+        if (id.isBlank() || title.isBlank() || books.isEmpty()) return@mapNotNull null
+        LinovelibExplorePublishingHouse(
+            id = id,
+            title = title,
+            pageUrl = "${LinovelibConstants.BASE_URL}/wenku/$id/1.html",
+            books = books
+        )
+    }
+    ?.distinctBy { it.id }
+    .orEmpty()
 
 private fun List<Element>.parseExploreBooks(): List<LinovelibWebsiteDataSource.LinovelibExploreBook> {
     val anchors = flatMap { container ->
@@ -258,6 +318,7 @@ private fun String.cleanExploreText(): String = replace(' ', ' ')
     .trim()
 
 private val BOOK_PAGE_REGEX = Regex("/novel/(\\d+)\\.html(?:[?#].*)?$")
+private val PUBLISHING_HOUSE_PAGE_REGEX = Regex("/wenku/([^/?#]+)/1\\.html(?:[?#].*)?$")
 private val IGNORED_BOOK_LINK_TEXT = setOf("立即阅读", "更多")
 private val AUTHOR_LINK_SELECTORS = listOf(
     ".author a[href]",

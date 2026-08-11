@@ -16,28 +16,22 @@ class LinovelibExploreHomepageParserTest {
     }
 
     @Test
-    fun parsesRecommendationCarouselAndStrongRecommendations() {
+    fun homepageRecommendationOnlyContainsCarouselBooks() {
         val books = snapshot[LinovelibExploreSection.HomeRecommended]
 
-        assertEquals(listOf("1001", "1002"), books.map { it.id })
-        assertEquals(listOf("轮播推荐一", "强推推荐二"), books.map { it.title })
-        assertEquals("作者甲", books.first().author)
+        assertEquals(listOf("1001"), books.map { it.id })
+        assertEquals(listOf("轮播推荐一"), books.map { it.title })
+        assertEquals("作者甲", books.single().author)
         assertEquals(
             "${LinovelibConstants.BASE_URL}/files/article/image/1/1001/1001s.jpg",
-            books.first().coverUrl
+            books.single().coverUrl
         )
-        assertEquals(inferLinovelibCoverUrl("1002"), books[1].coverUrl)
     }
 
     @Test
-    fun parsesAllHomepageSectionsWithoutGlobalLimit() {
+    fun parsesSixHomepageRowsAndExcludesPublishingHouseBooksFromPopularRow() {
         assertEquals(listOf("2001", "2002"), snapshot[LinovelibExploreSection.NewBooks].map { it.id })
-        val popularIds = snapshot[LinovelibExploreSection.Popular].map { it.id }
-        assertEquals(
-            listOf("3001", "1001") + (3002..3014).map(Int::toString),
-            popularIds
-        )
-        assertTrue(popularIds.size > 12)
+        assertEquals(listOf("3001", "3002"), snapshot[LinovelibExploreSection.Popular].map { it.id })
         assertEquals(
             listOf("4001", "4002"),
             snapshot[LinovelibExploreSection.ClassicCompleted].map { it.id }
@@ -49,6 +43,44 @@ class LinovelibExploreHomepageParserTest {
         assertEquals(
             listOf("6001", "6002"),
             snapshot[LinovelibExploreSection.RecentUpdates].map { it.id }
+        )
+        assertTrue(snapshot[LinovelibExploreSection.Popular].none { it.id == "3101" })
+    }
+
+    @Test
+    fun parsesHomepageRankingsInDisplayedOrder() {
+        assertEquals(
+            listOf("1001", "1002"),
+            snapshot[LinovelibExploreSection.StrongRecommended].map { it.id }
+        )
+        assertEquals(
+            listOf("1101", "1102"),
+            snapshot[LinovelibExploreSection.NewBookRanking].map { it.id }
+        )
+        assertEquals(
+            listOf("1201", "1202"),
+            snapshot[LinovelibExploreSection.HotRanking].map { it.id }
+        )
+    }
+
+    @Test
+    fun dynamicallyParsesPublishingHousesAndTheirExpandedPageUrls() {
+        assertEquals(listOf("电击文库", "富士见文库"), snapshot.publishingHouses.map { it.title })
+        assertEquals(listOf("dengekibunko", "fujimibunko"), snapshot.publishingHouses.map { it.id })
+        assertEquals(
+            listOf(
+                "${LinovelibConstants.BASE_URL}/wenku/dengekibunko/1.html",
+                "${LinovelibConstants.BASE_URL}/wenku/fujimibunko/1.html"
+            ),
+            snapshot.publishingHouses.map { it.pageUrl }
+        )
+        assertEquals(
+            listOf("3002", "3101"),
+            snapshot.publishingHouses.first().books.map { it.id }
+        )
+        assertEquals(
+            listOf("3201", "3202"),
+            snapshot.publishingHouses.last().books.map { it.id }
         )
     }
 
@@ -67,7 +99,8 @@ class LinovelibExploreHomepageParserTest {
 
     @Test
     fun fillsEveryMissingOrPlaceholderCoverFromBookId() {
-        val allBooks = LinovelibExploreSection.entries.flatMap(snapshot::get)
+        val allBooks = LinovelibExploreSection.entries.flatMap(snapshot::get) +
+            snapshot.publishingHouses.flatMap { it.books }
 
         assertTrue(allBooks.all { it.coverUrl.isNotBlank() })
         assertEquals(
@@ -85,9 +118,11 @@ class LinovelibExploreHomepageParserTest {
     }
 
     @Test
-    fun deduplicatesWithinSectionButKeepsCrossSectionBooks() {
-        assertEquals(1, snapshot[LinovelibExploreSection.Popular].count { it.id == "3002" })
+    fun deduplicatesWithinRowsButKeepsCrossRowBooks() {
+        assertEquals(1, snapshot.publishingHouses.first().books.count { it.id == "3101" })
         assertTrue(snapshot[LinovelibExploreSection.HomeRecommended].any { it.id == "1001" })
-        assertTrue(snapshot[LinovelibExploreSection.Popular].any { it.id == "1001" })
+        assertTrue(snapshot[LinovelibExploreSection.StrongRecommended].any { it.id == "1001" })
+        assertTrue(snapshot[LinovelibExploreSection.Popular].any { it.id == "3002" })
+        assertTrue(snapshot.publishingHouses.first().books.any { it.id == "3002" })
     }
 }
