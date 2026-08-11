@@ -10,15 +10,19 @@ import io.nightfish.lightnovelreader.api.explore.ExploreBooksRow
 import io.nightfish.lightnovelreader.api.explore.ExploreDisplayBook
 import io.nightfish.lightnovelreader.api.web.explore.AbstractDefaultExplorePageProvider
 import io.nightfish.lightnovelreader.api.web.explore.ExploreTapPageDataSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.jsoup.nodes.Document
 
 class LinovelibExplorePageProvider internal constructor(
     private val homepageLoader: LinovelibExploreHomepageLoader,
-    private val loadPublishingHouseDocument: suspend (String) -> Document
+    private val loadPublishingHouseDocument: suspend (String) -> Document,
+    private val authorResolver: LinovelibExploreAuthorResolver = LinovelibExploreAuthorResolver { "" }
 ) : AbstractDefaultExplorePageProvider() {
     constructor(
         jsoup: LinovelibJsoup,
@@ -53,6 +57,9 @@ class LinovelibExplorePageProvider internal constructor(
                 retryTime = 0,
                 userAgentMode = LinovelibJsoup.UserAgentMode.Desktop
             )
+        },
+        authorResolver = LinovelibExploreAuthorResolver { bookId ->
+            websiteDataSource.getBookInformation(bookId).author
         }
     )
 
@@ -63,6 +70,7 @@ class LinovelibExplorePageProvider internal constructor(
                 LinovelibExploreTapPage(
                     page = page,
                     homepageLoader = homepageLoader,
+                    authorResolver = authorResolver,
                     onPublishingHousesLoaded = ::registerPublishingHousePages
                 )
             )
@@ -77,6 +85,7 @@ class LinovelibExplorePageProvider internal constructor(
                 exploreExpandedPageDataSource = LinovelibPublishingHousePageDataSource(
                     title = publishingHouse.title,
                     pageUrl = publishingHouse.pageUrl,
+                    fallbackBookIds = publishingHouse.books.map { it.id },
                     loadDocument = loadPublishingHouseDocument
                 )
             )
@@ -87,42 +96,80 @@ class LinovelibExplorePageProvider internal constructor(
 private class LinovelibExploreTapPage(
     private val page: LinovelibExplorePage,
     private val homepageLoader: LinovelibExploreHomepageLoader,
+    private val authorResolver: LinovelibExploreAuthorResolver,
     private val onPublishingHousesLoaded: (List<LinovelibExplorePublishingHouse>) -> Unit
 ) : ExploreTapPageDataSource, RefreshableExploreTapPageDataSource {
     override val title: String = page.title
 
     override fun getRowsFlow(): Flow<List<ExploreBooksRow>> = flow {
         val snapshot = homepageLoader.getSnapshot()
-        val rows = when (page) {
-            LinovelibExplorePage.Home,
-            LinovelibExplorePage.Ranking -> snapshot.sections(page).mapNotNull { (section, books) ->
-                books.toExploreDisplayBooks()
-                    .takeIf(List<ExploreDisplayBook>::isNotEmpty)
-                    ?.let { ExploreBooksRow(section.title, it) }
+        when (page) {
+            LinovelibExplorePage.Home -> emit(snapshot.sections(page).toExploreRows())
+            LinovelibExplorePage.Ranking -> {
+                val rankingSections = snapshot.sections(page)
+                    .map { (section, books) -> section to books.toMutableList() }
+                emit(rankingSections.toExploreRows())
+                rankingSections.forEach { (_, books) ->
+                    books.forEachIndexed { index, book ->
+                        if (book.author.isNotBlank()) return@forEachIndexed
+                        val author = authorResolver.resolve(book.id)
+                        if (author.isBlank()) return@forEachIndexed
+                        books[index] = book.copy(author = author)
+                        emit(rankingSections.toExploreRows())
+                    }
+                }
             }
             LinovelibExplorePage.PublishingHouse -> {
                 onPublishingHousesLoaded(snapshot.publishingHouses)
-                snapshot.publishingHouses.mapNotNull { publishingHouse ->
-                    publishingHouse.books.toExploreDisplayBooks()
-                        .takeIf(List<ExploreDisplayBook>::isNotEmpty)
-                        ?.let { books ->
-                            ExploreBooksRow(
-                                title = publishingHouse.title,
-                                bookList = books,
-                                expandable = true,
-                                expandedPageDataSourceId = publishingHouse.expandedPageDataSourceId
-                            )
-                        }
-                }
+                emit(
+                    snapshot.publishingHouses.mapNotNull { publishingHouse ->
+                        publishingHouse.books.toExploreDisplayBooks()
+                            .takeIf(List<ExploreDisplayBook>::isNotEmpty)
+                            ?.let { books ->
+                                ExploreBooksRow(
+                                    title = publishingHouse.title,
+                                    bookList = books,
+                                    expandable = true,
+                                    expandedPageDataSourceId = publishingHouse.expandedPageDataSourceId
+                                )
+                            }
+                    }
+                )
             }
         }
-        emit(rows)
     }.flowOn(Dispatchers.IO)
 
     override fun invalidateCache() {
         homepageLoader.invalidate()
     }
 }
+
+internal class LinovelibExploreAuthorResolver(
+    private val loadAuthor: suspend (String) -> String
+) {
+    private val mutex = Mutex()
+    private val authorCache = mutableMapOf<String, String>()
+
+    suspend fun resolve(bookId: String): String = mutex.withLock {
+        authorCache[bookId]?.let { return@withLock it }
+        val author = try {
+            loadAuthor(bookId).trim()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Throwable) {
+            ""
+        }
+        authorCache[bookId] = author
+        author
+    }
+}
+
+private fun List<Pair<LinovelibExploreSection, List<LinovelibWebsiteDataSource.LinovelibExploreBook>>>.toExploreRows(): List<ExploreBooksRow> =
+    mapNotNull { (section, books) ->
+        books.toExploreDisplayBooks()
+            .takeIf(List<ExploreDisplayBook>::isNotEmpty)
+            ?.let { ExploreBooksRow(section.title, it) }
+    }
 
 private fun List<LinovelibWebsiteDataSource.LinovelibExploreBook>.toExploreDisplayBooks(): List<ExploreDisplayBook> =
     map { book ->

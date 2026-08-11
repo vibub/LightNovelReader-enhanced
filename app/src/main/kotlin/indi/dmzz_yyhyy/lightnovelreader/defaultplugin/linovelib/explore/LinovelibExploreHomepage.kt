@@ -322,6 +322,7 @@ private val PUBLISHING_HOUSE_PAGE_REGEX = Regex("/wenku/([^/?#]+)/1\\.html(?:[?#
 private val IGNORED_BOOK_LINK_TEXT = setOf("立即阅读", "更多")
 private val AUTHOR_LINK_SELECTORS = listOf(
     ".author a[href]",
+    "a[href*=/authorarticle/]",
     "a.author-text",
     ".author-text",
     "span.author a[href]"

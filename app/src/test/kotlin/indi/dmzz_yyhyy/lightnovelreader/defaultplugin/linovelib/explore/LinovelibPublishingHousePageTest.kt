@@ -52,7 +52,25 @@ class LinovelibPublishingHousePageTest {
     }
 
     @Test
-    fun requestFailureIsEmittedAsSearchError() = runBlocking {
+    fun requestFailureFallsBackToHomepageBooks() = runBlocking {
+        val dataSource = LinovelibPublishingHousePageDataSource(
+            title = "电击文库",
+            pageUrl = "${LinovelibConstants.BASE_URL}/wenku/dengekibunko/1.html",
+            fallbackBookIds = listOf("", "7004", "7004", "7005"),
+            loadDocument = { error("request failed") }
+        )
+
+        val results = dataSource.getResultFlow().toList()
+
+        assertEquals(
+            listOf("7004", "7005"),
+            results.filterIsInstance<SearchResult.MultipleBook>().map { it.bookId }
+        )
+        assertTrue(results.last() is SearchResult.End)
+    }
+
+    @Test
+    fun requestFailureIsEmittedAsSearchErrorWithoutFallback() = runBlocking {
         val dataSource = LinovelibPublishingHousePageDataSource(
             title = "电击文库",
             pageUrl = "${LinovelibConstants.BASE_URL}/wenku/dengekibunko/1.html",

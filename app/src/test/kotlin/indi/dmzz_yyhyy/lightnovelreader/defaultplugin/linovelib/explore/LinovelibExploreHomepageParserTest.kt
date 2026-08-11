@@ -61,6 +61,18 @@ class LinovelibExploreHomepageParserTest {
             listOf("1201", "1202"),
             snapshot[LinovelibExploreSection.HotRanking].map { it.id }
         )
+        assertEquals(
+            listOf("榜单作者甲", "榜单作者乙"),
+            snapshot[LinovelibExploreSection.StrongRecommended].map { it.author }
+        )
+        assertEquals(
+            listOf("榜单作者丙", "榜单作者丁"),
+            snapshot[LinovelibExploreSection.NewBookRanking].map { it.author }
+        )
+        assertEquals(
+            listOf("榜单作者戊", "榜单作者己"),
+            snapshot[LinovelibExploreSection.HotRanking].map { it.author }
+        )
     }
 
     @Test

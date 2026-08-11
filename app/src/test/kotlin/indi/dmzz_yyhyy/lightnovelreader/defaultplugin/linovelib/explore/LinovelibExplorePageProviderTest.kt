@@ -164,6 +164,22 @@ class LinovelibExplorePageProviderTest {
     }
 
     @Test
+    fun authorResolverCachesSuccessfulAndFailedLookups() = runBlocking {
+        val loadCounts = mutableMapOf<String, Int>()
+        val resolver = LinovelibExploreAuthorResolver { bookId ->
+            loadCounts[bookId] = loadCounts.getOrDefault(bookId, 0) + 1
+            if (bookId == "2") error("author failed")
+            "author-$bookId"
+        }
+
+        assertEquals("author-1", resolver.resolve("1"))
+        assertEquals("author-1", resolver.resolve("1"))
+        assertEquals("", resolver.resolve("2"))
+        assertEquals("", resolver.resolve("2"))
+        assertEquals(mapOf("1" to 1, "2" to 1), loadCounts)
+    }
+
+    @Test
     fun cancellationIsNotSwallowed() {
         val loader = LinovelibExploreHomepageLoader(
             loadDesktopSnapshot = { throw CancellationException("cancelled") },

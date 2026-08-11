@@ -27,6 +27,7 @@ internal object LinovelibPublishingHousePageParser {
 internal class LinovelibPublishingHousePageDataSource(
     override val title: String,
     private val pageUrl: String,
+    private val fallbackBookIds: List<String> = emptyList(),
     private val loadDocument: suspend (String) -> Document
 ) : ExploreExpandedPageDataSource {
     override val filters: List<Filter<*>> = emptyList()
@@ -34,12 +35,16 @@ internal class LinovelibPublishingHousePageDataSource(
     override fun getResultFlow(): Flow<SearchResult> = flow {
         val bookIds = try {
             LinovelibPublishingHousePageParser.parseBookIds(loadDocument(pageUrl))
+                .ifEmpty { fallbackBookIds }
         } catch (error: CancellationException) {
             throw error
         } catch (error: Throwable) {
-            emit(SearchResult.Error(error))
-            return@flow
-        }
+            if (fallbackBookIds.isEmpty()) {
+                emit(SearchResult.Error(error))
+                return@flow
+            }
+            fallbackBookIds
+        }.filter(String::isNotBlank).distinct()
         if (bookIds.isEmpty()) {
             emit(SearchResult.Empty())
             return@flow
