@@ -15,6 +15,8 @@ import io.nightfish.lightnovelreader.api.error.WebRequestError
 interface ScrollContentUiState: ContentUiState {
     val lazyListState: LazyListState
     val contentList: List<Pair<String, Result<ChapterContentUiState, WebRequestError>>?>
+    val retryingChapterIds: Set<String>
+    val retryChapter: (Int, String) -> Unit
     val setLazyColumnSize: (IntSize) -> Unit
     val writeProgressRightNow: () -> Unit
     override val readingChapterContent: Result<ChapterContentUiState, WebRequestError>?
@@ -25,6 +27,7 @@ class MutableScrollContentUiSate(
     override val loadNextChapter: () -> Unit,
     override val loadPrevChapter: () -> Unit,
     override val changeChapter: (String) -> Unit,
+    override val retryChapter: (Int, String) -> Unit,
     override val setLazyColumnSize: (IntSize) -> Unit,
     override val writeProgressRightNow: () -> Unit
 ) : ScrollContentUiState {
@@ -33,4 +36,5 @@ class MutableScrollContentUiSate(
     override var lazyListState: LazyListState by mutableStateOf(LazyListState())
     override var readingChapterId: String? by mutableStateOf(null)
     override val contentList = mutableStateListOf<Pair<String, Result<ChapterContentUiState, WebRequestError>>?>(null, null, null)
+    override var retryingChapterIds: Set<String> by mutableStateOf(emptySet())
 }

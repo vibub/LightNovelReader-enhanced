@@ -288,20 +288,25 @@ fun ScrollContentTextComponent(
                     uiState.contentList.getOrNull(index - 1)?.second?.get()?.let {
                         if (!it.hasNextChapter()) return@itemsIndexed
                     }
-                    result?.onOk {
-                        TextContent(
-                            modifier = modifier,
-                            settingState = settingState,
-                            content = it,
-                            bookId = bookId,
-                            nextChapterTitle = chapterTitleById[it.nextChapter],
-                            onClickChapterComments = onClickChapterComments
-                        )
-                    }?.onErr { error ->
-                        ChapterContentError(error) {
-                            pair?.first?.let(uiState.changeChapter)
-                        }
-                    } ?: ChapterContentLoading()
+                    val chapterId = pair?.first
+                    if (chapterId != null && chapterId in uiState.retryingChapterIds) {
+                        ChapterContentLoading()
+                    } else {
+                        result?.onOk {
+                            TextContent(
+                                modifier = modifier,
+                                settingState = settingState,
+                                content = it,
+                                bookId = bookId,
+                                nextChapterTitle = chapterTitleById[it.nextChapter],
+                                onClickChapterComments = onClickChapterComments
+                            )
+                        }?.onErr { error ->
+                            ChapterContentError(error) {
+                                chapterId?.let { uiState.retryChapter(index, it) }
+                            }
+                        } ?: ChapterContentLoading()
+                    }
                 }
             }
         }

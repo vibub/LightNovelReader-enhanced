@@ -46,6 +46,7 @@ class ScrollContentViewModel(
         loadPrevChapter = ::loadPrevChapter,
         loadNextChapter = ::loadNextChapter,
         changeChapter = { changeChapter(it) },
+        retryChapter = ::retryChapter,
         setLazyColumnSize = { size ->
             if (lazyColumnSize.width > 0 && lazyColumnSize.width != size.width) {
                 imageHeightPreloadedKeys.clear()
@@ -78,14 +79,20 @@ class ScrollContentViewModel(
             }
         }
         coroutineScope.launch(Dispatchers.Main) {
-            snapshotFlow { uiState.lazyListState.firstVisibleItemScrollOffset }
+            snapshotFlow {
+                val chapterId = uiState.readingChapterId
+                val item = chapterId?.let { id ->
+                    uiState.lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == id }
+                }
+                Triple(chapterId, item?.offset, item?.size)
+            }
                 .throttleLatest(120L)
-                .collect {
-                    val layoutInfo = uiState.lazyListState.layoutInfo
-                    val chapterId = uiState.readingChapterId ?: return@collect
-                    val item = layoutInfo.visibleItemsInfo.firstOrNull { it.key == chapterId } ?: return@collect
+                .collect { (chapterId, itemOffset, itemSize) ->
+                    chapterId ?: return@collect
+                    itemOffset ?: return@collect
+                    itemSize ?: return@collect
 
-                    val newProgress = calculateReadingProgress(item.offset, item.size)
+                    val newProgress = calculateReadingProgress(itemOffset, itemSize)
                     if (newProgress == uiState.readingProgress) return@collect
                     uiState.readingProgress = newProgress
 
@@ -172,11 +179,18 @@ class ScrollContentViewModel(
     private fun progressScrollLoad() {
         progressScrollLoadJob?.cancel()
         progressScrollLoadJob = coroutineScope.launch {
-            snapshotFlow { uiState.lazyListState.layoutInfo.visibleItemsInfo.getOrNull(0) }.collect { itemInfo ->
+            snapshotFlow {
+                Triple(
+                    uiState.lazyListState.layoutInfo.visibleItemsInfo.getOrNull(0),
+                    uiState.contentList.getOrNull(0)?.second?.get() != null,
+                    uiState.contentList.getOrNull(2)?.second?.get() != null
+                )
+            }.collect { (itemInfo, isPrevChapterLoaded, isNextChapterLoaded) ->
                 uiState.readingChapterContent?.onOk { readingChapterContent ->
                     if (
                         itemInfo != null &&
                         itemInfo.key == readingChapterContent.prevChapter &&
+                        isPrevChapterLoaded &&
                         lazyColumnSize.height != 0 &&
                         itemInfo.offset <= -lazyColumnSize.height &&
                         readingChapterContent.hasPrevChapter()
@@ -205,6 +219,7 @@ class ScrollContentViewModel(
                     if (
                         itemInfo != null &&
                         itemInfo.key == readingChapterContent.nextChapter &&
+                        isNextChapterLoaded &&
                         readingChapterContent.hasNextChapter()
                     ) {
                         collectNextChapterJob?.cancel()
@@ -238,6 +253,7 @@ class ScrollContentViewModel(
             imageHeightPreloadedKeys.clear()
             collectingPrevChapterId = null
             collectingNextChapterId = null
+            uiState.retryingChapterIds = emptySet()
         }
         uiState.bookId = id
     }
@@ -273,7 +289,47 @@ class ScrollContentViewModel(
         uiState.contentList.add(null)
     }
 
+    private fun setChapterRetrying(chapterId: String, retrying: Boolean) {
+        uiState.retryingChapterIds = if (retrying) {
+            uiState.retryingChapterIds + chapterId
+        } else {
+            uiState.retryingChapterIds - chapterId
+        }
+    }
+
+    private fun retryChapter(index: Int, chapterId: String) {
+        if (uiState.contentList.getOrNull(index)?.first != chapterId) return
+        if (index == 1 && uiState.contentList[0] == null && uiState.contentList[2] == null) {
+            changeChapter(chapterId)
+            return
+        }
+
+        when (index) {
+            0 -> {
+                collectPrevChapterJob?.cancel()
+                collectingPrevChapterId = chapterId
+                setChapterRetrying(chapterId, true)
+                collectPrevChapterJob = collectChapter(0, chapterId)
+            }
+            1 -> {
+                collectCurrentChapterJob?.cancel()
+                setChapterRetrying(chapterId, true)
+                collectCurrentChapterJob = collectChapter(1, chapterId) { chapterContent ->
+                    updateAdjacentChapterCollectors(chapterContent)
+                    updateLastReadChapter(chapterContent.id, chapterContent.title)
+                }
+            }
+            2 -> {
+                collectNextChapterJob?.cancel()
+                collectingNextChapterId = chapterId
+                setChapterRetrying(chapterId, true)
+                collectNextChapterJob = collectChapter(2, chapterId)
+            }
+        }
+    }
+
     override fun changeChapter(id: String, restoreProgress: Boolean) {
+        uiState.retryingChapterIds = emptySet()
         resetContentList()
         uiState.readingChapterId = id
         uiState.readingProgress = 0f
@@ -358,6 +414,7 @@ class ScrollContentViewModel(
             bookRepository.getChapterContentFlow(chapterId, uiState.bookId)
                 .collect { content ->
                     val loadedContent = content.get()?.toUiState()
+                    setChapterRetrying(chapterId, false)
                     uiState.contentList[index] = chapterId to content.map { loadedContent!! }
                     loadedContent?.let { onLoaded(it) }
                 }
@@ -387,6 +444,7 @@ class ScrollContentViewModel(
             ?.takeIf { it != nextChapterId }
         if (collectingPrevChapterId != validPrevChapterId) {
             collectPrevChapterJob?.cancel()
+            collectingPrevChapterId?.let { setChapterRetrying(it, false) }
             collectingPrevChapterId = validPrevChapterId
             collectPrevChapterJob = if (validPrevChapterId == null) {
                 uiState.contentList[0] = null
@@ -401,6 +459,7 @@ class ScrollContentViewModel(
             ?.takeIf { it != prevChapterId }
         if (collectingNextChapterId != validNextChapterId) {
             collectNextChapterJob?.cancel()
+            collectingNextChapterId?.let { setChapterRetrying(it, false) }
             collectingNextChapterId = validNextChapterId
             collectNextChapterJob = if (validNextChapterId == null) {
                 uiState.contentList[2] = null
