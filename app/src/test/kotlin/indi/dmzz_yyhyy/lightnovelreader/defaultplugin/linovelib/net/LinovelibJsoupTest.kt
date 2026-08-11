@@ -29,6 +29,22 @@ class LinovelibJsoupTest {
     }
 
     @Test
+    fun sanitizeRequestCookieRemovesWebViewBoundCloudflareCookies() {
+        assertEquals(
+            "PHPSESSID=session; jieqiUserInfo=user",
+            sanitizeLinovelibRequestCookie(
+                "cf_clearance=clearance; PHPSESSID=session; __cf_bm=bot; " +
+                    "cf_chl_2=challenge; _cfuvid=visitor; jieqiUserInfo=user"
+            )
+        )
+    }
+
+    @Test
+    fun sanitizeRequestCookieDropsBlankAndMalformedEntries() {
+        assertEquals("token=value", sanitizeLinovelibRequestCookie(" ; malformed; token=value; "))
+    }
+
+    @Test
     fun parseRetryAfterMillisSupportsSeconds() {
         assertEquals(60_000L, LinovelibJsoup.parseRetryAfterMillis("60", nowMillis = 0L))
     }

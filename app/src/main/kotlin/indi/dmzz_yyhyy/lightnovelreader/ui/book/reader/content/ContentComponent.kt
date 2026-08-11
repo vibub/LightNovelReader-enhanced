@@ -1,9 +1,23 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import com.github.michaelbull.result.get
+import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ChapterEndContext
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip.FlipPageContentComponent
@@ -64,7 +78,37 @@ fun ChapterContentLoading() {
 
 @Composable
 fun ChapterContentError(
-    error: WebRequestError
+    error: WebRequestError,
+    onRetry: () -> Unit
 ) {
-    //TODO 错误显示
+    Surface(
+        modifier = Modifier
+            .fillMaxSize()
+            .defaultMinSize(minHeight = 240.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(
+                space = 12.dp,
+                alignment = Alignment.CenterVertically
+            ),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = error.title,
+                style = MaterialTheme.typography.titleMedium,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = error.message,
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center
+            )
+            Button(onClick = onRetry) {
+                Text(stringResource(R.string.retry))
+            }
+        }
+    }
 }

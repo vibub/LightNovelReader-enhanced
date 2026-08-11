@@ -8,6 +8,7 @@ import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
+import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.map
@@ -27,12 +28,15 @@ import io.nightfish.lightnovelreader.api.book.ChapterContent
 import io.nightfish.lightnovelreader.api.book.UserReadingData
 import io.nightfish.lightnovelreader.api.error.WebRequestError
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonArray
+import kotlin.time.Duration.Companion.seconds
 import java.time.LocalDateTime
 import java.util.UUID
 import javax.inject.Inject
@@ -117,6 +121,7 @@ class BookRepository @Inject constructor(
     companion object {
         private const val TAG = "BookRepository"
         private const val CHAPTER_REMOTE_REFRESH_TTL_MILLIS = 10 * 60 * 1000L
+        private val CHAPTER_REMOTE_TIMEOUT = 60.seconds
     }
 
     private val chapterRefreshLock = Any()
@@ -211,14 +216,34 @@ class BookRepository @Inject constructor(
         if (!shouldRequestRemoteChapter(local != null, isChapterRecentlyFetched(sourceId, bookId, chapterId))) {
             return@flow
         }
-        val remote = webBookDataSource.getChapterContent(chapterId, bookId, priority)
-            .onOk { remote ->
-                localBookDataSource.updateChapterContent(sourceId, bookId, remote)
-                markChapterRemoteFetched(sourceId, bookId, chapterId)
-            }.onErr {
-                Log.e(TAG, "Failed to request web data (title=${it.title}, message=${it.message})")
-                it.throwable?.printStackTrace()
+        // 远程章节调用需要保证有界：代理合并层或数据源挂起时，超时兜底确保流必然产出终态，
+        // 避免阅读器对无缓存章节永久显示加载。
+        val remote = try {
+            withTimeoutOrNull(CHAPTER_REMOTE_TIMEOUT) {
+                webBookDataSource.getChapterContent(chapterId, bookId, priority)
             }
+        } catch (throwable: Throwable) {
+            if (throwable is CancellationException) throw throwable
+            Err(
+                WebRequestError(
+                    title = "章节加载失败",
+                    message = "无法获取章节 $chapterId",
+                    throwable = throwable
+                )
+            )
+        } ?: Err(
+            WebRequestError(
+                title = "章节加载超时",
+                message = "章节 $chapterId 加载超时，请重试"
+            )
+        )
+        remote.onOk {
+            localBookDataSource.updateChapterContent(sourceId, bookId, it)
+            markChapterRemoteFetched(sourceId, bookId, chapterId)
+        }.onErr {
+            Log.e(TAG, "Failed to request web data (title=${it.title}, message=${it.message})")
+            it.throwable?.printStackTrace()
+        }
         if (shouldEmitRemoteResult(local != null, remote)) emit(remote)
     }.map { result ->
         result.map {

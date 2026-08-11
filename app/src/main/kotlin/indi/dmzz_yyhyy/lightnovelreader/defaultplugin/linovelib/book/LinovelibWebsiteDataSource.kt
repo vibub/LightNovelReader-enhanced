@@ -30,48 +30,17 @@ class LinovelibWebsiteDataSource(
 ) {
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-M-d")
 
-    @Volatile
-    private var preferMobileMetadataUntilMillis = 0L
-
     suspend fun getBookInformation(id: String): BookInformation {
         val bookId = id.normalizeBookId()
         require(bookId.isNotBlank()) { "Invalid Linovelib book id: $id" }
-        if (System.currentTimeMillis() < preferMobileMetadataUntilMillis) {
-            return getMobileBookInformation(bookId)
-        }
-        return try {
-            parseBookInformation(
-                bookId = bookId,
-                document = jsoup.getDocument(
-                    url = LinovelibConstants.detailUrl(bookId),
-                    retryTime = 0,
-                    coolDownOnCloudflare = false
-                )
-            )
-        } catch (throwable: Throwable) {
-            if (throwable is CancellationException) throw throwable
-            preferMobileMetadataUntilMillis =
-                System.currentTimeMillis() + MOBILE_METADATA_FALLBACK_MILLIS
-            try {
-                getMobileBookInformation(bookId)
-            } catch (mobileThrowable: Throwable) {
-                if (mobileThrowable is CancellationException) throw mobileThrowable
-                mobileThrowable.addSuppressed(throwable)
-                throw mobileThrowable
-            }
-        }
-    }
-
-    private suspend fun getMobileBookInformation(bookId: String): BookInformation =
-        parseBookInformation(
+        return parseBookInformation(
             bookId = bookId,
             document = jsoup.getDocument(
-                url = LinovelibConstants.mobileDetailUrl(bookId),
-                referer = LinovelibConstants.MOBILE_BASE_URL,
-                retryTime = 1,
-                userAgentMode = LinovelibJsoup.UserAgentMode.Mobile
+                url = LinovelibConstants.detailUrl(bookId),
+                retryTime = 2
             )
         )
+    }
 
     private fun parseBookInformation(bookId: String, document: Document): BookInformation {
         if (document.text().contains("作品已下架") || document.title().contains("404")) {
@@ -140,45 +109,16 @@ class LinovelibWebsiteDataSource(
     suspend fun getBookVolumes(id: String): BookVolumes {
         val bookId = id.normalizeBookId()
         require(bookId.isNotBlank()) { "Invalid Linovelib book id: $id" }
-        if (System.currentTimeMillis() < preferMobileMetadataUntilMillis) {
-            return getMobileBookVolumes(bookId)
-        }
-        return try {
-            parseBookVolumes(
-                bookId = bookId,
-                document = jsoup.getDocument(
-                    url = LinovelibConstants.catalogUrl(bookId),
-                    referer = LinovelibConstants.detailUrl(bookId),
-                    retryTime = 0,
-                    coolDownOnCloudflare = false
-                ),
-                useMobile = false
-            )
-        } catch (throwable: Throwable) {
-            if (throwable is CancellationException) throw throwable
-            preferMobileMetadataUntilMillis =
-                System.currentTimeMillis() + MOBILE_METADATA_FALLBACK_MILLIS
-            try {
-                getMobileBookVolumes(bookId)
-            } catch (mobileThrowable: Throwable) {
-                if (mobileThrowable is CancellationException) throw mobileThrowable
-                mobileThrowable.addSuppressed(throwable)
-                throw mobileThrowable
-            }
-        }
-    }
-
-    private suspend fun getMobileBookVolumes(bookId: String): BookVolumes =
-        parseBookVolumes(
+        return parseBookVolumes(
             bookId = bookId,
             document = jsoup.getDocument(
-                url = LinovelibConstants.mobileCatalogUrl(bookId),
-                referer = LinovelibConstants.mobileDetailUrl(bookId),
-                retryTime = 1,
-                userAgentMode = LinovelibJsoup.UserAgentMode.Mobile
+                url = LinovelibConstants.catalogUrl(bookId),
+                referer = LinovelibConstants.detailUrl(bookId),
+                retryTime = 2
             ),
-            useMobile = true
+            useMobile = false
         )
+    }
 
     private suspend fun parseBookVolumes(
         bookId: String,
@@ -205,26 +145,12 @@ class LinovelibWebsiteDataSource(
         require(normalizedBookId.isNotBlank() && normalizedChapterId.isNotBlank()) {
             "Invalid Linovelib chapter id: $bookId/$chapterId"
         }
-        return try {
-            getChapterContentFromSite(
-                bookId = normalizedBookId,
-                chapterId = normalizedChapterId,
-                useMobile = false
-            )
-        } catch (throwable: Throwable) {
-            if (throwable is CancellationException) throw throwable
-            try {
-                getChapterContentFromSite(
-                    bookId = normalizedBookId,
-                    chapterId = normalizedChapterId,
-                    useMobile = true
-                )
-            } catch (mobileThrowable: Throwable) {
-                if (mobileThrowable is CancellationException) throw mobileThrowable
-                mobileThrowable.addSuppressed(throwable)
-                throw mobileThrowable
-            }
-        }
+        // 移动端正文依赖 JavaScript 动态加载，Jsoup 只能取得“内容加载失败”占位页。
+        return getChapterContentFromSite(
+            bookId = normalizedBookId,
+            chapterId = normalizedChapterId,
+            useMobile = false
+        )
     }
 
     private suspend fun getChapterContentFromSite(
@@ -255,7 +181,7 @@ class LinovelibWebsiteDataSource(
                 bookId = normalizedBookId,
                 chapterId = currentPageChapterId,
                 useMobile = useMobile,
-                retryTime = if (page == 1) 0 else 1
+                retryTime = if (page == 1) 2 else 1
             )
             if (document.hasIncompleteLinovelibChapterContent()) {
                 error("Linovelib chapter $normalizedBookId/$normalizedChapterId page $currentPageChapterId is incomplete")
@@ -432,8 +358,7 @@ class LinovelibWebsiteDataSource(
             LinovelibJsoup.UserAgentMode.Mobile
         } else {
             LinovelibJsoup.UserAgentMode.Desktop
-        },
-        coolDownOnCloudflare = useMobile
+        }
     )
 
     private suspend fun resolveMissingCatalogChapterId(
@@ -704,7 +629,6 @@ class LinovelibWebsiteDataSource(
 
     companion object {
         private const val MAX_CHAPTER_PAGE = 30
-        private const val MOBILE_METADATA_FALLBACK_MILLIS = 10 * 60 * 1000L
         private val JAVASCRIPT_CID_REGEX = Regex(
             """^javascript:\s*cid\(\d+\)""",
             RegexOption.IGNORE_CASE

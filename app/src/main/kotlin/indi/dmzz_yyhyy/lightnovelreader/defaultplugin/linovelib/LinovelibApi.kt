@@ -1,5 +1,7 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib
 
+import com.github.michaelbull.result.Err
+import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.runCatching as runCatchingResult
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.account.LinovelibAccountStore
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book.LinovelibWebsiteDataSource
@@ -7,6 +9,7 @@ import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.explore.Linoveli
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibBlockedException
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibJsoup
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.search.LinovelibSearchProvider
+import io.nightfish.lightnovelreader.api.error.WebRequestError
 import io.nightfish.lightnovelreader.api.error.mapAsWebRequestError
 import io.nightfish.lightnovelreader.api.userdata.UserDataRepositoryApi
 import io.nightfish.lightnovelreader.api.util.Cache
@@ -14,8 +17,13 @@ import io.nightfish.lightnovelreader.api.web.WebBookDataSource
 import io.nightfish.lightnovelreader.api.web.WebDataSource
 import io.nightfish.lightnovelreader.api.web.explore.ExplorePageProvider
 import io.nightfish.lightnovelreader.api.web.search.SearchProvider
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration.Companion.seconds
+
+private val CHAPTER_CONTENT_TIMEOUT = 60.seconds
 
 @WebDataSource(
     name = "Linovelib",
@@ -34,7 +42,8 @@ class LinovelibApi(
         maxCountEachType = 50,
         timeout = 2 * 60 * 60 * 1000
     )
-    override val permits: Int = 1
+    // 实际 HTTP 请求由 LinovelibRateLimiter 串行；这里不再用少量槽位串行整个数据源方法。
+    override val permits: Int = 64
 
     override val offLine: Boolean
         get() = mutableOffline.value
@@ -76,10 +85,28 @@ class LinovelibApi(
         message = "无法获取书籍 $id 的目录"
     )
 
-    override suspend fun getChapterContent(chapterId: String, bookId: String) = runCatchingResult {
-        websiteDataSource.getChapterContent(chapterId, bookId)
-    }.mapAsWebRequestError(
-        title = "Linovelib 章节请求失败",
-        message = "无法获取章节 $chapterId"
-    )
+    override suspend fun getChapterContent(chapterId: String, bookId: String) = try {
+        val content = withTimeoutOrNull(CHAPTER_CONTENT_TIMEOUT) {
+            websiteDataSource.getChapterContent(chapterId, bookId)
+        }
+        if (content == null) {
+            Err(
+                WebRequestError(
+                    title = "Linovelib 章节请求超时",
+                    message = "章节 $chapterId 加载超时，请重试"
+                )
+            )
+        } else {
+            Ok(content)
+        }
+    } catch (throwable: Throwable) {
+        if (throwable is CancellationException) throw throwable
+        Err(
+            WebRequestError(
+                title = "Linovelib 章节请求失败",
+                message = "无法获取章节 $chapterId",
+                throwable = throwable
+            )
+        )
+    }
 }

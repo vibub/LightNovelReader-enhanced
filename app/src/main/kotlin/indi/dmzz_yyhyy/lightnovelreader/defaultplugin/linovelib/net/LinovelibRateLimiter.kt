@@ -13,7 +13,6 @@ internal object LinovelibRateLimiter {
     private const val REQUEST_JITTER_MILLIS = 700L
     private const val MAX_COOLDOWN_MILLIS = 5 * 60 * 1000L
     const val DEFAULT_RATE_LIMIT_COOLDOWN_MILLIS = 60 * 1000L
-    const val CLOUDFLARE_COOLDOWN_MILLIS = 3 * 60 * 1000L
 
     private val semaphore = Semaphore(1)
     private val lock = Any()

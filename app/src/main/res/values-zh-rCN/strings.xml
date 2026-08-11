@@ -16,6 +16,7 @@
     <string name="cancel">取消</string>
     <string name="apply">应用</string>
     <string name="confirm">确定</string>
+    <string name="retry">重试</string>
     <string name="done">完成</string>
     <string name="next">下一步</string>
     <string name="abort">中止</string>

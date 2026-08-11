@@ -297,8 +297,10 @@ fun ScrollContentTextComponent(
                             nextChapterTitle = chapterTitleById[it.nextChapter],
                             onClickChapterComments = onClickChapterComments
                         )
-                    }?.onErr {
-                        ChapterContentError(it)
+                    }?.onErr { error ->
+                        ChapterContentError(error) {
+                            pair?.first?.let(uiState.changeChapter)
+                        }
                     } ?: ChapterContentLoading()
                 }
             }

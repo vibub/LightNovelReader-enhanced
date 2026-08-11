@@ -46,16 +46,14 @@ class LinovelibJsoup(
         referer: String = LinovelibConstants.BASE_URL,
         useCookie: Boolean = true,
         retryTime: Int = 2,
-        userAgentMode: UserAgentMode = UserAgentMode.Desktop,
-        coolDownOnCloudflare: Boolean = true
+        userAgentMode: UserAgentMode = UserAgentMode.Desktop
     ): Document = fetch(
         url = url,
         referer = referer,
         accept = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         useCookie = useCookie,
         retryTime = retryTime,
-        userAgentMode = userAgentMode,
-        coolDownOnCloudflare = coolDownOnCloudflare
+        userAgentMode = userAgentMode
     ).let { body ->
         Jsoup.parse(body, url).apply {
             outputSettings().prettyPrint(false)
@@ -75,8 +73,7 @@ class LinovelibJsoup(
         accept = accept,
         useCookie = useCookie,
         retryTime = retryTime,
-        userAgentMode = userAgentMode,
-        coolDownOnCloudflare = true
+        userAgentMode = userAgentMode
     )
 
     suspend fun postFormRaw(
@@ -94,7 +91,6 @@ class LinovelibJsoup(
         useCookie = useCookie,
         retryTime = retryTime,
         userAgentMode = userAgentMode,
-        coolDownOnCloudflare = true,
         method = Connection.Method.POST,
         formData = formData,
         extraHeaders = mapOf(
@@ -114,9 +110,10 @@ class LinovelibJsoup(
         put("Referer", referer)
         put("Cache-Control", "no-cache")
         if (useCookie) {
-            accountStore?.getCookie()?.takeIf { it.isNotBlank() }?.let {
-                put("Cookie", it)
-            }
+            accountStore?.getCookie()
+                ?.let(::sanitizeLinovelibRequestCookie)
+                ?.takeIf { it.isNotBlank() }
+                ?.let { put("Cookie", it) }
         }
     }
 
@@ -132,7 +129,6 @@ class LinovelibJsoup(
         useCookie: Boolean,
         retryTime: Int,
         userAgentMode: UserAgentMode,
-        coolDownOnCloudflare: Boolean,
         method: Connection.Method = Connection.Method.GET,
         formData: Map<String, String> = emptyMap(),
         extraHeaders: Map<String, String> = emptyMap()
@@ -167,12 +163,6 @@ class LinovelibJsoup(
                         throw LinovelibHttpException(statusCode, url, retryAfterMillis)
                     }
                     if (isCloudflareBlocked(statusCode, body)) {
-                        if (coolDownOnCloudflare) {
-                            LinovelibRateLimiter.coolDown(
-                                reason = "Cloudflare blocked $url",
-                                delayMillis = LinovelibRateLimiter.CLOUDFLARE_COOLDOWN_MILLIS
-                            )
-                        }
                         throw LinovelibBlockedException("Linovelib request was blocked by Cloudflare: $url")
                     }
                     if (statusCode !in 200..299) throw LinovelibHttpException(statusCode, url)
@@ -289,3 +279,13 @@ class LinovelibJsoup(
         }
     }
 }
+
+internal fun sanitizeLinovelibRequestCookie(cookie: String): String = cookie
+    .split(';')
+    .map(String::trim)
+    .filter { it.isNotBlank() && '=' in it }
+    .filterNot { value ->
+        val name = value.substringBefore('=').trim().lowercase()
+        name.startsWith("cf_") || name.startsWith("__cf") || name == "_cfuvid"
+    }
+    .joinToString("; ")

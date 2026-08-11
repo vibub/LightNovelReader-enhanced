@@ -26,8 +26,7 @@ class LinovelibExplorePageProvider(
                     url = LinovelibConstants.BASE_URL,
                     referer = LinovelibConstants.BASE_URL,
                     retryTime = 0,
-                    userAgentMode = LinovelibJsoup.UserAgentMode.Desktop,
-                    coolDownOnCloudflare = false
+                    userAgentMode = LinovelibJsoup.UserAgentMode.Desktop
                 )
             )
         },

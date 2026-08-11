@@ -16,6 +16,7 @@
     <string name="cancel">Отмена</string>
     <string name="apply">Применить</string>
     <string name="confirm">Confirm</string>
+    <string name="retry">Повторить</string>
     <string name="done">Done</string>
     <string name="next">Next</string>
     <string name="abort">Abort</string>

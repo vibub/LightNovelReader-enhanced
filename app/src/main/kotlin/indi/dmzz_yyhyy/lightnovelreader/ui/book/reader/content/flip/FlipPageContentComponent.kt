@@ -93,8 +93,10 @@ fun FlipPageContentComponent(
             nextChapterTitle = nextChapterTitle,
             onClickChapterComments = onClickChapterComments
         )
-    }?.onErr {
-        ChapterContentError(it)
+    }?.onErr { error ->
+        ChapterContentError(error) {
+            uiState.readingChapterId?.let(uiState.changeChapter)
+        }
     } ?: ChapterContentLoading()
 }
 
