@@ -21,9 +21,10 @@ import org.jsoup.nodes.Document
 
 class LinovelibExplorePageProvider internal constructor(
     private val homepageLoader: LinovelibExploreHomepageLoader,
-    private val loadPublishingHouseDocument: suspend (String) -> Document,
+    loadFilterDocument: suspend (String) -> Document,
     private val authorResolver: LinovelibExploreAuthorResolver = LinovelibExploreAuthorResolver { "" }
 ) : AbstractDefaultExplorePageProvider() {
+    private val filterPageCache = LinovelibFilterPageCache(loadFilterDocument)
     constructor(
         jsoup: LinovelibJsoup,
         websiteDataSource: LinovelibWebsiteDataSource
@@ -50,12 +51,12 @@ class LinovelibExplorePageProvider internal constructor(
                 )
             }
         ),
-        loadPublishingHouseDocument = { url ->
+        loadFilterDocument = { url ->
             jsoup.getDocument(
                 url = url,
-                referer = LinovelibConstants.BASE_URL,
+                referer = LinovelibConstants.FILTER_BASE_URL,
                 retryTime = 0,
-                userAgentMode = LinovelibJsoup.UserAgentMode.Desktop
+                userAgentMode = LinovelibJsoup.UserAgentMode.Mobile
             )
         },
         authorResolver = LinovelibExploreAuthorResolver { bookId ->
@@ -82,11 +83,9 @@ class LinovelibExplorePageProvider internal constructor(
         publishingHouses.forEach { publishingHouse ->
             registerExpandedPageDataSource(
                 id = publishingHouse.expandedPageDataSourceId,
-                exploreExpandedPageDataSource = LinovelibPublishingHousePageDataSource(
-                    title = publishingHouse.title,
-                    pageUrl = publishingHouse.pageUrl,
-                    fallbackBookIds = publishingHouse.books.map { it.id },
-                    loadDocument = loadPublishingHouseDocument
+                exploreExpandedPageDataSource = LinovelibFilterPageDataSource(
+                    initialPublishingHouse = publishingHouse.title,
+                    pageCache = filterPageCache
                 )
             )
         }

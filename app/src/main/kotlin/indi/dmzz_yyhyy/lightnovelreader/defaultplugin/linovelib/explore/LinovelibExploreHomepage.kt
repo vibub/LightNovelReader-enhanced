@@ -36,7 +36,6 @@ internal enum class LinovelibExploreSection(
 internal data class LinovelibExplorePublishingHouse(
     val id: String,
     val title: String,
-    val pageUrl: String,
     val books: List<LinovelibWebsiteDataSource.LinovelibExploreBook>
 ) {
     val expandedPageDataSourceId: String = "linovelib-wenku-$id"
@@ -200,7 +199,6 @@ private fun Element?.parseExplorePublishingHouses(): List<LinovelibExplorePublis
         LinovelibExplorePublishingHouse(
             id = id,
             title = title,
-            pageUrl = "${LinovelibConstants.BASE_URL}/wenku/$id/1.html",
             books = books
         )
     }

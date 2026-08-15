@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <title>轻小说文库筛选</title>
+</head>
+<body>
+<main id="content">
+    <aside id="asideFilter" class="aside">
+        <div class="module module-filter-list">
+            <ul id="filters" class="sort-ul">
+                <li class="sort-li jsFilter">
+                    <h3 class="sort-li-title">文库地区</h3>
+                    <div class="sort-li-detail">
+                        <a href="javascript:" class="btn-tag jsTag" data-filter-type="rgroupid" data-filter-value="0">不限</a>
+                        <a href="javascript:" class="btn-tag jsTag active" data-filter-type="rgroupid" data-filter-value="1"><strong>日本轻小说</strong></a>
+                        <a href="javascript:" class="btn-tag jsTag" data-filter-type="rgroupid" data-filter-value="2">华文轻小说</a>
+                        <!--
+                        <div class="sortbox">
+                            <a href="javascript:" class="btn-tag jsTag" data-filter-rgroup="1" data-filter-type="sortid" data-filter-value="1">电击文库</a>
+                            <a href="javascript:" class="btn-tag jsTag" data-filter-rgroup="1" data-filter-type="sortid" data-filter-value="2">富士见文库</a>
+                            <a href="javascript:" class="btn-tag jsTag" data-filter-rgroup="1" data-filter-type="sortid" data-filter-value="4">MF文库J</a>
+                        </div>
+                        -->
+                    </div>
+                </li>
+                <li class="sort-li jsFilter">
+                    <h3 class="sort-li-title">作品主题<small>(支持多选，最多4个)</small></h3>
+                    <div class="sort-li-detail">
+                        <a href="javascript:" class="btn-tag jsTag active" data-filter-type="tagid" data-filter-value="0">不限</a>
+                        <a href="javascript:" class="btn-tag jsTag" data-filter-type="tagid" data-filter-value="64">恋爱</a>
+                        <a href="javascript:" class="btn-tag jsTag" data-filter-type="tagid" data-filter-value="48">后宫</a>
+                        <a href="javascript:" class="btn-tag jsTag" data-filter-type="tagid" data-filter-value="63">校园</a>
+                        <a href="javascript:" class="btn-tag jsTag" data-filter-type="tagid" data-filter-value="27">百合</a>
+                        <a href="javascript:" class="btn-tag jsTag" data-filter-type="tagid" data-filter-value="26">转生</a>
+                    </div>
+                </li>
+                <li class="sort-li jsFilter">
+                    <h3 class="sort-li-title">排序方式</h3>
+                    <div class="sort-li-detail">
+                        <a href="javascript:" class="btn-tag jsTag" data-filter-type="order" data-filter-value="weekvisit">周点击</a>
+                        <a href="javascript:" class="btn-tag jsTag active" data-filter-type="order" data-filter-value="lastupdate">最近更新</a>
+                        <a href="javascript:" class="btn-tag jsTag" data-filter-type="order" data-filter-value="postdate">最新入库</a>
+                    </div>
+                </li>
+                <li class="sort-li jsFilter">
+                    <h3 class="sort-li-title">是否动画</h3>
+                    <div class="sort-li-detail">
+                        <a href="javascript:" class="btn-tag jsTag active" data-filter-type="anime" data-filter-value="0">不限</a>
+                        <a href="javascript:" class="btn-tag jsTag" data-filter-type="anime" data-filter-value="1">已动画化</a>
+                        <a href="javascript:" class="btn-tag jsTag" data-filter-type="anime" data-filter-value="2">未动画化</a>
+                    </div>
+                </li>
+                <li class="sort-li jsFilter">
+                    <h3 class="sort-li-title">作品字数</h3>
+                    <div class="sort-li-detail">
+                        <a href="javascript:" class="btn-tag jsTag active" data-filter-type="words" data-filter-value="0">不限</a>
+                        <a href="javascript:" class="btn-tag jsTag" data-filter-type="words" data-filter-value="1">30万以下</a>
+                        <a href="javascript:" class="btn-tag jsTag" data-filter-type="words" data-filter-value="5">200万以上</a>
+                    </div>
+                </li>
+                <li class="sort-li jsFilter">
+                    <h3 class="sort-li-title">写作状态</h3>
+                    <div class="sort-li-detail">
+                        <a href="javascript:" class="btn-tag jsTag active" data-filter-type="isfull" data-filter-value="0">不限</a>
+                        <a href="javascript:" class="btn-tag jsTag" data-filter-type="isfull" data-filter-value="1">新书上传</a>
+                        <a href="javascript:" class="btn-tag jsTag" data-filter-type="isfull" data-filter-value="5">已经完本</a>
+                    </div>
+                </li>
+                <!--
+                <li class="sort-li jsFilter">
+                    <h3 class="sort-li-title">更新时间</h3>
+                    <a href="javascript:" class="btn-tag jsTag" data-filter-type="update" data-filter-value="0">不限</a>
+                    <a href="javascript:" class="btn-tag jsTag" data-filter-type="update" data-filter-value="1">三日内</a>
+                </li>
+                -->
+            </ul>
+        </div>
+    </aside>
+
+    <ol class="book-ol book-ol-normal cover-mode">
+        <li class="book-li">
+            <a class="book-layout" href="https://www.bilinovel.net/novel/7001.html">
+                <h4 class="book-title">筛选小说一</h4>
+            </a>
+        </li>
+        <li class="book-li">
+            <a class="book-layout" href="https://www.bilinovel.net/novel/7002.html">
+                <h4 class="book-title">筛选小说二</h4>
+            </a>
+            <a href="https://www.bilinovel.net/novel/7002.html">重复链接</a>
+        </li>
+        <li class="book-li">
+            <a class="book-layout" href="https://www.bilinovel.net/novel/7003.html?from=wenku">
+                <h4 class="book-title">筛选小说三</h4>
+            </a>
+        </li>
+    </ol>
+
+    <div id="pagestats">1/3</div>
+    <div class="pagelink">
+        <strong>1</strong>
+        <a href="https://www.bilinovel.net/wenku/lastupdate_0_0_0_1_0_0_0_2_0.html">2</a>
+        <a class="last" href="https://www.bilinovel.net/wenku/lastupdate_0_0_0_1_0_0_0_3_0.html">末页</a>
+    </div>
+</main>
+</body>
+</html>

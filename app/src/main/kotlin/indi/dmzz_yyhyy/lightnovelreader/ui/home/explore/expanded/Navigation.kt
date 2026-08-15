@@ -28,11 +28,15 @@ fun NavGraphBuilder.exploreExpandDestination() {
         ExpandedPageScreen(
             exploreUiState = exploreViewModel.uiState,
             expandedPageUiState = exploreExpandedPageHomeViewModel.uiState,
-            refresh = exploreViewModel::refresh,
+            refresh = {
+                exploreViewModel.refresh()
+                exploreExpandedPageHomeViewModel.refreshCurrentResults()
+            },
             dialog = { newDialog -> dialog = newDialog },
             expandedPageDataSourceId = entry.toRoute<Route.Main.Explore.Expanded>().expandedPageDataSourceId,
             init = exploreExpandedPageHomeViewModel::init,
             loadMore = exploreExpandedPageHomeViewModel::loadMore,
+            retry = exploreExpandedPageHomeViewModel::retry,
             refreshResult = exploreExpandedPageHomeViewModel::loadBookResult,
             requestAddBookToBookshelf = {
                 navController.navigateToAddBookToBookshelfDialog(it)

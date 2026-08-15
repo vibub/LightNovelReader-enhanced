@@ -5,6 +5,7 @@ import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book.LinovelibWe
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibJsoup
 import io.nightfish.lightnovelreader.api.web.search.SearchResult
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.jsoup.Jsoup
@@ -34,33 +35,34 @@ class LinovelibExplorePageProviderTest {
 
     @Test
     fun providerRegistersPublishingHouseExpandedPages() = runBlocking {
-        val publishingHouseDocument = loadPublishingHouseFixture()
+        val filterDocument = loadFilterFixture()
         val provider = LinovelibExplorePageProvider(
             homepageLoader = LinovelibExploreHomepageLoader(
                 loadDesktopSnapshot = { snapshot(emptyMap()) },
                 loadMobileRecommendations = { emptyList() },
                 onError = {}
             ),
-            loadPublishingHouseDocument = { publishingHouseDocument }
+            loadFilterDocument = { filterDocument }
         )
         val publishingHouse = LinovelibExplorePublishingHouse(
             id = "dengekibunko",
             title = "电击文库",
-            pageUrl = "${LinovelibConstants.BASE_URL}/wenku/dengekibunko/1.html",
             books = listOf(book("4"))
         )
 
         provider.registerPublishingHousePages(listOf(publishingHouse))
 
-        val results = provider.exploreExpandedPageDataSourceMap
+        val dataSource = provider.exploreExpandedPageDataSourceMap
             .getValue(publishingHouse.expandedPageDataSourceId)
+        val results = dataSource
             .getResultFlow()
+            .takeWhile { it !is SearchResult.End }
             .toList()
+        assertEquals("筛选", dataSource.title)
         assertEquals(
             listOf("7001", "7002", "7003"),
             results.filterIsInstance<SearchResult.MultipleBook>().map { it.bookId }
         )
-        assertTrue(results.last() is SearchResult.End)
     }
 
     @Test
@@ -210,8 +212,8 @@ class LinovelibExplorePageProviderTest {
             coverUrl = ""
         )
 
-    private fun loadPublishingHouseFixture() = Jsoup.parse(
-        checkNotNull(javaClass.getResource("/linovelib/explore/publishing-house.html")).readText(),
-        LinovelibConstants.BASE_URL
+    private fun loadFilterFixture() = Jsoup.parse(
+        checkNotNull(javaClass.getResource("/linovelib/explore/filter-page.html")).readText(),
+        LinovelibConstants.FILTER_BASE_URL
     )
 }

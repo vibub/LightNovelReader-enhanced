@@ -7,6 +7,8 @@ object LinovelibConstants {
     const val BASE_URL = "https://www.linovelib.com"
     /** 移动端 URL，用于 WebView 浏览、登录、搜索、书架 */
     const val MOBILE_BASE_URL = "https://m.bilinovel.com"
+    /** 文库筛选 URL；桌面地址会触发 Cloudflare，并在浏览器中重定向到该站点 */
+    const val FILTER_BASE_URL = "https://www.bilinovel.net"
     const val SOURCE_NAME = "Linovelib"
     const val SEARCH_BLOCKED_MESSAGE = "Linovelib 搜索入口被 Cloudflare 拦截。请在网页中搜索并点进小说详情页。"
     val SOURCE_ID = Identifier("lightnovelreader", SOURCE_NAME)

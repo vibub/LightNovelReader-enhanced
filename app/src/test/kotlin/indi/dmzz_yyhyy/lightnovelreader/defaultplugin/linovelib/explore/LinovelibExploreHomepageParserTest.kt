@@ -76,16 +76,9 @@ class LinovelibExploreHomepageParserTest {
     }
 
     @Test
-    fun dynamicallyParsesPublishingHousesAndTheirExpandedPageUrls() {
+    fun dynamicallyParsesPublishingHousesAndTheirBooks() {
         assertEquals(listOf("电击文库", "富士见文库"), snapshot.publishingHouses.map { it.title })
         assertEquals(listOf("dengekibunko", "fujimibunko"), snapshot.publishingHouses.map { it.id })
-        assertEquals(
-            listOf(
-                "${LinovelibConstants.BASE_URL}/wenku/dengekibunko/1.html",
-                "${LinovelibConstants.BASE_URL}/wenku/fujimibunko/1.html"
-            ),
-            snapshot.publishingHouses.map { it.pageUrl }
-        )
         assertEquals(
             listOf("3002", "3101"),
             snapshot.publishingHouses.first().books.map { it.id }
