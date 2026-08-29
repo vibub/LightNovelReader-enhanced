@@ -92,6 +92,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -1180,9 +1181,9 @@ fun QuickOperationButton(
     modifier: Modifier = Modifier
 ) {
     Button(
-        contentPadding = PaddingValues(12.dp),
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
         modifier = modifier
-            .height(72.dp)
+            .heightIn(min = 72.dp)
             .fillMaxWidth(),
         colors = ButtonDefaults.buttonColors(
             containerColor = colorScheme.surfaceContainerLow
@@ -1191,6 +1192,7 @@ fun QuickOperationButton(
         onClick = onClick
     ) {
         Column(
+            modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
@@ -1203,8 +1205,9 @@ fun QuickOperationButton(
             Text(
                 text = title,
                 color = colorScheme.primary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                maxLines = 2,
+                overflow = TextOverflow.Clip,
+                textAlign = TextAlign.Center,
             )
         }
     }
