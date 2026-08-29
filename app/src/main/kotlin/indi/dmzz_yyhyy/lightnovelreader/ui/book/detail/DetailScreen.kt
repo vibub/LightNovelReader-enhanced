@@ -57,6 +57,7 @@ import androidx.compose.material3.MaterialTheme.typography
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.Surface
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -279,6 +280,37 @@ fun DetailScreen(
                 }
             }
         },
+        bottomBar = {
+            if (downloadSelectionMode) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding(),
+                    tonalElevation = 3.dp
+                ) {
+                    DownloadSelectionBottomBar(
+                        selectedCount = selectedChapterIds.size,
+                        selectedCachedCount = selectedCachedCount,
+                        totalCount = allChapterIds.size,
+                        forceRefresh = forceRefreshDownload,
+                        onToggleForceRefresh = { forceRefreshDownload = !forceRefreshDownload },
+                        onCancel = {
+                            downloadSelectionMode = false
+                            selectedChapterIds = emptySet()
+                        },
+                        onConfirm = {
+                            if (selectedChapterIds.isNotEmpty()) showDownloadConfirmation = true
+                        },
+                        onSelectAllUnfinished = ::selectAllUnfinishedChapters,
+                        onSelectAll = { selectedChapterIds = allChapterIds.toSet() },
+                        onClearSelection = { selectedChapterIds = emptySet() },
+                        onClearCache = {
+                            if (selectedCachedCount > 0) showClearCacheConfirmation = true
+                        }
+                    )
+                }
+            }
+        },
         contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { innerPadding ->
         Column(
@@ -323,8 +355,6 @@ fun DetailScreen(
                         cacheBook = { _ -> openDownloadSelection() },
                         downloadSelectionMode = downloadSelectionMode,
                         selectedChapterIds = selectedChapterIds,
-                        selectedCachedCount = selectedCachedCount,
-                        forceRefreshDownload = forceRefreshDownload,
                         onToggleChapterSelection = { chapterId ->
                             selectedChapterIds = if (chapterId in selectedChapterIds) {
                                 selectedChapterIds - chapterId
@@ -338,20 +368,6 @@ fun DetailScreen(
                             } else {
                                 selectedChapterIds + chapterIds
                             }
-                        },
-                        onToggleForceRefresh = { forceRefreshDownload = !forceRefreshDownload },
-                        onCancelDownloadSelection = {
-                            downloadSelectionMode = false
-                            selectedChapterIds = emptySet()
-                        },
-                        onConfirmDownloadSelection = {
-                            if (selectedChapterIds.isNotEmpty()) showDownloadConfirmation = true
-                        },
-                        onSelectAllUnfinishedChapters = ::selectAllUnfinishedChapters,
-                        onSelectAllChapters = { selectedChapterIds = allChapterIds.toSet() },
-                        onClearSelection = { selectedChapterIds = emptySet() },
-                        onClearCache = {
-                            if (selectedCachedCount > 0) showClearCacheConfirmation = true
                         },
                         onRetryChapter = onRetryChapter,
                         requestAddBookToBookshelf = requestAddBookToBookshelf,
@@ -620,17 +636,8 @@ private fun DetailContent(
     cacheBook: (String) -> Unit,
     downloadSelectionMode: Boolean,
     selectedChapterIds: Set<String>,
-    selectedCachedCount: Int,
-    forceRefreshDownload: Boolean,
     onToggleChapterSelection: (String) -> Unit,
     onToggleVolumeSelection: (List<String>) -> Unit,
-    onToggleForceRefresh: () -> Unit,
-    onCancelDownloadSelection: () -> Unit,
-    onConfirmDownloadSelection: () -> Unit,
-    onSelectAllUnfinishedChapters: () -> Unit,
-    onSelectAllChapters: () -> Unit,
-    onClearSelection: () -> Unit,
-    onClearCache: () -> Unit,
     onRetryChapter: (String) -> Unit,
     requestAddBookToBookshelf: (String) -> Unit,
     onClickTag: (String) -> Unit,
@@ -721,41 +728,24 @@ private fun DetailContent(
             )
         }
 
-        if (visible >= 5) item {
-            if (downloadSelectionMode) {
-                DownloadSelectionBlock(
-                    modifier = Modifier.fadeInOnce("download-selection"),
-                    selectedCount = selectedChapterIds.size,
-                    selectedCachedCount = selectedCachedCount,
-                    totalCount = totalChapterCount,
-                    forceRefresh = forceRefreshDownload,
-                    onToggleForceRefresh = onToggleForceRefresh,
-                    onCancel = onCancelDownloadSelection,
-                    onConfirm = onConfirmDownloadSelection,
-                    onSelectAllUnfinished = onSelectAllUnfinishedChapters,
-                    onSelectAll = onSelectAllChapters,
-                    onClearSelection = onClearSelection,
-                    onClearCache = onClearCache
+        if (visible >= 5 && !downloadSelectionMode) item {
+            Row(
+                modifier = Modifier
+                    .fadeInOnce("contents")
+                    .padding(horizontal = 18.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.detail_contents),
+                    style = typography.displayMedium,
+                    fontWeight = FontWeight.W600
                 )
-            } else {
-                Row(
-                    modifier = Modifier
-                        .fadeInOnce("contents")
-                        .padding(horizontal = 18.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = stringResource(R.string.detail_contents),
-                        style = typography.displayMedium,
-                        fontWeight = FontWeight.W600
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    SwitchChip(
-                        label = stringResource(R.string.hide_read),
-                        selected = hideReadChapters,
-                        onClick = { hideReadChapters = !hideReadChapters }
-                    )
-                }
+                Spacer(Modifier.width(12.dp))
+                SwitchChip(
+                    label = stringResource(R.string.hide_read),
+                    selected = hideReadChapters,
+                    onClick = { hideReadChapters = !hideReadChapters }
+                )
             }
         }
 
@@ -803,8 +793,8 @@ private fun DetailContent(
 }
 
 @Composable
-private fun DownloadSelectionBlock(
-    modifier: Modifier,
+private fun DownloadSelectionBottomBar(
+    modifier: Modifier = Modifier,
     selectedCount: Int,
     selectedCachedCount: Int,
     totalCount: Int,

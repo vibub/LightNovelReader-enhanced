@@ -35,6 +35,7 @@ import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.ui.LocalNavController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.launch
 
 @SuppressLint("LocalContextGetResourceValueCall")
@@ -78,7 +79,9 @@ fun NavGraphBuilder.bookDetailDestination() {
         fun startCache(chapterIds: List<String>, forceRefresh: Boolean = false) {
             if (chapterIds.isEmpty()) return
             coroutineScope.launch {
-                viewModel.cacheBook(bookId, chapterIds, forceRefresh).collect { workInfo ->
+                viewModel.cacheBook(bookId, chapterIds, forceRefresh)
+                    .distinctUntilChangedBy { it?.state }
+                    .collect { workInfo ->
                     if (workInfo == null) {
                         viewModel.uiState.bookInformation
                             ?.map { it.title }
