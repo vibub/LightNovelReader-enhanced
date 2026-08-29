@@ -19,12 +19,14 @@ import com.github.michaelbull.result.onOk
 import dagger.hilt.android.lifecycle.HiltViewModel
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.download.ChapterDownloadRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadProgressRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadType
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
 import indi.dmzz_yyhyy.lightnovelreader.data.work.ExportBookToEPUBWork
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.sync.LinovelibBookmarkRepository
+import indi.dmzz_yyhyy.lightnovelreader.utils.toLegacyCompatibleSourceId
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -35,6 +37,7 @@ import javax.inject.Inject
 class DetailViewModel @Inject constructor(
     private val bookRepository: BookRepository,
     private val bookshelfRepository: BookshelfRepository,
+    private val chapterDownloadRepository: ChapterDownloadRepository,
     private val downloadProgressRepository: DownloadProgressRepository,
     private val workManager: WorkManager,
     private val linovelibBookmarkRepository: LinovelibBookmarkRepository,
@@ -67,8 +70,29 @@ class DetailViewModel @Inject constructor(
             }
         }
         viewModelScope.launch(Dispatchers.IO) {
-            bookRepository.getBookVolumesFlow(bookId, WebDataSourcePriority.High).collect {
-                _uiState.bookVolumes = it
+            val sourceId = webBookDataSourceProvider.value.id.toLegacyCompatibleSourceId()
+            bookRepository.getBookVolumesFlow(bookId, WebDataSourcePriority.High).collect { result ->
+                _uiState.bookVolumes = result
+                result.component1()?.let { bookVolumes ->
+                    val chapterIds = bookVolumes.volumes
+                        .flatMap { volume -> volume.chapters.map { chapter -> chapter.id } }
+                    chapterDownloadRepository.migrateLegacyCachedChapters(
+                        sourceId = sourceId,
+                        bookId = bookId,
+                        chapterIds = chapterIds
+                    )
+                    _uiState.isCached = chapterDownloadRepository.isBookFullyDownloaded(
+                        sourceId = sourceId,
+                        bookId = bookId,
+                        chapterIds = chapterIds
+                    )
+                }
+            }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val sourceId = webBookDataSourceProvider.value.id.toLegacyCompatibleSourceId()
+            chapterDownloadRepository.getStatesFlow(sourceId, bookId).collect { states ->
+                _uiState.chapterDownloadStates = states
             }
         }
         viewModelScope.launch(Dispatchers.IO) {
@@ -104,17 +128,32 @@ class DetailViewModel @Inject constructor(
         }
     }
 
-    fun cacheBook(bookId: String): Flow<WorkInfo?> {
-        val workRequest = bookRepository.cacheBook(bookId)
+    suspend fun cacheBook(
+        bookId: String,
+        chapterIds: List<String>,
+        forceRefresh: Boolean = false
+    ): Flow<WorkInfo?> {
+        val workRequest = bookRepository.cacheBook(
+            bookId = bookId,
+            chapterIds = chapterIds,
+            forceRefresh = forceRefresh
+        )
         val isCachedFlow = bookRepository.isCacheBookWorkFlow(workRequest.id)
         viewModelScope.launch(Dispatchers.IO) {
             isCachedFlow.collect { workInfo ->
-                if (workInfo?.state == WorkInfo.State.SUCCEEDED) {
+                if (workInfo?.state?.isFinished == true) {
                     _uiState.isCached = bookRepository.getIsBookCached(bookId)
                 }
             }
         }
         return isCachedFlow
+    }
+
+    fun clearCachedChapters(bookId: String, chapterIds: List<String>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            bookRepository.clearCachedChapters(bookId, chapterIds)
+            _uiState.isCached = bookRepository.getIsBookCached(bookId)
+        }
     }
 
     fun onClickTag(tag: String) {

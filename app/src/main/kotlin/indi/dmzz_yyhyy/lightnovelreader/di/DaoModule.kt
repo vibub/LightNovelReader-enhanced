@@ -10,6 +10,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookRecordDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookVolumesDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookshelfDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.ChapterContentDao
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.ChapterDownloadDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.DailyCountDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.FormattingRuleDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.LinovelibChapterBookmarkDao
@@ -34,6 +35,11 @@ object DaoModule {
     @Provides
     fun provideChapterContentDao(db: LightNovelReaderDatabase): ChapterContentDao =
         db.chapterContentDao()
+
+    @Singleton
+    @Provides
+    fun provideChapterDownloadDao(db: LightNovelReaderDatabase): ChapterDownloadDao =
+        db.chapterDownloadDao()
 
     @Singleton
     @Provides

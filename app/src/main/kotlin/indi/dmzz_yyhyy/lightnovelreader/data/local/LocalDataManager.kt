@@ -16,6 +16,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookRecordDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookVolumesDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookshelfDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.ChapterContentDao
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.ChapterDownloadDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.DailyCountDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.FormattingRuleDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.UserDataDao
@@ -41,11 +42,13 @@ class LocalDataManager @Inject constructor(
     private val dailyCountDao: DailyCountDao,
     private val bookshelfDao: BookshelfDao,
     private val chapterContentDao: ChapterContentDao,
+    private val chapterDownloadDao: ChapterDownloadDao,
     private val bookVolumesDao: BookVolumesDao,
     private val formattingRuleDao: FormattingRuleDao,
     private val userReadingDataDao: UserReadingDataDao,
     private val userDataDao: UserDataDao,
-    private val storageUsageRepository: StorageUsageRepository
+    private val storageUsageRepository: StorageUsageRepository,
+    private val offlineContentCache: OfflineContentCache
 ) {
     companion object {
         const val TAG = "LocalDataManager"
@@ -105,6 +108,7 @@ class LocalDataManager @Inject constructor(
             dailyCountDao = dailyCountDao,
             bookshelfDao = bookshelfDao,
             chapterContentDao = chapterContentDao,
+            chapterDownloadDao = chapterDownloadDao,
             bookVolumesDao = bookVolumesDao,
             formattingRuleDao = formattingRuleDao,
             userReadingDataDao = userReadingDataDao,
@@ -130,6 +134,7 @@ class LocalDataManager @Inject constructor(
                     bookshelfBookMetadataEntities = exportOptionLocalData.bookshelfBookMetadataEntities,
                     chapterContentEntities = exportOptionLocalData.chapterContentEntities,
                     chapterInformationEntities = exportOptionLocalData.chapterInformationEntities,
+                    chapterDownloadEntities = exportOptionLocalData.chapterDownloadEntities,
                     formattingRuleEntities = exportOptionLocalData.formattingRuleEntities,
                     userReadingDataEntities = exportOptionLocalData.userReadingDataEntities,
                     volumeEntities = exportOptionLocalData.volumeEntities,
@@ -196,6 +201,9 @@ class LocalDataManager @Inject constructor(
         val newChapterContentEntitiesMap = mapOf(
             *localData.chapterContentEntities.map { Pair(it.id, it) }.toTypedArray()
         )
+        val newChapterDownloadEntitiesMap = localData.chapterDownloadEntities.associateBy {
+            Triple(it.sourceId, it.bookId, it.chapterId)
+        }
         val newChapterInformationEntitiesMap = mapOf(
             *localData.chapterInformationEntities.map { Pair(it.id, it) }.toTypedArray()
         )
@@ -242,6 +250,12 @@ class LocalDataManager @Inject constructor(
                     old.merge(it)
                 } ?: old
             },
+            chapterDownloadEntities = oldLocalData.chapterDownloadEntities
+                .associateBy { Triple(it.sourceId, it.bookId, it.chapterId) }
+                .toMutableMap()
+                .apply { putAll(newChapterDownloadEntitiesMap) }
+                .values
+                .toList(),
             chapterInformationEntities = oldLocalData.chapterInformationEntities.map { old ->
                 newChapterInformationEntitiesMap[old.id]?.let {
                     old.merge(it)
@@ -313,6 +327,15 @@ class LocalDataManager @Inject constructor(
                 chapterContentDao.get(entity.sourceId, entity.bookId, entity.id)?.let(entity::merge) ?: entity
             )
         }
+        val existingChapterDownloadEntities = chapterDownloadDao.getAll()
+            .associateBy { Triple(it.sourceId, it.bookId, it.chapterId) }
+        for (entity in localData.chapterDownloadEntities) {
+            val key = Triple(entity.sourceId, entity.bookId, entity.chapterId)
+            val existing = existingChapterDownloadEntities[key]
+            if (existing == null || entity.updatedAt >= existing.updatedAt) {
+                chapterDownloadDao.upsert(entity)
+            }
+        }
         for (entity in localData.chapterInformationEntities) {
             bookVolumesDao.insertChapterInformationEntities(
                 bookVolumesDao.getChapterInformationEntity(
@@ -349,6 +372,8 @@ class LocalDataManager @Inject constructor(
         bookshelfDao.clear()
         bookVolumesDao.clear()
         chapterContentDao.clear()
+        chapterDownloadDao.clear()
+        offlineContentCache.deleteAllImages()
         formattingRuleDao.clear()
         userReadingDataDao.clear()
 

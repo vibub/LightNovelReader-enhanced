@@ -39,7 +39,10 @@ class DownloadProgressRepository @Inject constructor(
                         DownloadType.valueOf(values[0].trim()),
                         values[1],
                         bookRepository.getBookInformationFlow(values[1])
-                    ).apply { progress = 1f }
+                    ).apply {
+                        progress = 1f
+                        state = DownloadItemState.COMPLETED
+                    }
                 } catch (e: Exception) {
                     e.printStackTrace()
                     Log.e("CompletedDownloadItemList", "wrong data: $it")
@@ -56,7 +59,10 @@ class DownloadProgressRepository @Inject constructor(
                         DownloadType.valueOf(values[0].trim()),
                         values[1],
                         bookRepository.getBookInformationFlow(values[1])
-                    ).apply { progress = 1f }
+                    ).apply {
+                        progress = 1f
+                        state = DownloadItemState.COMPLETED
+                    }
                 }
             }
         }
@@ -79,18 +85,22 @@ class DownloadProgressRepository @Inject constructor(
             _downloadItemList.removeIf { it == downloadItem }
         _downloadItemList.add(downloadItem)
         coroutineScope.launch {
-            snapshotFlow{ downloadItem.progress }.collect { progress ->
-                if (progress >= 1f) {
-                    completedBookListUserData.update(
-                        updater = { downloadItems ->
-                            val list = downloadItems.toMutableList()
-                            if (list.contains(downloadItem))
-                                list.removeIf { it == downloadItem }
-                            downloadItems + downloadItem
-                        },
-                        default = emptyList()
-                    )
-                    return@collect
+            snapshotFlow { downloadItem.progress }.collect { progress ->
+                when {
+                    progress >= 1f -> {
+                        downloadItem.state = DownloadItemState.COMPLETED
+                        completedBookListUserData.update(
+                            updater = { downloadItems ->
+                                val list = downloadItems.toMutableList()
+                                if (list.contains(downloadItem))
+                                    list.removeIf { it == downloadItem }
+                                downloadItems + downloadItem
+                            },
+                            default = emptyList()
+                        )
+                        return@collect
+                    }
+                    progress < 0f -> downloadItem.state = DownloadItemState.FAILED
                 }
             }
         }

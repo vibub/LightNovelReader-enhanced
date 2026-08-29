@@ -146,17 +146,39 @@ class LinovelibWebsiteDataSource(
             "Invalid Linovelib chapter id: $bookId/$chapterId"
         }
         // 移动端正文依赖 JavaScript 动态加载，Jsoup 只能取得“内容加载失败”占位页。
-        return getChapterContentFromSite(
-            bookId = normalizedBookId,
-            chapterId = normalizedChapterId,
-            useMobile = false
-        )
+        val authenticatedError = try {
+            return getChapterContentFromSite(
+                bookId = normalizedBookId,
+                chapterId = normalizedChapterId,
+                useMobile = false,
+                useCookie = true
+            )
+        } catch (throwable: Throwable) {
+            if (throwable is CancellationException) throw throwable
+            throwable
+        }
+
+        // 登录态失效时尝试匿名访问；匿名结果仍需经过同一套页面和正文结构校验，
+        // 登录页、验证页或空正文不会被写入章节缓存。
+        return try {
+            getChapterContentFromSite(
+                bookId = normalizedBookId,
+                chapterId = normalizedChapterId,
+                useMobile = false,
+                useCookie = false
+            )
+        } catch (anonymousError: Throwable) {
+            if (anonymousError is CancellationException) throw anonymousError
+            anonymousError.addSuppressed(authenticatedError)
+            throw anonymousError
+        }
     }
 
     private suspend fun getChapterContentFromSite(
         bookId: String,
         chapterId: String,
-        useMobile: Boolean
+        useMobile: Boolean,
+        useCookie: Boolean
     ): ChapterContent {
         val normalizedBookId = bookId
         val normalizedChapterId = chapterId
@@ -181,8 +203,12 @@ class LinovelibWebsiteDataSource(
                 bookId = normalizedBookId,
                 chapterId = currentPageChapterId,
                 useMobile = useMobile,
+                useCookie = useCookie,
                 retryTime = if (page == 1) 2 else 1
             )
+            if (document.isLinovelibAuthenticationOrVerificationPage()) {
+                error("Linovelib chapter $normalizedBookId/$normalizedChapterId page $currentPageChapterId requires authentication")
+            }
             if (document.hasIncompleteLinovelibChapterContent()) {
                 error("Linovelib chapter $normalizedBookId/$normalizedChapterId page $currentPageChapterId is incomplete")
             }
@@ -341,6 +367,7 @@ class LinovelibWebsiteDataSource(
         bookId: String,
         chapterId: String,
         useMobile: Boolean,
+        useCookie: Boolean = true,
         retryTime: Int
     ): Document = jsoup.getDocument(
         url = if (useMobile) {
@@ -353,6 +380,7 @@ class LinovelibWebsiteDataSource(
         } else {
             LinovelibConstants.catalogUrl(bookId)
         },
+        useCookie = useCookie,
         retryTime = retryTime,
         userAgentMode = if (useMobile) {
             LinovelibJsoup.UserAgentMode.Mobile
@@ -512,6 +540,25 @@ class LinovelibWebsiteDataSource(
             .mapNotNull { it.attr("href").extractBookId() }
             .distinct()
         return bookIds.size == 1 && bookIds.single() == bookId
+    }
+
+    private fun Document.isLinovelibAuthenticationOrVerificationPage(): Boolean {
+        val pageTitle = title().lowercase()
+        if (pageTitle.contains("登录") || pageTitle.contains("登入") ||
+            pageTitle.contains("verify") || pageTitle.contains("verification")
+        ) return true
+        if (select(
+                "input[type=password], form[action*=login], .login-form, " +
+                    ".verify, #verify, .verification"
+            ).isNotEmpty()
+        ) return true
+        val pageText = text()
+        return pageText.length < 3_000 && (
+            pageText.contains("请先登录") ||
+                pageText.contains("登录后阅读") ||
+                pageText.contains("验证后继续") ||
+                pageText.contains("checking your browser", ignoreCase = true)
+            )
     }
 
     private fun Document.metaContent(name: String): String? =

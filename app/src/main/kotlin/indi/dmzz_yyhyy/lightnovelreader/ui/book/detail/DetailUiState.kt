@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.github.michaelbull.result.Result
 import com.google.android.material.bottomsheet.BottomSheetBehavior.State
+import indi.dmzz_yyhyy.lightnovelreader.data.download.ChapterDownloadState
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadItem
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.BookVolumes
@@ -19,6 +20,7 @@ interface DetailUiState {
     val bookmarkUiState: DetailBookmarkUiState
     val isLinovelibSource: Boolean
     val isCached: Boolean
+    val chapterDownloadStates: Map<String, ChapterDownloadState>
     val downloadItem: DownloadItem?
     val isInBookshelf: Boolean
 }
@@ -36,6 +38,7 @@ class MutableDetailUiState: DetailUiState {
     override var bookmarkUiState by mutableStateOf(DetailBookmarkUiState())
     override var isLinovelibSource by mutableStateOf(false)
     override var isCached: Boolean by mutableStateOf(false)
+    override var chapterDownloadStates: Map<String, ChapterDownloadState> by mutableStateOf(emptyMap())
     override var downloadItem: DownloadItem? by mutableStateOf(null)
     override var isInBookshelf: Boolean by mutableStateOf(false)
 }

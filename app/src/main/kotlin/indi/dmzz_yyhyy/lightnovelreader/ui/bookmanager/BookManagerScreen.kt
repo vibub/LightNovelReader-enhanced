@@ -60,6 +60,8 @@ import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadItem
+import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadItemState
+import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadType
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.Cover
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.EmptyPage
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data.MenuOptions
@@ -73,6 +75,9 @@ fun BookManagerScreen(
     downloadItemIdList: List<DownloadItem>,
     uiState: LocalBookManagerUiState,
     onClickCancel: (DownloadItem) -> Unit,
+    onClickPause: (DownloadItem) -> Unit,
+    onClickResume: (DownloadItem) -> Unit,
+    onClickRetry: (DownloadItem) -> Unit,
     onClickClearCompleted: () -> Unit
 ) {
     var tabIndex by rememberSaveable { mutableIntStateOf(0) }
@@ -168,6 +173,9 @@ fun BookManagerScreen(
                     DownloadManagerContent(
                         downloadItemIdList = downloadItemIdList,
                         onClickCancel = onClickCancel,
+                        onClickPause = onClickPause,
+                        onClickResume = onClickResume,
+                        onClickRetry = onClickRetry,
                         onClickClearCompleted = onClickClearCompleted
                     )
                 } else {
@@ -338,6 +346,9 @@ private fun SelectingAppBar(
 private fun DownloadManagerContent(
     downloadItemIdList: List<DownloadItem>,
     onClickCancel: (DownloadItem) -> Unit,
+    onClickPause: (DownloadItem) -> Unit,
+    onClickResume: (DownloadItem) -> Unit,
+    onClickRetry: (DownloadItem) -> Unit,
     onClickClearCompleted: () -> Unit
 ) {
     val itemList = downloadItemIdList.distinctBy { it.type to it.bookId }
@@ -350,11 +361,16 @@ private fun DownloadManagerContent(
         )
         return
     }
+    val runningItems = itemList.filter { it.state == DownloadItemState.RUNNING }
+    val pendingItems = itemList.filter {
+        it.state == DownloadItemState.PAUSED || it.state == DownloadItemState.FAILED
+    }
+    val completedItems = itemList.filter { it.state == DownloadItemState.COMPLETED }
     LazyColumn(
         modifier = Modifier.padding(horizontal = 18.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        if (itemList.any { it.progress < 1f })
+        if (runningItems.isNotEmpty()) {
             item {
                 Text(
                     modifier = Modifier.height(34.dp).animateItem(),
@@ -363,17 +379,44 @@ private fun DownloadManagerContent(
                     fontWeight = FontWeight.W600
                 )
             }
-        items(
-            items = itemList.filter { it.progress < 1f }.reversed(),
-            key = { "${it.type.name}_${it.bookId}" }
-        ) { downloadItem ->
-            Card(
-                modifier = Modifier.animateItem(),
-                downloadItem = downloadItem,
-                onClickCancel = { onClickCancel(downloadItem) }
-            )
+            items(
+                items = runningItems.reversed(),
+                key = { "${it.type.name}_${it.bookId}" }
+            ) { downloadItem ->
+                Card(
+                    modifier = Modifier.animateItem(),
+                    downloadItem = downloadItem,
+                    onClickCancel = { onClickCancel(downloadItem) },
+                    onClickPause = { onClickPause(downloadItem) },
+                    onClickResume = { onClickResume(downloadItem) },
+                    onClickRetry = { onClickRetry(downloadItem) }
+                )
+            }
         }
-        if (itemList.any { it.progress >= 1f })
+        if (pendingItems.isNotEmpty()) {
+            item {
+                Text(
+                    modifier = Modifier.height(34.dp).animateItem(),
+                    text = stringResource(R.string.download_pending),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.W600
+                )
+            }
+            items(
+                items = pendingItems.reversed(),
+                key = { "${it.type.name}_${it.bookId}" }
+            ) { downloadItem ->
+                Card(
+                    modifier = Modifier.animateItem(),
+                    downloadItem = downloadItem,
+                    onClickCancel = { onClickCancel(downloadItem) },
+                    onClickPause = { onClickPause(downloadItem) },
+                    onClickResume = { onClickResume(downloadItem) },
+                    onClickRetry = { onClickRetry(downloadItem) }
+                )
+            }
+        }
+        if (completedItems.isNotEmpty()) {
             item {
                 Row(
                     modifier = Modifier.animateItem(),
@@ -395,15 +438,19 @@ private fun DownloadManagerContent(
                     }
                 }
             }
-        items(
-            items = itemList.filter { it.progress >= 1f }.reversed(),
-            key = { "${it.type.name}_${it.bookId}" }
-        ) { downloadItem ->
-            Card(
-                modifier = Modifier.animateItem(),
-                downloadItem = downloadItem,
-                onClickCancel = { onClickCancel(downloadItem) }
-            )
+            items(
+                items = completedItems.reversed(),
+                key = { "${it.type.name}_${it.bookId}" }
+            ) { downloadItem ->
+                Card(
+                    modifier = Modifier.animateItem(),
+                    downloadItem = downloadItem,
+                    onClickCancel = { onClickCancel(downloadItem) },
+                    onClickPause = { onClickPause(downloadItem) },
+                    onClickResume = { onClickResume(downloadItem) },
+                    onClickRetry = { onClickRetry(downloadItem) }
+                )
+            }
         }
         navigationBarSpacer()
     }
@@ -413,15 +460,21 @@ private fun DownloadManagerContent(
 private fun Card(
     modifier: Modifier = Modifier,
     downloadItem: DownloadItem,
-    onClickCancel: () -> Unit
+    onClickCancel: () -> Unit,
+    onClickPause: () -> Unit,
+    onClickResume: () -> Unit,
+    onClickRetry: () -> Unit
 ) {
     val progressAnim by animateFloatAsState(
-        targetValue = downloadItem.progress,
+        targetValue = downloadItem.progress.coerceIn(0f, 1f),
         animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
         label = "",
     )
     val result by downloadItem.bookInformationFlow.collectAsStateWithLifecycle(null)
     result?.onOk { bookInformation ->
+        val isRunning = downloadItem.state == DownloadItemState.RUNNING
+        val isPaused = downloadItem.state == DownloadItemState.PAUSED
+        val isFailed = downloadItem.state == DownloadItemState.FAILED
         Row(
             modifier = modifier,
             verticalAlignment = Alignment.CenterVertically
@@ -457,23 +510,35 @@ private fun Card(
                     Icon(
                         tint = MaterialTheme.colorScheme.secondary,
                         modifier = Modifier.size(16.dp),
-                        painter =
-                            if (downloadItem.progress >= 1) painterResource(R.drawable.done_outline_24px)
-                            else if (downloadItem.progress >= 0) painterResource(downloadItem.type.icon)
-                            else painterResource(R.drawable.error_24px),
+                        painter = when (downloadItem.state) {
+                            DownloadItemState.COMPLETED -> painterResource(R.drawable.done_outline_24px)
+                            DownloadItemState.FAILED -> painterResource(R.drawable.error_24px)
+                            DownloadItemState.PAUSED -> painterResource(R.drawable.hourglass_top_24px)
+                            DownloadItemState.RUNNING -> painterResource(downloadItem.type.icon)
+                        },
                         contentDescription = null
                     )
                     Box(Modifier.width(10.dp))
                     Text(
-                        text =
-                            if (downloadItem.progress < 1)
-                                stringResource(R.string.download_item_progress,
-                                    formTime(downloadItem.startTime),
-                                    (downloadItem.progress*100).toInt()
-                                )
-                            else if (downloadItem.progress > 0)
-                                stringResource(R.string.download_item_finished, downloadItem.type.typeName)
-                            else stringResource(R.string.download_item_failed, downloadItem.type.typeName),
+                        text = when (downloadItem.state) {
+                            DownloadItemState.RUNNING -> stringResource(
+                                R.string.download_item_progress,
+                                formTime(downloadItem.startTime),
+                                (downloadItem.progress.coerceAtLeast(0f) * 100).toInt()
+                            )
+                            DownloadItemState.PAUSED -> stringResource(
+                                R.string.download_item_paused,
+                                (downloadItem.progress.coerceAtLeast(0f) * 100).toInt()
+                            )
+                            DownloadItemState.FAILED -> stringResource(
+                                R.string.download_item_failed,
+                                downloadItem.type.typeName
+                            )
+                            DownloadItemState.COMPLETED -> stringResource(
+                                R.string.download_item_finished,
+                                downloadItem.type.typeName
+                            )
+                        },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodyMedium,
@@ -482,19 +547,73 @@ private fun Card(
                         color = MaterialTheme.colorScheme.secondary
                     )
                 }
-                if (downloadItem.progress < 1)
+                if (isRunning || isPaused) {
                     LinearProgressIndicator(
                         modifier = Modifier.fillMaxWidth(),
                         progress = { progressAnim },
                     )
-            }
-            if (downloadItem.progress < 1)
-                IconButton(onClickCancel) {
-                    Icon(
-                        painter = painterResource(R.drawable.cancel_24px),
-                        contentDescription = "cancel"
-                    )
                 }
+            }
+            when {
+                isRunning && downloadItem.type == DownloadType.CACHE -> {
+                    IconButton(onClickPause) {
+                        Icon(
+                            painter = painterResource(R.drawable.pause_24px),
+                            contentDescription = stringResource(R.string.download_pause)
+                        )
+                    }
+                    IconButton(onClickCancel) {
+                        Icon(
+                            painter = painterResource(R.drawable.cancel_24px),
+                            contentDescription = stringResource(R.string.download_cancel)
+                        )
+                    }
+                }
+                isRunning -> {
+                    IconButton(onClickCancel) {
+                        Icon(
+                            painter = painterResource(R.drawable.cancel_24px),
+                            contentDescription = stringResource(R.string.download_cancel)
+                        )
+                    }
+                }
+                isPaused && downloadItem.type == DownloadType.CACHE -> {
+                    IconButton(onClickResume) {
+                        Icon(
+                            painter = painterResource(R.drawable.play_arrow_24px),
+                            contentDescription = stringResource(R.string.download_resume)
+                        )
+                    }
+                    IconButton(onClickCancel) {
+                        Icon(
+                            painter = painterResource(R.drawable.cancel_24px),
+                            contentDescription = stringResource(R.string.download_cancel)
+                        )
+                    }
+                }
+                isFailed && downloadItem.type == DownloadType.CACHE -> {
+                    IconButton(onClickRetry) {
+                        Icon(
+                            painter = painterResource(R.drawable.autorenew_24px),
+                            contentDescription = stringResource(R.string.download_retry)
+                        )
+                    }
+                    IconButton(onClickCancel) {
+                        Icon(
+                            painter = painterResource(R.drawable.cancel_24px),
+                            contentDescription = stringResource(R.string.download_cancel)
+                        )
+                    }
+                }
+                isFailed || isPaused -> {
+                    IconButton(onClickCancel) {
+                        Icon(
+                            painter = painterResource(R.drawable.cancel_24px),
+                            contentDescription = stringResource(R.string.download_cancel)
+                        )
+                    }
+                }
+            }
             Box(Modifier.width(7.dp))
         }
     }?.onErr {

@@ -8,6 +8,9 @@
       tools:ignore="ProtectedPermissions" />
   <uses-permission android:name="android.permission.USE_EXACT_ALARM"
       tools:ignore="ExactAlarmPolicy" />
+  <uses-permission
+      android:name="android.permission.FOREGROUND_SERVICE"
+      tools:ignore="ForegroundServicesPolicy" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
   <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"
@@ -93,6 +96,11 @@
         android:value="androidx.startup"
         tools:node="remove" />
     </provider>
+    <service
+        android:name="androidx.work.impl.foreground.SystemForegroundService"
+        android:exported="false"
+        android:foregroundServiceType="dataSync"
+        tools:node="merge" />
   </application>
 
 </manifest>

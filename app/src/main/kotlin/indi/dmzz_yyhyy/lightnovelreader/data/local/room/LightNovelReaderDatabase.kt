@@ -18,6 +18,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookRecordDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookVolumesDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookshelfDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.ChapterContentDao
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.ChapterDownloadDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.DailyCountDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.FormattingRuleDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.LinovelibChapterBookmarkDao
@@ -30,6 +31,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookshelfBookMeta
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.DailyCountEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookshelfEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.ChapterContentEntity
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.ChapterDownloadEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.ChapterInformationEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.FormattingRuleEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.LinovelibChapterBookmarkEntity
@@ -47,6 +49,7 @@ import io.nightfish.lightnovelreader.api.content.builder.simpleText
         VolumeEntity::class,
         ChapterInformationEntity::class,
         ChapterContentEntity::class,
+        ChapterDownloadEntity::class,
         UserReadingDataEntity::class,
         UserDataEntity::class,
         BookshelfEntity::class,
@@ -56,13 +59,14 @@ import io.nightfish.lightnovelreader.api.content.builder.simpleText
         FormattingRuleEntity::class,
         LinovelibChapterBookmarkEntity::class
     ],
-    version = 19,
+    version = 20,
     exportSchema = false
 )
 abstract class LightNovelReaderDatabase : RoomDatabase() {
     abstract fun bookInformationDao(): BookInformationDao
     abstract fun bookVolumesDao(): BookVolumesDao
     abstract fun chapterContentDao(): ChapterContentDao
+    abstract fun chapterDownloadDao(): ChapterDownloadDao
     abstract fun userReadingDataDao(): UserReadingDataDao
     abstract fun userDataDao(): UserDataDao
     abstract fun bookshelfDao(): BookshelfDao
@@ -98,7 +102,8 @@ abstract class LightNovelReaderDatabase : RoomDatabase() {
                             MIGRATION_15_16,
                             MIGRATION_16_17,
                             MIGRATION_17_18,
-                            MIGRATION_18_19
+                            MIGRATION_18_19,
+                            MIGRATION_19_20
                         )
                         .allowMainThreadQueries()
                         .build()
@@ -937,6 +942,28 @@ abstract class LightNovelReaderDatabase : RoomDatabase() {
                 db.execSQL("DROP TABLE chapter_content_legacy")
                 db.execSQL("CREATE INDEX index_chapter_content_id ON chapter_content(id)")
                 db.execSQL("CREATE INDEX index_chapter_content_source_id_book_id ON chapter_content(source_id, book_id)")
+            }
+        }
+
+        private val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE chapter_download_status (
+                        source_id INTEGER NOT NULL,
+                        book_id TEXT NOT NULL,
+                        chapter_id TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        error_message TEXT,
+                        updated_at INTEGER NOT NULL,
+                        PRIMARY KEY(source_id, book_id, chapter_id)
+                    )
+                    """
+                )
+                db.execSQL(
+                    "CREATE INDEX index_chapter_download_status_source_id_book_id " +
+                        "ON chapter_download_status(source_id, book_id)"
+                )
             }
         }
     }

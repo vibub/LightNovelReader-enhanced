@@ -70,7 +70,7 @@ interface ChapterContentDao {
 
     @Transaction
     suspend fun getScoped(sourceId: Int, bookId: String, id: String): ChapterContentEntity? =
-        get(sourceId, bookId, id)
+        get(sourceId, bookId, id) ?: getLegacy(id)
 
     @Query(
         "select * from chapter_content where id = :id " +
@@ -80,6 +80,23 @@ interface ChapterContentDao {
 
     @Query("select id from chapter_content where source_id = :sourceId and book_id = :bookId and id = :id")
     suspend fun getId(sourceId: Int, bookId: String, id: String): String?
+
+    @Query(
+        "select id from chapter_content where " +
+            "(source_id = :sourceId and book_id = :bookId) or " +
+            "(source_id = -1 and book_id = '')"
+    )
+    suspend fun getIds(sourceId: Int, bookId: String): List<String>
+
+    @Query(
+        "select id from chapter_content where " +
+            "(source_id = :sourceId and book_id = :bookId) or " +
+            "(source_id = -1 and book_id = '')"
+    )
+    fun getIdsFlow(sourceId: Int, bookId: String): kotlinx.coroutines.flow.Flow<List<String>>
+
+    @Query("select id from chapter_content where source_id = -1 and book_id = '' and id = :id")
+    suspend fun getLegacyId(id: String): String?
 
     @Query("select id from chapter_content where id = :id limit 1")
     suspend fun getId(id: String): String?

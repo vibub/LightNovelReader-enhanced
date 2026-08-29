@@ -5,6 +5,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookRecordDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookVolumesDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookshelfDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.ChapterContentDao
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.ChapterDownloadDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.DailyCountDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.FormattingRuleDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.UserDataDao
@@ -14,6 +15,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookRecordEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookshelfBookMetadataEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookshelfEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.ChapterContentEntity
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.ChapterDownloadEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.ChapterInformationEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.DailyCountEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.FormattingRuleEntity
@@ -27,6 +29,7 @@ class ExportOptionLocalData(
     private val dailyCountDao: DailyCountDao,
     private val bookshelfDao: BookshelfDao,
     private val chapterContentDao: ChapterContentDao,
+    private val chapterDownloadDao: ChapterDownloadDao,
     private val bookVolumesDao: BookVolumesDao,
     private val formattingRuleDao: FormattingRuleDao,
     private val userReadingDataDao: UserReadingDataDao,
@@ -44,6 +47,7 @@ class ExportOptionLocalData(
     val bookshelfEntities = mutableListOf<BookshelfEntity>()
     val bookshelfBookMetadataEntities = mutableListOf<BookshelfBookMetadataEntity>()
     val chapterContentEntities = mutableListOf<ChapterContentEntity>()
+    val chapterDownloadEntities = mutableListOf<ChapterDownloadEntity>()
     val chapterInformationEntities = mutableListOf<ChapterInformationEntity>()
     val formattingRuleEntities = mutableListOf<FormattingRuleEntity>()
     val userDataEntities = mutableListOf<UserDataEntity>()
@@ -57,6 +61,7 @@ class ExportOptionLocalData(
             bookInformationEntities.addAll(bookBookInformationDao.getAllEntities())
             volumeEntities.addAll(bookVolumesDao.getAllVolumeEntities())
             chapterContentEntities.addAll(chapterContentDao.getAllEntities())
+            chapterDownloadEntities.addAll(chapterDownloadDao.getAll())
             chapterInformationEntities.addAll(bookVolumesDao.getAllChapterInformationEntities())
         }
     }.also(options::add)

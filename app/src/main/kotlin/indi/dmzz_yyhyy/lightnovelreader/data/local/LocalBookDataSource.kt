@@ -53,6 +53,13 @@ class LocalBookDataSource @Inject constructor(
     suspend fun updateChapterContent(sourceId: Int, bookId: String, chapterContent: ChapterContent) =
         chapterContentDao.update(sourceId, bookId, chapterContent)
 
+    suspend fun deleteChapterContent(sourceId: Int, bookId: String, chapterIds: List<String>) {
+        val ids = chapterIds.map(String::trim).filter(String::isNotBlank).distinct()
+        if (ids.isEmpty()) return
+        chapterContentDao.deleteByIds(sourceId, bookId, ids)
+        chapterContentDao.deleteLegacyByIds(ids)
+    }
+
     override suspend fun getUserReadingData(id: String) = userReadingDataDao.getEntity(id).let {
         it ?: return@let UserReadingData(id)
         UserReadingData(
@@ -136,9 +143,6 @@ class LocalBookDataSource @Inject constructor(
 
     override suspend fun isChapterContentExists(id: String): Boolean =
         chapterContentDao.getId(id) != null
-
-    suspend fun isChapterContentExists(sourceId: Int, bookId: String, id: String): Boolean =
-        chapterContentDao.getId(sourceId, bookId, id) != null
 
     override suspend fun clear() {
         userReadingDataDao.clear()

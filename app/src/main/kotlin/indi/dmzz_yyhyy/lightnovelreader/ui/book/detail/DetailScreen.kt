@@ -45,6 +45,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -100,6 +101,8 @@ import com.github.michaelbull.result.onOk
 import com.valentinilk.shimmer.shimmer
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.book.get
+import indi.dmzz_yyhyy.lightnovelreader.data.download.ChapterDownloadState
+import indi.dmzz_yyhyy.lightnovelreader.data.download.ChapterDownloadStatus
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadItem
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.Cover
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.LnrSnackbar
@@ -134,7 +137,9 @@ fun DetailScreen(
     onClickChapter: (String) -> Unit,
     onClickReadFromStart: () -> Unit,
     onClickContinueReading: () -> Unit,
-    cacheBook: (String) -> Unit,
+    onStartCache: (String, List<String>, Boolean) -> Unit,
+    onClearCachedChapters: (String, List<String>) -> Unit,
+    onRetryChapter: (String) -> Unit,
     requestAddBookToBookshelf: (String) -> Unit,
     onClickTag: (String) -> Unit,
     onClickCover: (Uri) -> Unit,
@@ -153,10 +158,41 @@ fun DetailScreen(
     var showExportBottomSheet by remember { mutableStateOf(false) }
     var showInfoBottomSheet by remember { mutableStateOf(false) }
     var showBookmarkMatchDialog by remember { mutableStateOf(false) }
+    var showDownloadConfirmation by remember { mutableStateOf(false) }
+    var showClearCacheConfirmation by remember { mutableStateOf(false) }
+    var downloadSelectionMode by remember { mutableStateOf(false) }
+    var forceRefreshDownload by remember { mutableStateOf(false) }
+    var selectedChapterIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var exportSettings by remember { mutableStateOf(ExportSettings()) }
+
+    val allChapterIds = uiState.bookVolumes?.component1()?.volumes.orEmpty()
+        .flatMap { it.chapters }
+        .map { it.id }
+
+    fun selectAllUnfinishedChapters() {
+        selectedChapterIds = allChapterIds.filter { chapterId ->
+            uiState.chapterDownloadStates[chapterId]?.status != ChapterDownloadStatus.COMPLETED
+        }.toSet()
+    }
+
+    fun openDownloadSelection() {
+        val chapters = uiState.bookVolumes?.component1()?.volumes.orEmpty()
+            .flatMap { it.chapters }
+        selectedChapterIds = chapters
+            .filter {
+                uiState.chapterDownloadStates[it.id]?.status != ChapterDownloadStatus.COMPLETED
+            }
+            .map { it.id }
+            .toSet()
+        forceRefreshDownload = false
+        downloadSelectionMode = true
+    }
 
     val lazyListState = rememberLazyListState()
     val volumesEmpty = uiState.bookVolumes == null
+    val selectedCachedCount = selectedChapterIds.count {
+        uiState.chapterDownloadStates[it]?.isAvailableOffline == true
+    }
 
     val isCollapsed by remember {
         derivedStateOf {
@@ -174,13 +210,13 @@ fun DetailScreen(
     }
 
     val scrollingUp by lazyListState.isScrollingUp()
-    val fabVisible by remember(uiState.bookVolumes, lazyListState) {
+    val fabVisible by remember(uiState.bookVolumes, lazyListState, downloadSelectionMode) {
         derivedStateOf {
             val hasVolumes = uiState.bookVolumes != null
             val allowByDirection = !lazyListState.isScrollInProgress || scrollingUp
             val canGoForward = lazyListState.canScrollForward
 
-            hasVolumes && canGoForward && allowByDirection
+            !downloadSelectionMode && hasVolumes && canGoForward && allowByDirection
         }
     }
 
@@ -284,7 +320,40 @@ fun DetailScreen(
                         bookInformation = it,
                         onClickChapter = onClickChapter,
                         lazyListState = lazyListState,
-                        cacheBook = cacheBook,
+                        cacheBook = { _ -> openDownloadSelection() },
+                        downloadSelectionMode = downloadSelectionMode,
+                        selectedChapterIds = selectedChapterIds,
+                        selectedCachedCount = selectedCachedCount,
+                        forceRefreshDownload = forceRefreshDownload,
+                        onToggleChapterSelection = { chapterId ->
+                            selectedChapterIds = if (chapterId in selectedChapterIds) {
+                                selectedChapterIds - chapterId
+                            } else {
+                                selectedChapterIds + chapterId
+                            }
+                        },
+                        onToggleVolumeSelection = { chapterIds ->
+                            selectedChapterIds = if (chapterIds.all { it in selectedChapterIds }) {
+                                selectedChapterIds - chapterIds.toSet()
+                            } else {
+                                selectedChapterIds + chapterIds
+                            }
+                        },
+                        onToggleForceRefresh = { forceRefreshDownload = !forceRefreshDownload },
+                        onCancelDownloadSelection = {
+                            downloadSelectionMode = false
+                            selectedChapterIds = emptySet()
+                        },
+                        onConfirmDownloadSelection = {
+                            if (selectedChapterIds.isNotEmpty()) showDownloadConfirmation = true
+                        },
+                        onSelectAllUnfinishedChapters = ::selectAllUnfinishedChapters,
+                        onSelectAllChapters = { selectedChapterIds = allChapterIds.toSet() },
+                        onClearSelection = { selectedChapterIds = emptySet() },
+                        onClearCache = {
+                            if (selectedCachedCount > 0) showClearCacheConfirmation = true
+                        },
+                        onRetryChapter = onRetryChapter,
                         requestAddBookToBookshelf = requestAddBookToBookshelf,
                         onClickTag = onClickTag,
                         onClickCover = onClickCover,
@@ -340,6 +409,84 @@ fun DetailScreen(
                     }
                 )
             }
+        }
+
+        if (showDownloadConfirmation) {
+            AlertDialog(
+                onDismissRequest = { showDownloadConfirmation = false },
+                title = { Text(stringResource(R.string.download_confirm_title)) },
+                text = {
+                    Text(
+                        stringResource(
+                            R.string.download_confirm_content,
+                            selectedChapterIds.size,
+                            selectedCachedCount
+                        )
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            uiState.bookInformation?.component1()?.id?.let { bookId ->
+                                onStartCache(
+                                    bookId,
+                                    selectedChapterIds.toList(),
+                                    forceRefreshDownload
+                                )
+                            }
+                            showDownloadConfirmation = false
+                            downloadSelectionMode = false
+                            selectedChapterIds = emptySet()
+                        }
+                    ) {
+                        Text(stringResource(R.string.download_start))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDownloadConfirmation = false }) {
+                        Text(stringResource(R.string.download_cancel))
+                    }
+                }
+            )
+        }
+
+        if (showClearCacheConfirmation) {
+            AlertDialog(
+                onDismissRequest = { showClearCacheConfirmation = false },
+                title = { Text(stringResource(R.string.download_clear_cache)) },
+                text = {
+                    Text(
+                        stringResource(
+                            R.string.download_clear_confirm_content,
+                            selectedCachedCount
+                        )
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            uiState.bookInformation?.component1()?.id?.let { bookId ->
+                                onClearCachedChapters(
+                                    bookId,
+                                    selectedChapterIds.filter {
+                                        uiState.chapterDownloadStates[it]?.isAvailableOffline == true
+                                    }
+                                )
+                            }
+                            showClearCacheConfirmation = false
+                            downloadSelectionMode = false
+                            selectedChapterIds = emptySet()
+                        }
+                    ) {
+                        Text(stringResource(R.string.confirm))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showClearCacheConfirmation = false }) {
+                        Text(stringResource(R.string.download_cancel))
+                    }
+                }
+            )
         }
     }
 }
@@ -471,6 +618,20 @@ private fun DetailContent(
     lazyListState: LazyListState,
     onClickChapter: (String) -> Unit,
     cacheBook: (String) -> Unit,
+    downloadSelectionMode: Boolean,
+    selectedChapterIds: Set<String>,
+    selectedCachedCount: Int,
+    forceRefreshDownload: Boolean,
+    onToggleChapterSelection: (String) -> Unit,
+    onToggleVolumeSelection: (List<String>) -> Unit,
+    onToggleForceRefresh: () -> Unit,
+    onCancelDownloadSelection: () -> Unit,
+    onConfirmDownloadSelection: () -> Unit,
+    onSelectAllUnfinishedChapters: () -> Unit,
+    onSelectAllChapters: () -> Unit,
+    onClearSelection: () -> Unit,
+    onClearCache: () -> Unit,
+    onRetryChapter: (String) -> Unit,
     requestAddBookToBookshelf: (String) -> Unit,
     onClickTag: (String) -> Unit,
     onClickCover: (Uri) -> Unit,
@@ -489,6 +650,16 @@ private fun DetailContent(
             visible += 1
         }
     }
+
+    val totalChapterCount = uiState.bookVolumes?.component1()?.volumes
+        ?.sumOf { it.chapters.size }
+        ?: 0
+    val completedChapterCount = uiState.bookVolumes?.component1()?.volumes
+        ?.flatMap { it.chapters }
+        ?.count {
+            uiState.chapterDownloadStates[it.id]?.status == ChapterDownloadStatus.COMPLETED
+        }
+        ?: 0
 
     LazyColumn(
         state = lazyListState,
@@ -520,6 +691,8 @@ private fun DetailContent(
                 modifier = Modifier.fadeInOnce("op"),
                 isInBookshelf = uiState.isInBookshelf,
                 isCached = uiState.isCached,
+                cachedChapterCount = completedChapterCount,
+                totalChapterCount = totalChapterCount,
                 downloadItem = uiState.downloadItem,
                 onClickAddToBookShelf = { requestAddBookToBookshelf(bookInformation.id) },
                 onClickCache = { cacheBook(bookInformation.id) },
@@ -549,23 +722,40 @@ private fun DetailContent(
         }
 
         if (visible >= 5) item {
-            Row(
-                modifier = Modifier
-                    .fadeInOnce("contents")
-                    .padding(horizontal = 18.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = stringResource(R.string.detail_contents),
-                    style = typography.displayMedium,
-                    fontWeight = FontWeight.W600
+            if (downloadSelectionMode) {
+                DownloadSelectionBlock(
+                    modifier = Modifier.fadeInOnce("download-selection"),
+                    selectedCount = selectedChapterIds.size,
+                    selectedCachedCount = selectedCachedCount,
+                    totalCount = totalChapterCount,
+                    forceRefresh = forceRefreshDownload,
+                    onToggleForceRefresh = onToggleForceRefresh,
+                    onCancel = onCancelDownloadSelection,
+                    onConfirm = onConfirmDownloadSelection,
+                    onSelectAllUnfinished = onSelectAllUnfinishedChapters,
+                    onSelectAll = onSelectAllChapters,
+                    onClearSelection = onClearSelection,
+                    onClearCache = onClearCache
                 )
-                Spacer(Modifier.width(12.dp))
-                SwitchChip(
-                    label = stringResource(R.string.hide_read),
-                    selected = hideReadChapters,
-                    onClick = { hideReadChapters = !hideReadChapters }
-                )
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fadeInOnce("contents")
+                        .padding(horizontal = 18.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.detail_contents),
+                        style = typography.displayMedium,
+                        fontWeight = FontWeight.W600
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    SwitchChip(
+                        label = stringResource(R.string.hide_read),
+                        selected = hideReadChapters,
+                        onClick = { hideReadChapters = !hideReadChapters }
+                    )
+                }
             }
         }
 
@@ -581,6 +771,12 @@ private fun DetailContent(
                         hideReadChapters = hideReadChapters,
                         readCompletedChapterIds = uiState.userReadingData?.maxChapterReadingProgressMap?.filterValues { it >= 1f }?.keys?.toList() ?: emptyList(),
                         onClickChapter = onClickChapter,
+                        downloadStates = uiState.chapterDownloadStates,
+                        selectionMode = downloadSelectionMode,
+                        selectedChapterIds = selectedChapterIds,
+                        onToggleChapterSelection = onToggleChapterSelection,
+                        onToggleVolumeSelection = onToggleVolumeSelection,
+                        onRetryChapter = onRetryChapter,
                         volumesSize = bookVolumes.volumes.size,
                         lastReadingChapterId = uiState.userReadingData?.lastReadChapterId,
                         bookmarkChapterId = uiState.bookmarkUiState.chapterId
@@ -602,6 +798,88 @@ private fun DetailContent(
 
         item {
             Spacer(Modifier.height(48.dp))
+        }
+    }
+}
+
+@Composable
+private fun DownloadSelectionBlock(
+    modifier: Modifier,
+    selectedCount: Int,
+    selectedCachedCount: Int,
+    totalCount: Int,
+    forceRefresh: Boolean,
+    onToggleForceRefresh: () -> Unit,
+    onCancel: () -> Unit,
+    onConfirm: () -> Unit,
+    onSelectAllUnfinished: () -> Unit,
+    onSelectAll: () -> Unit,
+    onClearSelection: () -> Unit,
+    onClearCache: () -> Unit
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = itemHorizontalPadding, vertical = itemVerticalPadding),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.download_select_mode),
+                    style = typography.displayMedium,
+                    fontWeight = FontWeight.W600
+                )
+                Text(
+                    text = stringResource(R.string.download_selected_count, selectedCount) +
+                        " / $totalCount",
+                    style = typography.bodyMedium,
+                    color = colorScheme.secondary
+                )
+            }
+            TextButton(onClick = onCancel) {
+                Text(stringResource(R.string.download_cancel))
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            TextButton(onClick = onSelectAllUnfinished) {
+                Text(stringResource(R.string.download_select_all))
+            }
+            TextButton(onClick = onSelectAll) {
+                Text(stringResource(R.string.download_select_everything))
+            }
+            TextButton(onClick = onClearSelection) {
+                Text(stringResource(R.string.download_select_none))
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SwitchChip(
+                label = stringResource(R.string.download_refresh_completed),
+                selected = forceRefresh,
+                onClick = onToggleForceRefresh
+            )
+            Spacer(Modifier.weight(1f))
+            TextButton(
+                enabled = selectedCachedCount > 0,
+                onClick = onClearCache
+            ) {
+                Text(stringResource(R.string.download_clear_cache))
+            }
+            TextButton(
+                enabled = selectedCount > 0,
+                onClick = onConfirm
+            ) {
+                Text(stringResource(R.string.download_start))
+            }
         }
     }
 }
@@ -947,6 +1225,8 @@ private fun QuickOperationsBlock(
     modifier: Modifier,
     isInBookshelf: Boolean,
     isCached: Boolean,
+    cachedChapterCount: Int,
+    totalChapterCount: Int,
     downloadItem: DownloadItem?,
     onClickAddToBookShelf: () -> Unit,
     onClickCache: () -> Unit,
@@ -984,27 +1264,22 @@ private fun QuickOperationsBlock(
             )
         }
 
-        if (isCached) {
-            QuickOperationButton(
-                icon = filledCloud,
-                title = if (downloadItem == null || downloadItem.progress == 1f)
-                    stringResource(R.string.cached)
-                else
-                    "${(downloadItem.progress * 100).toInt()}%",
-                onClick = { },
-                modifier = Modifier.weight(1f)
-            )
-        } else {
-            QuickOperationButton(
-                icon = cloud,
-                title = if (downloadItem == null)
-                    stringResource(R.string.cached_false)
-                else
-                    "${(downloadItem.progress * 100).toInt()}%",
-                onClick = if (downloadItem == null) onClickCache else { {} },
-                modifier = Modifier.weight(1f)
-            )
-        }
+        val isDownloading = downloadItem?.progress?.let { it >= 0f && it < 1f } == true
+        QuickOperationButton(
+            icon = if (isCached || cachedChapterCount > 0) filledCloud else cloud,
+            title = when {
+                isDownloading -> "${(downloadItem.progress * 100).toInt()}%"
+                isCached -> stringResource(R.string.cached)
+                cachedChapterCount > 0 -> stringResource(
+                    R.string.download_progress_summary,
+                    cachedChapterCount,
+                    totalChapterCount
+                )
+                else -> stringResource(R.string.cached_false)
+            },
+            onClick = onClickCache,
+            modifier = Modifier.weight(1f)
+        )
 
         QuickOperationButton(
             icon = info,
@@ -1206,6 +1481,24 @@ private fun IntroBlock(
     }
 }
 
+private fun downloadStatusLabel(status: ChapterDownloadStatus): Int = when (status) {
+    ChapterDownloadStatus.NOT_DOWNLOADED -> R.string.download_state_not_downloaded
+    ChapterDownloadStatus.QUEUED -> R.string.download_state_queued
+    ChapterDownloadStatus.DOWNLOADING -> R.string.download_state_downloading
+    ChapterDownloadStatus.COMPLETED -> R.string.download_state_completed
+    ChapterDownloadStatus.PARTIAL -> R.string.download_state_partial
+    ChapterDownloadStatus.FAILED -> R.string.download_state_failed
+}
+
+private fun downloadStatusIcon(status: ChapterDownloadStatus): Int = when (status) {
+    ChapterDownloadStatus.NOT_DOWNLOADED -> R.drawable.cloud_download_24px
+    ChapterDownloadStatus.QUEUED -> R.drawable.hourglass_top_24px
+    ChapterDownloadStatus.DOWNLOADING -> R.drawable.downloading_24px
+    ChapterDownloadStatus.COMPLETED -> R.drawable.done_all_24px
+    ChapterDownloadStatus.PARTIAL -> R.drawable.error_24px
+    ChapterDownloadStatus.FAILED -> R.drawable.error_24px
+}
+
 @Composable
 private fun VolumeItem(
     modifier: Modifier,
@@ -1213,6 +1506,12 @@ private fun VolumeItem(
     hideReadChapters: Boolean = false,
     readCompletedChapterIds: List<String>,
     onClickChapter: (String) -> Unit,
+    downloadStates: Map<String, ChapterDownloadState>,
+    selectionMode: Boolean,
+    selectedChapterIds: Set<String>,
+    onToggleChapterSelection: (String) -> Unit,
+    onToggleVolumeSelection: (List<String>) -> Unit,
+    onRetryChapter: (String) -> Unit,
     volumesSize: Int,
     lastReadingChapterId: String?,
     bookmarkChapterId: String
@@ -1222,6 +1521,10 @@ private fun VolumeItem(
         val count = volume.chapters.count { it.id in readIds }
         count to volume.chapters.size
     }
+    val completedDownloadCount = volume.chapters.count {
+        downloadStates[it.id]?.status == ChapterDownloadStatus.COMPLETED
+    }
+    val selectedCount = volume.chapters.count { it.id in selectedChapterIds }
     val isFullyRead = readCount >= totalCount
     var expanded by rememberSaveable {
         mutableStateOf(readCount < totalCount || volumesSize > 8)
@@ -1237,9 +1540,18 @@ private fun VolumeItem(
                 .padding(horizontal = 20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier
-                .weight(5f)
-                .padding(vertical = 12.dp)
+            if (selectionMode) {
+                Checkbox(
+                    checked = totalCount > 0 && selectedCount == totalCount,
+                    onCheckedChange = {
+                        onToggleVolumeSelection(volume.chapters.map { it.id })
+                    }
+                )
+            }
+            Column(
+                modifier = Modifier
+                    .weight(5f)
+                    .padding(vertical = 12.dp)
             ) {
                 Text(
                     text = volume.volumeTitle,
@@ -1248,16 +1560,28 @@ private fun VolumeItem(
                     else colorScheme.onSurface
                 )
                 Text(
-                    text = if (isFullyRead) stringResource(R.string.info_reading_finished)
-                    else stringResource(R.string.info_reading_progress, readCount, totalCount),
+                    text = (if (isFullyRead) stringResource(R.string.info_reading_finished)
+                    else stringResource(R.string.info_reading_progress, readCount, totalCount)) +
+                        " · " + stringResource(
+                            R.string.download_progress_summary,
+                            completedDownloadCount,
+                            totalCount
+                        ),
                     style = typography.titleSmall,
                     fontWeight = FontWeight.Normal,
                     color = colorScheme.secondary
                 )
+                if (selectionMode && selectedCount > 0) {
+                    Text(
+                        text = stringResource(R.string.download_selected_count, selectedCount),
+                        style = typography.labelMedium,
+                        color = colorScheme.primary
+                    )
+                }
             }
             Spacer(Modifier.weight(1f))
             AnimatedVisibility(
-                visible = !hideReadChapters || !isFullyRead,
+                visible = selectionMode || !hideReadChapters || !isFullyRead,
                 enter = fadeIn(animationSpec = tween(180)) +
                         slideInHorizontally(
                             animationSpec = tween(180),
@@ -1282,13 +1606,20 @@ private fun VolumeItem(
         Column(modifier = Modifier.animateContentSize(animationSpec = tween(250))) {
             if (expanded) {
                 volume.chapters.forEach { chapter ->
-                    val visible = !(hideReadChapters && chapter.id in readIds)
+                    val visible = selectionMode || !(hideReadChapters && chapter.id in readIds)
                     if (visible) {
+                        val state = downloadStates[chapter.id]
+                            ?: ChapterDownloadState(ChapterDownloadStatus.NOT_DOWNLOADED)
                         ChapterItem(
                             chapter = chapter,
                             isRead = chapter.id in readIds,
                             isLastRead = chapter.id == lastReadingChapterId,
                             isBookmarked = chapter.id == bookmarkChapterId,
+                            downloadState = state,
+                            selectionMode = selectionMode,
+                            isSelected = chapter.id in selectedChapterIds,
+                            onToggleSelection = { onToggleChapterSelection(chapter.id) },
+                            onRetry = { onRetryChapter(chapter.id) },
                             onClick = { onClickChapter(chapter.id) }
                         )
                     }
@@ -1304,18 +1635,31 @@ private fun ChapterItem(
     isRead: Boolean,
     isLastRead: Boolean,
     isBookmarked: Boolean,
+    downloadState: ChapterDownloadState,
+    selectionMode: Boolean,
+    isSelected: Boolean,
+    onToggleSelection: () -> Unit,
+    onRetry: () -> Unit,
     onClick: () -> Unit
 ) {
+    val status = downloadState.status
+    val statusLabel = stringResource(downloadStatusLabel(status))
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(onClick = if (selectionMode) onToggleSelection else onClick)
             .padding(vertical = 12.dp)
-            .padding(start = 32.dp, end = 27.dp)
+            .padding(start = if (selectionMode) 20.dp else 32.dp, end = 20.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (selectionMode) {
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = { onToggleSelection() }
+                )
+            }
             Column(
                 modifier = Modifier.weight(1f)
             ) {
@@ -1346,11 +1690,21 @@ private fun ChapterItem(
                         color = colorScheme.tertiary
                     )
                 }
+                if (status != ChapterDownloadStatus.NOT_DOWNLOADED) {
+                    Text(
+                        text = statusLabel,
+                        maxLines = 1,
+                        style = typography.labelMedium,
+                        color = if (status == ChapterDownloadStatus.FAILED ||
+                            status == ChapterDownloadStatus.PARTIAL
+                        ) colorScheme.error else colorScheme.primary
+                    )
+                }
             }
             if (isLastRead) {
                 Icon(
                     modifier = Modifier
-                        .padding(start = 22.dp)
+                        .padding(start = 12.dp)
                         .size(24.dp),
                     painter = painterResource(R.drawable.target_24px),
                     tint = colorScheme.primary,
@@ -1360,14 +1714,35 @@ private fun ChapterItem(
             if (isBookmarked) {
                 Icon(
                     modifier = Modifier
-                        .padding(start = 22.dp)
+                        .padding(start = 12.dp)
                         .size(24.dp),
                     painter = painterResource(R.drawable.star_24px),
                     tint = colorScheme.tertiary,
                     contentDescription = "linovelib_bookmark"
                 )
             }
-
+            if (!selectionMode &&
+                (status == ChapterDownloadStatus.FAILED || status == ChapterDownloadStatus.PARTIAL)
+            ) {
+                IconButton(onClick = onRetry) {
+                    Icon(
+                        painter = painterResource(R.drawable.autorenew_24px),
+                        contentDescription = stringResource(R.string.download_retry),
+                        tint = colorScheme.error
+                    )
+                }
+            } else {
+                Icon(
+                    modifier = Modifier
+                        .padding(start = 12.dp)
+                        .size(22.dp),
+                    painter = painterResource(downloadStatusIcon(status)),
+                    contentDescription = statusLabel,
+                    tint = if (status == ChapterDownloadStatus.FAILED ||
+                        status == ChapterDownloadStatus.PARTIAL
+                    ) colorScheme.error else colorScheme.primary
+                )
+            }
         }
     }
 }

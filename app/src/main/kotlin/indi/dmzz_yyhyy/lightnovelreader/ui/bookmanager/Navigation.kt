@@ -39,6 +39,9 @@ fun NavGraphBuilder.bookManager() {
             downloadItemIdList = viewModel.downloadItemIdList,
             uiState = uiState,
             onClickCancel = viewModel::onClickCancel,
+            onClickPause = viewModel::onClickPause,
+            onClickResume = viewModel::onClickResume,
+            onClickRetry = viewModel::onClickRetry,
             onClickClearCompleted = viewModel::onClickClearCompleted
         )
     }

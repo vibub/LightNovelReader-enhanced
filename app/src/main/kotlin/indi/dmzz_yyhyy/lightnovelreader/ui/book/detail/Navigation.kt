@@ -75,6 +75,59 @@ fun NavGraphBuilder.bookDetailDestination() {
         LaunchedEffect(bookId) {
             viewModel.init(bookId)
         }
+        fun startCache(chapterIds: List<String>, forceRefresh: Boolean = false) {
+            if (chapterIds.isEmpty()) return
+            coroutineScope.launch {
+                viewModel.cacheBook(bookId, chapterIds, forceRefresh).collect { workInfo ->
+                    if (workInfo == null) {
+                        viewModel.uiState.bookInformation
+                            ?.map { it.title }
+                            ?.onOk { title ->
+                                showSnackbar(
+                                    coroutineScope = coroutineScope,
+                                    hostState = snackbarHostState,
+                                    message = context.getString(
+                                        R.string.cache_book_started,
+                                        title
+                                    )
+                                ) { }
+                            }?.onErr {
+                                showSnackbar(
+                                    coroutineScope = coroutineScope,
+                                    hostState = snackbarHostState,
+                                    message = it.message
+                                ) { }
+                            }
+                        return@collect
+                    }
+                    when (workInfo.state) {
+                        WorkInfo.State.SUCCEEDED -> {
+                            showSnackbar(
+                                coroutineScope = coroutineScope,
+                                hostState = snackbarHostState,
+                                message = context.getString(R.string.cache_book_finished)
+                            ) { }
+                        }
+                        WorkInfo.State.FAILED -> {
+                            showSnackbar(
+                                coroutineScope = coroutineScope,
+                                hostState = snackbarHostState,
+                                message = context.getString(R.string.cache_book_error)
+                            ) { }
+                        }
+                        WorkInfo.State.RUNNING -> {
+                            showSnackbar(
+                                coroutineScope = coroutineScope,
+                                hostState = snackbarHostState,
+                                message = context.getString(R.string.cache_book_running)
+                            ) { }
+                        }
+                        else -> Unit
+                    }
+                }
+            }
+        }
+
         DetailScreen(
             uiState = viewModel.uiState,
             onClickExportToEpub = { settings ->
@@ -150,56 +203,14 @@ fun NavGraphBuilder.bookDetailDestination() {
                         }
                 }
             },
-            cacheBook = { bookId ->
-                coroutineScope.launch {
-                    viewModel.cacheBook(bookId).collect { workInfo ->
-                        if (workInfo == null) {
-                            viewModel.uiState.bookInformation
-                                ?.map { it.title }
-                                ?.onOk { title ->
-                                    showSnackbar(
-                                        coroutineScope = coroutineScope,
-                                        hostState = snackbarHostState,
-                                        message = context.getString(
-                                            R.string.cache_book_started,
-                                            title
-                                        )
-                                    ) { }
-                                }?.onErr {
-                                    showSnackbar(
-                                        coroutineScope = coroutineScope,
-                                        hostState = snackbarHostState,
-                                        message = it.message
-                                    ) { }
-                                }
-                            return@collect
-                        }
-                        when (workInfo.state) {
-                            WorkInfo.State.SUCCEEDED -> {
-                                showSnackbar(
-                                    coroutineScope = coroutineScope,
-                                    hostState = snackbarHostState,
-                                    message = context.getString(R.string.cache_book_finished)
-                                ) { }
-                            }
-                            WorkInfo.State.FAILED -> {
-                                showSnackbar(
-                                    coroutineScope = coroutineScope,
-                                    hostState = snackbarHostState,
-                                    message = context.getString(R.string.cache_book_error)
-                                ) { }
-                            }
-                            WorkInfo.State.RUNNING -> {
-                                showSnackbar(
-                                    coroutineScope = coroutineScope,
-                                    hostState = snackbarHostState,
-                                    message = context.getString(R.string.cache_book_running)
-                                ) { }
-                            }
-                            else -> {}
-                        }
-                    }
-                }
+            onStartCache = { _, chapterIds, forceRefresh ->
+                startCache(chapterIds, forceRefresh)
+            },
+            onClearCachedChapters = { _, chapterIds ->
+                viewModel.clearCachedChapters(bookId, chapterIds)
+            },
+            onRetryChapter = { chapterId ->
+                startCache(listOf(chapterId), forceRefresh = true)
             },
             requestAddBookToBookshelf = navController::navigateToAddBookToBookshelfDialog,
             onClickTag = viewModel::onClickTag,

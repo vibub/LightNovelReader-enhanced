@@ -3,7 +3,9 @@ package indi.dmzz_yyhyy.lightnovelreader.data.book
 import android.net.Uri
 import android.util.Log
 import androidx.navigation.NavController
+import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
@@ -15,8 +17,11 @@ import com.github.michaelbull.result.map
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import indi.dmzz_yyhyy.lightnovelreader.BuildConfig
+import indi.dmzz_yyhyy.lightnovelreader.data.download.ChapterDownloadRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.download.ChapterDownloadStatus
 import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalBookDataSource
+import indi.dmzz_yyhyy.lightnovelreader.data.local.OfflineContentCache
 import indi.dmzz_yyhyy.lightnovelreader.data.text.TextProcessingRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
 import indi.dmzz_yyhyy.lightnovelreader.data.work.CacheBookWork
@@ -37,6 +42,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonArray
 import kotlin.time.Duration.Companion.seconds
+import java.io.File
 import java.time.LocalDateTime
 import java.util.UUID
 import javax.inject.Inject
@@ -114,6 +120,8 @@ internal fun shouldRequestRemoteChapter(
 class BookRepository @Inject constructor(
     private val webBookDataSourceProvider: WebBookDataSourceProvider,
     private val localBookDataSource: LocalBookDataSource,
+    private val chapterDownloadRepository: ChapterDownloadRepository,
+    private val offlineContentCache: OfflineContentCache,
     private val bookshelfRepository: BookshelfRepository,
     private val textProcessingRepository: TextProcessingRepository,
     private val workManager: WorkManager
@@ -138,7 +146,13 @@ class BookRepository @Inject constructor(
         if (BuildConfig.BENCHMARK && local != null) return@flow
         val remote = webBookDataSource.getBookInformation(id, priority)
             .onOk { remote ->
-                localBookDataSource.updateBookInformation(remote)
+                val cachedCover = local?.coverUri?.takeIf { uri ->
+                    uri.scheme.equals("file", ignoreCase = true) &&
+                        uri.path?.let(::File)?.isFile == true
+                }
+                localBookDataSource.updateBookInformation(
+                    cachedCover?.let { remote.copy(coverUri = it) } ?: remote
+                )
                 val bookshelfBookMetadata = bookshelfRepository.getBookshelfBookMetadata(remote.id) ?: return@onOk
                 if (bookshelfBookMetadata.lastUpdate.isBefore(remote.lastUpdated))
                     bookshelfBookMetadata.bookShelfIds.forEach {
@@ -209,10 +223,18 @@ class BookRepository @Inject constructor(
         priority: WebDataSourcePriority
     ): Flow<Result<ChapterContent, WebRequestError>> = flow {
         val sourceId = webBookDataSource.id.toLegacyCompatibleSourceId()
+        chapterDownloadRepository.migrateLegacyCachedChapters(
+            sourceId = sourceId,
+            bookId = bookId,
+            chapterIds = listOf(chapterId)
+        )
         val local = localBookDataSource.getChapterContent(sourceId, bookId, chapterId)
             ?.takeIf(::isUsableChapterContent)
         local?.let { emit(Ok(it)) }
         if (BuildConfig.BENCHMARK && local != null) return@flow
+        if (local != null && chapterDownloadRepository.isOfflineReady(sourceId, bookId, chapterId)) {
+            return@flow
+        }
         if (!shouldRequestRemoteChapter(local != null, isChapterRecentlyFetched(sourceId, bookId, chapterId))) {
             return@flow
         }
@@ -257,6 +279,11 @@ class BookRepository @Inject constructor(
         priority: WebDataSourcePriority
     ) {
         val sourceId = webBookDataSource.id.toLegacyCompatibleSourceId()
+        chapterDownloadRepository.migrateLegacyCachedChapters(
+            sourceId = sourceId,
+            bookId = bookId,
+            chapterIds = listOf(chapterId)
+        )
         val local = localBookDataSource.getChapterContent(sourceId, bookId, chapterId)
             ?.takeIf(::isUsableChapterContent)
         if (local != null) return
@@ -312,11 +339,85 @@ class BookRepository @Inject constructor(
 
     fun isCacheBookWorkFlow(workId: UUID) = workManager.getWorkInfoByIdFlow(workId)
 
-    fun cacheBook(bookId: String): OneTimeWorkRequest {
+    suspend fun cacheBook(
+        bookId: String,
+        chapterIds: List<String>? = null,
+        forceRefresh: Boolean = false
+    ): OneTimeWorkRequest {
+        val sourceId = webBookDataSource.id.toLegacyCompatibleSourceId()
+        val localBookVolumes = localBookDataSource.getBookVolumes(bookId)
+        val selectedChapterIds = chapterIds
+            ?.map(String::trim)
+            ?.filter(String::isNotBlank)
+            ?.distinct()
+        val chaptersToQueue = selectedChapterIds ?: localBookVolumes
+            ?.volumes
+            ?.flatMap { it.chapters }
+            ?.map { it.id }
+        if (!chaptersToQueue.isNullOrEmpty()) {
+            chapterDownloadRepository.migrateLegacyCachedChapters(
+                sourceId = sourceId,
+                bookId = bookId,
+                chapterIds = chaptersToQueue
+            )
+            chapterDownloadRepository.queue(
+                sourceId = sourceId,
+                bookId = bookId,
+                chapterIds = chaptersToQueue,
+                forceRefresh = forceRefresh
+            )
+        }
+
+        return enqueueCacheWork(
+            bookId = bookId,
+            queueAll = selectedChapterIds == null && localBookVolumes == null
+        )
+    }
+
+    fun resumeCachedBook(bookId: String): OneTimeWorkRequest =
+        enqueueCacheWork(bookId = bookId, queueAll = false)
+
+    suspend fun retryCachedBook(bookId: String): OneTimeWorkRequest {
+        val sourceId = webBookDataSource.id.toLegacyCompatibleSourceId()
+        val chapterIds = localBookDataSource.getBookVolumes(bookId)
+            ?.volumes
+            ?.flatMap { it.chapters }
+            ?.map { it.id }
+            .orEmpty()
+        if (chapterIds.isNotEmpty()) {
+            val states = chapterDownloadRepository.getStates(sourceId, bookId)
+            val retryIds = chapterIds.filter { chapterId ->
+                states[chapterId]?.status in setOf(
+                    ChapterDownloadStatus.PARTIAL,
+                    ChapterDownloadStatus.FAILED
+                )
+            }
+            if (retryIds.isNotEmpty()) {
+                chapterDownloadRepository.queue(
+                    sourceId = sourceId,
+                    bookId = bookId,
+                    chapterIds = retryIds,
+                    forceRefresh = true
+                )
+            }
+        }
+        return enqueueCacheWork(bookId = bookId, queueAll = false)
+    }
+
+    private fun enqueueCacheWork(
+        bookId: String,
+        queueAll: Boolean
+    ): OneTimeWorkRequest {
         val workRequest = OneTimeWorkRequestBuilder<CacheBookWork>()
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.UNMETERED)
+                    .build()
+            )
             .setInputData(
                 workDataOf(
-                    "bookId" to bookId
+                    "bookId" to bookId,
+                    "queueAll" to queueAll
                 )
             )
             .build()
@@ -330,17 +431,39 @@ class BookRepository @Inject constructor(
 
     override suspend fun getIsBookCached(bookId: String): Boolean {
         val sourceId = webBookDataSource.id.toLegacyCompatibleSourceId()
-        localBookDataSource.getBookVolumes(bookId)?.let { bookVolumes ->
-            if (bookVolumes.volumes.isEmpty())
-                return false
-            bookVolumes.volumes.forEach { bookVolume ->
-                bookVolume.chapters.forEach {
-                    if (!localBookDataSource.isChapterContentExists(sourceId, bookId, it.id))
-                        return false
-                }
-            }
-        } ?: return false
-        return true
+        val bookVolumes = localBookDataSource.getBookVolumes(bookId) ?: return false
+        val chapterIds = bookVolumes.volumes.flatMap { volume -> volume.chapters.map { it.id } }
+        if (chapterIds.isEmpty()) return false
+        chapterDownloadRepository.migrateLegacyCachedChapters(sourceId, bookId, chapterIds)
+        return chapterDownloadRepository.isBookFullyDownloaded(sourceId, bookId, chapterIds)
+    }
+
+    suspend fun cancelCachedBook(bookId: String) {
+        val sourceId = webBookDataSource.id.toLegacyCompatibleSourceId()
+        chapterDownloadRepository.clearPending(sourceId, bookId)
+    }
+
+    suspend fun clearCachedChapters(bookId: String, chapterIds: List<String>) {
+        val ids = chapterIds.map(String::trim).filter(String::isNotBlank).distinct()
+        if (ids.isEmpty()) return
+        val sourceId = webBookDataSource.id.toLegacyCompatibleSourceId()
+        localBookDataSource.deleteChapterContent(sourceId, bookId, ids)
+        chapterDownloadRepository.clearChapters(sourceId, bookId, ids)
+        ids.forEach { chapterId ->
+            offlineContentCache.deleteChapterImages(sourceId, bookId, chapterId)
+        }
+    }
+
+    suspend fun clearCachedBook(bookId: String) {
+        val sourceId = webBookDataSource.id.toLegacyCompatibleSourceId()
+        val chapterIds = localBookDataSource.getBookVolumes(bookId)
+            ?.volumes
+            ?.flatMap { it.chapters }
+            ?.map { it.id }
+            .orEmpty()
+        clearCachedChapters(bookId, chapterIds)
+        chapterDownloadRepository.clearBook(sourceId, bookId)
+        offlineContentCache.deleteBookImages(sourceId, bookId)
     }
 
     override fun progressBookTagClick(tag: String, navController: NavController) =
