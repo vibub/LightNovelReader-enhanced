@@ -1683,7 +1683,9 @@ private fun ChapterItem(
                         color = colorScheme.tertiary
                     )
                 }
-                if (status != ChapterDownloadStatus.NOT_DOWNLOADED) {
+                if (status != ChapterDownloadStatus.NOT_DOWNLOADED &&
+                    status != ChapterDownloadStatus.COMPLETED
+                ) {
                     Text(
                         text = statusLabel,
                         maxLines = 1,
