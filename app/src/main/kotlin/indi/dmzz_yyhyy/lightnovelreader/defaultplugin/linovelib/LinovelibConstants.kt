@@ -49,10 +49,12 @@ object LinovelibConstants {
 
     fun extractBookIdFromUrl(url: String): String? {
         val host = Regex("^https?://([^/]+)").find(url)?.groups?.get(1)?.value?.lowercase() ?: return null
-        val mobileHost = MOBILE_BASE_URL.substringAfter("://")
+        val bilinovelHosts = listOf(MOBILE_BASE_URL, FILTER_BASE_URL)
+            .map { it.substringAfter("://") }
         val desktopHost = BASE_URL.substringAfter("://")
-        val mobileRootDomain = mobileHost.substringAfter('.')
-        val isMobileHost = host == mobileHost || host.endsWith(".$mobileRootDomain")
+        val isMobileHost = bilinovelHosts.any { mobileHost ->
+            host == mobileHost || host.endsWith(".${mobileHost.substringAfter('.')}")
+        }
         if (!isMobileHost && host != desktopHost) return null
         return Regex("/novel/(\\d+)(?:\\.html|/|$)")
             .find(url)

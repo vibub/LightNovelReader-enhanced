@@ -22,6 +22,14 @@ class LinovelibConstantsTest {
     }
 
     @Test
+    fun extractBookIdFromBilinovelNetDetailUrl() {
+        assertEquals(
+            "123",
+            LinovelibConstants.extractBookIdFromUrl("https://www.bilinovel.net/novel/123.html")
+        )
+    }
+
+    @Test
     fun extractBookIdRejectsUnrelatedHost() {
         assertNull(LinovelibConstants.extractBookIdFromUrl("https://example.com/novel/4359.html"))
     }
