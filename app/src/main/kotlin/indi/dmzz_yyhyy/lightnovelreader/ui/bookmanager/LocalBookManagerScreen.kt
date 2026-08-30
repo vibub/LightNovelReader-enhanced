@@ -696,7 +696,7 @@ private fun LocalBookInfoCard(
                         LocalBookInfoRow(
                             stringResource(R.string.local_book_info_chapter_content),
                             formatSize(
-                                size = item.chapterContentBytes,
+                                size = item.chapterContentBytes + item.offlineContentBytes,
                                 minUnit = FileSizeUnit.KB
                             )
                         )

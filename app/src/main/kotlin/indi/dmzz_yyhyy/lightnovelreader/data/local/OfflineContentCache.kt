@@ -215,6 +215,16 @@ class OfflineContentCache @Inject constructor(
         information.copy(coverUri = Uri.fromFile(targetFile))
     }
 
+    /** 返回当前书籍在各数据源目录下保存的封面和章节图片大小。 */
+    fun getBookCacheBytes(bookId: String): Long {
+        val bookHash = sha256(bookId)
+        return rootDirectory.listFiles()
+            ?.sumOf { sourceDirectory ->
+                directoryBytes(sourceDirectory.resolve(bookHash))
+            }
+            ?: 0L
+    }
+
     fun deleteChapterImages(sourceId: Int, bookId: String, chapterId: String) {
         chapterDirectory(sourceId, bookId, chapterId).deleteRecursively()
     }

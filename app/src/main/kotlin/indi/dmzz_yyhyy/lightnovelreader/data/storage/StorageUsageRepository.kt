@@ -2,6 +2,7 @@ package indi.dmzz_yyhyy.lightnovelreader.data.storage
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
+import indi.dmzz_yyhyy.lightnovelreader.data.local.OfflineContentCache
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.LightNovelReaderDatabase
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.converter.ListConverter
 import indi.dmzz_yyhyy.lightnovelreader.data.plugin.PluginManager
@@ -19,7 +20,8 @@ class StorageUsageRepository @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val database: LightNovelReaderDatabase,
     private val pluginManager: PluginManager,
-    private val userDataRepository: UserDataRepository
+    private val userDataRepository: UserDataRepository,
+    private val offlineContentCache: OfflineContentCache
 ) {
     companion object {
         private const val DB_NAME = "light_novel_reader_database"
@@ -90,7 +92,8 @@ class StorageUsageRepository @Inject constructor(
                 bookInformationBytes = bookInfoBytesMap[bookId] ?: 0L,
                 volumeBytes = bookVolumeBytesMap[bookId] ?: 0L,
                 chapterInformationBytes = bookChapterInfoBytesMap[bookId] ?: 0L,
-                chapterContentBytes = bookChapterContentBytesMap[bookId] ?: 0L
+                chapterContentBytes = bookChapterContentBytesMap[bookId] ?: 0L,
+                offlineContentBytes = offlineContentCache.getBookCacheBytes(bookId)
             )
         }.sortedByDescending { it.totalBytes }
 

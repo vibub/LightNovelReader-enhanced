@@ -30,6 +30,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadType
 import indi.dmzz_yyhyy.lightnovelreader.data.download.MutableDownloadItem
 import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalBookDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.local.OfflineContentCache
+import indi.dmzz_yyhyy.lightnovelreader.data.storage.StorageUsageRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceManager
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
 import indi.dmzz_yyhyy.lightnovelreader.data.web.proxy.PriorityWebBookDataSource
@@ -60,6 +61,7 @@ class CacheBookWork @AssistedInject constructor(
     private val downloadSettingsRepository: DownloadSettingsRepository,
     private val downloadStorageManager: DownloadStorageManager,
     private val webBookDataSourceManager: WebBookDataSourceManager,
+    private val storageUsageRepository: StorageUsageRepository,
     private val bookRepository: BookRepository
 ) : CoroutineWorker(appContext, workerParams) {
     companion object {
@@ -373,6 +375,7 @@ class CacheBookWork @AssistedInject constructor(
                 continue
             }
             localBookDataSource.updateChapterContent(sourceId, bookId, cacheResult.content)
+            storageUsageRepository.invalidateSnapshot()
             writtenBytes += cacheResult.bytesWritten + cacheResult.content.toString().encodeToByteArray().size
             if (cacheResult.isComplete) {
                 chapterDownloadRepository.markCompleted(sourceId, bookId, chapterInformation.id)
@@ -412,6 +415,7 @@ class CacheBookWork @AssistedInject constructor(
         val isSuccessful = failedCount == 0 && partialCount == 0 && !hasCancelledChapters
         if (isSuccessful) {
             cacheBookInformation(bookId, webBookDataSource)
+            storageUsageRepository.invalidateSnapshot()
             downloadItem.progress = 1f
             downloadItem.writtenBytes = writtenBytes
             downloadItem.currentChapterTitle = null
@@ -426,6 +430,7 @@ class CacheBookWork @AssistedInject constructor(
                 writtenBytes = writtenBytes
             )
         } else if (hasCancelledChapters && failedCount == 0 && partialCount == 0) {
+            storageUsageRepository.invalidateSnapshot()
             val message = "部分章节已取消，任务已暂停"
             downloadTaskRepository.markPaused(
                 sourceId = sourceId,
@@ -446,6 +451,7 @@ class CacheBookWork @AssistedInject constructor(
             downloadItem.state = DownloadItemState.PAUSED
         } else {
             cacheBookInformation(bookId, webBookDataSource)
+            storageUsageRepository.invalidateSnapshot()
             val message = buildString {
                 append("部分章节需要重试")
                 lastErrorMessage?.takeIf(String::isNotBlank)?.let {

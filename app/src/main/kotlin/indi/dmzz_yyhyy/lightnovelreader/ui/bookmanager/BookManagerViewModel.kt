@@ -20,6 +20,9 @@ import indi.dmzz_yyhyy.lightnovelreader.data.work.ExportBookToEPUBWork
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -55,6 +58,20 @@ class BookManagerViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             storageUsageRepository.getCachedSnapshot()?.let { updateLocalBooks(it, false) }
             refreshLocalBooks()
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            downloadProgressRepository.downloadItemListFlow
+                .map { snapshots ->
+                    snapshots.associate { snapshot ->
+                        Triple(
+                            snapshot.item.type,
+                            snapshot.item.sourceId,
+                            snapshot.item.bookId
+                        ) to snapshot.state
+                    }
+                }
+                .distinctUntilChanged()
+                .collectLatest { refreshLocalBooks() }
         }
     }
 
@@ -377,6 +394,7 @@ class BookManagerViewModel @Inject constructor(
                 volumeBytes = usage.volumeBytes,
                 chapterInformationBytes = usage.chapterInformationBytes,
                 chapterContentBytes = usage.chapterContentBytes,
+                offlineContentBytes = usage.offlineContentBytes,
                 readingRecordBytes = readingRecordBytes
             )
         }.filter { it.size > 0L }
