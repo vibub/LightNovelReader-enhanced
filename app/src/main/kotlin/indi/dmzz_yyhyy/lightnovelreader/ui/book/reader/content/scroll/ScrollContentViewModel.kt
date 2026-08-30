@@ -23,18 +23,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 
-internal fun shouldLoadPreviousChapter(
-    itemKey: Any?,
-    previousChapterId: String?,
-    isPreviousChapterLoaded: Boolean,
-    itemOffset: Int?,
-    hasPreviousChapter: Boolean
-): Boolean = itemKey == previousChapterId &&
-    isPreviousChapterLoaded &&
-    itemOffset != null &&
-    itemOffset <= 0 &&
-    hasPreviousChapter
-
 class ScrollContentViewModel(
     val bookRepository: BookRepository,
     val coroutineScope: CoroutineScope,
@@ -52,6 +40,7 @@ class ScrollContentViewModel(
     private var collectNextChapterJob: Job? = null
     private var collectingPrevChapterId: String? = null
     private var collectingNextChapterId: String? = null
+    private var isPreviousChapterLoadArmed = false
     private val imageHeightPreloadedKeys = mutableSetOf<String>()
 
     override val uiState: MutableScrollContentUiSate = MutableScrollContentUiSate(
@@ -177,11 +166,7 @@ class ScrollContentViewModel(
     }
 
     private fun publishReadingProgress(chapterId: String, progress: Float) {
-        val chapter = uiState.contentList
-            .firstOrNull { it?.first == chapterId }
-            ?.second
-            ?.get()
-            ?: return
+        val chapter = uiState.readingChapterContent?.get() ?: return
         updateReadingProgress(
             ReadingProgressSnapshot(
                 bookId = uiState.bookId,
@@ -203,22 +188,25 @@ class ScrollContentViewModel(
                 )
             }.collect { (itemInfo, isPrevChapterLoaded, isNextChapterLoaded) ->
                 uiState.readingChapterContent?.onOk { readingChapterContent ->
+                    if (itemInfo?.key == readingChapterContent.id) {
+                        isPreviousChapterLoadArmed = true
+                    }
                     if (
+                        itemInfo != null &&
+                        itemInfo.key == readingChapterContent.prevChapter &&
+                        isPrevChapterLoaded &&
+                        isPreviousChapterLoadArmed &&
+                        uiState.lazyListState.isScrollInProgress &&
                         lazyColumnSize.height != 0 &&
-                        shouldLoadPreviousChapter(
-                            itemKey = itemInfo?.key,
-                            previousChapterId = readingChapterContent.prevChapter,
-                            isPreviousChapterLoaded = isPrevChapterLoaded,
-                            itemOffset = itemInfo?.offset,
-                            hasPreviousChapter = readingChapterContent.hasPrevChapter()
-                        )
+                        itemInfo.offset <= -lazyColumnSize.height &&
+                        readingChapterContent.hasPrevChapter()
                     ) {
                         collectNextChapterJob?.cancel()
                         collectCurrentChapterJob?.cancel()
                         collectPrevChapterJob?.cancel()
                         val nextChapter = uiState.contentList[1]
                         val currentChapter = uiState.contentList[0]
-                        val currentChapterId = readingChapterContent.prevChapter ?: return@onOk
+                        val currentChapterId = readingChapterContent.prevChapter
                         val currentChapterContent = currentChapter?.second?.get()
                         resetContentList()
                         uiState.contentList[2] = nextChapter
@@ -271,6 +259,7 @@ class ScrollContentViewModel(
             imageHeightPreloadedKeys.clear()
             collectingPrevChapterId = null
             collectingNextChapterId = null
+            isPreviousChapterLoadArmed = false
             uiState.retryingChapterIds = emptySet()
         }
         uiState.bookId = id
@@ -348,6 +337,7 @@ class ScrollContentViewModel(
 
     override fun changeChapter(id: String, restoreProgress: Boolean) {
         uiState.retryingChapterIds = emptySet()
+        isPreviousChapterLoadArmed = false
         resetContentList()
         uiState.readingChapterId = id
         uiState.readingProgress = 0f

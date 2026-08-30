@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
@@ -115,6 +116,7 @@ fun ScrollContentTextComponent(
     val listState = uiState.lazyListState
     val scope = rememberCoroutineScope()
     var lazyColumnSize by remember { mutableStateOf(IntSize(0, 0)) }
+    var isInitialPositioned by remember(listState) { mutableStateOf(false) }
 
     val reachedTopMsg = stringResource(R.string.reader_reached_top)
     val prevChapterLabel = stringResource(R.string.previous_chapter)
@@ -125,17 +127,39 @@ fun ScrollContentTextComponent(
     val reachedEndMsg = stringResource(R.string.reader_reached_end)
 
     LaunchedEffect(listState) {
-        snapshotFlow { listState.layoutInfo.visibleItemsInfo }.first { it.isNotEmpty() }
-        withFrameNanos {  }
+        val chapterId = uiState.readingChapterId ?: return@LaunchedEffect
+        val useContinuousScrolling = settingState.isUsingContinuousScrolling
+        // 当前章节可能在首个可见项之后才加入 LazyColumn，不能在上一章仍是
+        // placeholder 时定位，否则上一章内容补齐后会把当前位置推回首项。
+        snapshotFlow {
+            val currentChapter = uiState.contentList.getOrNull(1)?.second?.get()
+            Triple(
+                currentChapter?.id,
+                currentChapter?.prevChapter,
+                uiState.contentList.getOrNull(0)?.first
+            )
+        }.first { (currentChapterId, previousChapterId, loadedPreviousChapterId) ->
+            currentChapterId == chapterId && (
+                !useContinuousScrolling ||
+                    previousChapterId == null ||
+                    loadedPreviousChapterId == previousChapterId
+                )
+        }
+        withFrameNanos { }
         listState.scrollToItem(1)
-        val item = uiState.lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == uiState.readingChapterId } ?: return@LaunchedEffect
-        snapshotFlow { lazyColumnSize }.first { lazyColumnSize.height > 0 }
+        val item = snapshotFlow {
+            listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == chapterId }
+        }.first { it != null } ?: return@LaunchedEffect
+        if (uiState.readingChapterId != chapterId) return@LaunchedEffect
+        snapshotFlow { lazyColumnSize }.first { it.height > 0 }
+        if (uiState.readingChapterId != chapterId) return@LaunchedEffect
         val offset = if (uiState.readingProgress <= 0f) {
             0
         } else {
             (item.size * uiState.readingProgress).toInt() - lazyColumnSize.height
         }
-        listState.scrollToItem(1, offset)
+        listState.scrollToItem(item.index, offset)
+        isInitialPositioned = true
     }
     LaunchedEffect(listState) {
         var atTop = false
@@ -247,7 +271,7 @@ fun ScrollContentTextComponent(
         uiState.writeProgressRightNow()
     }
     AnimatedVisibility(
-        uiState.contentList.getOrNull(1) == null,
+        uiState.contentList.getOrNull(1) == null || !isInitialPositioned,
         enter = fadeIn(),
         exit = fadeOut()
     ) {
@@ -260,6 +284,7 @@ fun ScrollContentTextComponent(
     ) {
         LazyColumn(
             modifier = modifier
+                .alpha(if (isInitialPositioned) 1f else 0f)
                 .padding(paddingValues)
                 .pointerInput(Unit) {
                     detectTapGestures(
