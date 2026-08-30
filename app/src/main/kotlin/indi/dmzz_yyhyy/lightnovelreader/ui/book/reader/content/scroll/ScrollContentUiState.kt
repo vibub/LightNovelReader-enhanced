@@ -16,6 +16,7 @@ interface ScrollContentUiState: ContentUiState {
     val lazyListState: LazyListState
     val contentList: List<Pair<String, Result<ChapterContentUiState, WebRequestError>>?>
     val retryingChapterIds: Set<String>
+    var isInitialPositioned: Boolean
     val retryChapter: (Int, String) -> Unit
     val setLazyColumnSize: (IntSize) -> Unit
     val writeProgressRightNow: () -> Unit
@@ -37,4 +38,5 @@ class MutableScrollContentUiSate(
     override var readingChapterId: String? by mutableStateOf(null)
     override val contentList = mutableStateListOf<Pair<String, Result<ChapterContentUiState, WebRequestError>>?>(null, null, null)
     override var retryingChapterIds: Set<String> by mutableStateOf(emptySet())
+    override var isInitialPositioned by mutableStateOf(false)
 }

@@ -97,6 +97,7 @@ class ReaderViewModel @Inject constructor(
     private var bookVolumesJob: Job? = null
     private var userReadingDataJob: Job? = null
     private var bookmarkJob: Job? = null
+    private var readingProgressWriteJob: Job? = null
     private var chapterId = ""
     private var restoreProgressOnNextContentViewModelChange = true
     val coroutineScope = CoroutineScope(Dispatchers.IO)
@@ -210,8 +211,20 @@ class ReaderViewModel @Inject constructor(
     fun changeChapter(chapterId: String, restoreProgress: Boolean = true) {
         this.chapterId = chapterId
         restoreProgressOnNextContentViewModelChange = restoreProgress
-        contentViewModel?.changeChapter(chapterId, restoreProgress)
-        if (contentViewModel != null) restoreProgressOnNextContentViewModelChange = true
+        val currentContentViewModel = contentViewModel
+        if (currentContentViewModel == null) return
+
+        viewModelScope.launch {
+            readingProgressWriteJob?.join()
+            if (
+                this@ReaderViewModel.chapterId != chapterId ||
+                contentViewModel !== currentContentViewModel
+            ) {
+                return@launch
+            }
+            currentContentViewModel.changeChapter(chapterId, restoreProgress)
+        }
+        restoreProgressOnNextContentViewModelChange = true
     }
 
     fun selectChapterFromReaderCatalog(chapterId: String) {
@@ -324,7 +337,9 @@ class ReaderViewModel @Inject constructor(
     private fun saveReadingProgress(snapshot: ReadingProgressSnapshot) {
         if (snapshot.progress.isNaN() || snapshot.bookId.isBlank() || snapshot.chapterId.isBlank()) return
         if (snapshot.progress <= 0f && snapshot.restoreAnchor.isNullOrBlank()) return
-        viewModelScope.launch(Dispatchers.IO) {
+        val previousJob = readingProgressWriteJob
+        readingProgressWriteJob = viewModelScope.launch(Dispatchers.IO) {
+            previousJob?.join()
             snapshot.restoreAnchor
                 ?.takeIf { it.isNotBlank() }
                 ?.let {

@@ -34,10 +34,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
@@ -116,7 +116,6 @@ fun ScrollContentTextComponent(
     val listState = uiState.lazyListState
     val scope = rememberCoroutineScope()
     var lazyColumnSize by remember { mutableStateOf(IntSize(0, 0)) }
-    var isInitialPositioned by remember(listState) { mutableStateOf(false) }
 
     val reachedTopMsg = stringResource(R.string.reader_reached_top)
     val prevChapterLabel = stringResource(R.string.previous_chapter)
@@ -159,7 +158,7 @@ fun ScrollContentTextComponent(
             (item.size * uiState.readingProgress).toInt() - lazyColumnSize.height
         }
         listState.scrollToItem(item.index, offset)
-        isInitialPositioned = true
+        uiState.isInitialPositioned = true
     }
     LaunchedEffect(listState) {
         var atTop = false
@@ -271,7 +270,7 @@ fun ScrollContentTextComponent(
         uiState.writeProgressRightNow()
     }
     AnimatedVisibility(
-        uiState.contentList.getOrNull(1) == null || !isInitialPositioned,
+        uiState.contentList.getOrNull(1) == null || !uiState.isInitialPositioned,
         enter = fadeIn(),
         exit = fadeOut()
     ) {
@@ -284,7 +283,7 @@ fun ScrollContentTextComponent(
     ) {
         LazyColumn(
             modifier = modifier
-                .alpha(if (isInitialPositioned) 1f else 0f)
+                .alpha(if (uiState.isInitialPositioned) 1f else 0f)
                 .padding(paddingValues)
                 .pointerInput(Unit) {
                     detectTapGestures(
