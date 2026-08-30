@@ -122,8 +122,13 @@ class DetailViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            val sourceId = webBookDataSourceProvider.value.id.toLegacyCompatibleSourceId()
             snapshotFlow { downloadProgressRepository.downloadItemIdList }.collect {
-                _uiState.downloadItem = downloadProgressRepository.downloadItemIdList.findLast { it.bookId == bookId && it.type == DownloadType.CACHE }
+                _uiState.downloadItem = downloadProgressRepository.downloadItemIdList.findLast {
+                    it.bookId == bookId &&
+                        it.sourceId == sourceId &&
+                        it.type == DownloadType.CACHE
+                }
             }
         }
     }
@@ -133,12 +138,13 @@ class DetailViewModel @Inject constructor(
         chapterIds: List<String>,
         forceRefresh: Boolean = false
     ): Flow<WorkInfo?> {
-        val workRequest = bookRepository.cacheBook(
+        bookRepository.cacheBook(
             bookId = bookId,
             chapterIds = chapterIds,
             forceRefresh = forceRefresh
         )
-        val isCachedFlow = bookRepository.isCacheBookWorkFlow(workRequest.id)
+        val sourceId = webBookDataSourceProvider.value.id.toLegacyCompatibleSourceId()
+        val isCachedFlow = bookRepository.isCacheBookWorkFlow(sourceId, bookId)
         viewModelScope.launch(Dispatchers.IO) {
             isCachedFlow.collect { workInfo ->
                 if (workInfo?.state?.isFinished == true) {

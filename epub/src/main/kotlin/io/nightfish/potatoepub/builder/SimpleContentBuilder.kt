@@ -30,6 +30,7 @@ class SimpleContentBuilder {
         headElement.addElement("title").addText(src)
     }
 
+    @Suppress("unused")
     fun headline(level: Int, content: String) {
         contentElement.addElement("h$level").addText(content)
     }
@@ -46,9 +47,13 @@ class SimpleContentBuilder {
     }
 
     /**
-     * make sure image is jpeg file
+     * 添加图片资源，并根据文件扩展名生成默认 href。
      */
-    fun image(image: File, id: String = "image_${image.hashCode()}", src: String = "image/$id.jpg") {
+    fun image(
+        image: File,
+        id: String = "image_${image.hashCode()}",
+        src: String = "image/$id.${image.extension.ifBlank { "jpg" }}"
+    ) {
         _images[Pair(id, src)] = image
         XmlBuilder.ElementBuilder(contentElement, "div", arrayOf(Attribute("class", "div_image"))) {
             "img"(

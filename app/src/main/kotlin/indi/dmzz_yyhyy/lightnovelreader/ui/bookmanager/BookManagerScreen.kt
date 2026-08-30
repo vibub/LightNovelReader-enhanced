@@ -66,6 +66,7 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.components.Cover
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.EmptyPage
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data.MenuOptions
 import indi.dmzz_yyhyy.lightnovelreader.utils.formTime
+import indi.dmzz_yyhyy.lightnovelreader.utils.formatSize
 import indi.dmzz_yyhyy.lightnovelreader.utils.navigationBarSpacer
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -77,8 +78,7 @@ fun BookManagerScreen(
     onClickCancel: (DownloadItem) -> Unit,
     onClickPause: (DownloadItem) -> Unit,
     onClickResume: (DownloadItem) -> Unit,
-    onClickRetry: (DownloadItem) -> Unit,
-    onClickClearCompleted: () -> Unit
+    onClickRetry: (DownloadItem) -> Unit
 ) {
     var tabIndex by rememberSaveable { mutableIntStateOf(0) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
@@ -175,8 +175,7 @@ fun BookManagerScreen(
                         onClickCancel = onClickCancel,
                         onClickPause = onClickPause,
                         onClickResume = onClickResume,
-                        onClickRetry = onClickRetry,
-                        onClickClearCompleted = onClickClearCompleted
+                        onClickRetry = onClickRetry
                     )
                 } else {
                     LocalBookManagerContent(
@@ -348,10 +347,11 @@ private fun DownloadManagerContent(
     onClickCancel: (DownloadItem) -> Unit,
     onClickPause: (DownloadItem) -> Unit,
     onClickResume: (DownloadItem) -> Unit,
-    onClickRetry: (DownloadItem) -> Unit,
-    onClickClearCompleted: () -> Unit
+    onClickRetry: (DownloadItem) -> Unit
 ) {
-    val itemList = downloadItemIdList.distinctBy { it.type to it.bookId }
+    val itemList = downloadItemIdList
+        .distinctBy { Triple(it.type, it.sourceId, it.bookId) }
+        .filterNot { it.state == DownloadItemState.COMPLETED }
     if (itemList.isEmpty()) {
         EmptyPage(
             modifier = Modifier.navigationBarsPadding(),
@@ -365,7 +365,6 @@ private fun DownloadManagerContent(
     val pendingItems = itemList.filter {
         it.state == DownloadItemState.PAUSED || it.state == DownloadItemState.FAILED
     }
-    val completedItems = itemList.filter { it.state == DownloadItemState.COMPLETED }
     LazyColumn(
         modifier = Modifier.padding(horizontal = 18.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -381,7 +380,7 @@ private fun DownloadManagerContent(
             }
             items(
                 items = runningItems.reversed(),
-                key = { "${it.type.name}_${it.bookId}" }
+                key = { "${it.type.name}_${it.sourceId}_${it.bookId}" }
             ) { downloadItem ->
                 Card(
                     modifier = Modifier.animateItem(),
@@ -404,43 +403,7 @@ private fun DownloadManagerContent(
             }
             items(
                 items = pendingItems.reversed(),
-                key = { "${it.type.name}_${it.bookId}" }
-            ) { downloadItem ->
-                Card(
-                    modifier = Modifier.animateItem(),
-                    downloadItem = downloadItem,
-                    onClickCancel = { onClickCancel(downloadItem) },
-                    onClickPause = { onClickPause(downloadItem) },
-                    onClickResume = { onClickResume(downloadItem) },
-                    onClickRetry = { onClickRetry(downloadItem) }
-                )
-            }
-        }
-        if (completedItems.isNotEmpty()) {
-            item {
-                Row(
-                    modifier = Modifier.animateItem(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = stringResource(R.string.completed),
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.W600
-                    )
-                    Spacer(Modifier.weight(1f))
-                    TextButton(onClickClearCompleted) {
-                        Text(
-                            text = stringResource(R.string.clear_all),
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.W600,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            }
-            items(
-                items = completedItems.reversed(),
-                key = { "${it.type.name}_${it.bookId}" }
+                key = { "${it.type.name}_${it.sourceId}_${it.bookId}" }
             ) { downloadItem ->
                 Card(
                     modifier = Modifier.animateItem(),
@@ -475,6 +438,26 @@ private fun Card(
         val isRunning = downloadItem.state == DownloadItemState.RUNNING
         val isPaused = downloadItem.state == DownloadItemState.PAUSED
         val isFailed = downloadItem.state == DownloadItemState.FAILED
+        val downloadDetails = buildList {
+            downloadItem.currentChapterTitle
+                ?.takeIf(String::isNotBlank)
+                ?.let { add(stringResource(R.string.download_item_current_chapter, it)) }
+            downloadItem.waitingReason
+                ?.takeIf(String::isNotBlank)
+                ?.let(::add)
+            downloadItem.errorMessage
+                ?.takeIf(String::isNotBlank)
+                ?.let(::add)
+            if ((isRunning || isPaused) && downloadItem.estimatedBytes > 0L) {
+                add(
+                    stringResource(
+                        R.string.download_item_bytes,
+                        formatSize(downloadItem.writtenBytes.coerceAtLeast(0L)),
+                        formatSize(downloadItem.estimatedBytes)
+                    )
+                )
+            }
+        }
         Row(
             modifier = modifier,
             verticalAlignment = Alignment.CenterVertically
@@ -546,6 +529,19 @@ private fun Card(
                         letterSpacing = 0.15.sp,
                         color = MaterialTheme.colorScheme.secondary
                     )
+                }
+                if (downloadDetails.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        downloadDetails.forEach { detail ->
+                            Text(
+                                text = detail,
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                        }
+                    }
                 }
                 if (isRunning || isPaused) {
                     LinearProgressIndicator(

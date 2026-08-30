@@ -6,6 +6,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalBookDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
+import indi.dmzz_yyhyy.lightnovelreader.utils.toLegacyCompatibleSourceId
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.account.LinovelibAccountDataSource
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.account.LinovelibAccountStore
@@ -105,7 +106,10 @@ class LinovelibSyncRepository @Inject constructor(
             remoteBooks.forEach { remoteBook ->
                 runCatching {
                     val bookInformation = getBookInformationForSync(remoteBook)
-                    localBookDataSource.updateBookInformation(bookInformation)
+                    localBookDataSource.updateBookInformation(
+                        sourceId = LinovelibConstants.SOURCE_ID.toLegacyCompatibleSourceId(),
+                        info = bookInformation
+                    )
                     bookshelfRepository.addBookIntoBookShelf(LinovelibConstants.SYNC_BOOKSHELF_ID, bookInformation)
                     addedOrUpdatedBooks++
 
@@ -169,13 +173,19 @@ class LinovelibSyncRepository @Inject constructor(
         remoteBook: LinovelibAccountDataSource.LinovelibRemoteBook
     ): BookInformation = resolveLinovelibSyncBookInformation(
         remoteBook = remoteBook,
-        localBookInformation = localBookDataSource.getBookInformation(remoteBook.bookId)
+        localBookInformation = localBookDataSource.getBookInformation(
+            sourceId = LinovelibConstants.SOURCE_ID.toLegacyCompatibleSourceId(),
+            id = remoteBook.bookId
+        )
     )
 
     private suspend fun getBookVolumesForSync(bookId: String): BookVolumes {
         val remoteVolumes = websiteDataSource.getBookVolumes(bookId)
         if (remoteVolumes.volumes.isNotEmpty()) {
-            localBookDataSource.updateBookVolumes(remoteVolumes)
+            localBookDataSource.updateBookVolumes(
+                sourceId = LinovelibConstants.SOURCE_ID.toLegacyCompatibleSourceId(),
+                bookVolumes = remoteVolumes
+            )
         }
         return remoteVolumes
     }

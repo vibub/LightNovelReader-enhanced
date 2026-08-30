@@ -9,6 +9,16 @@ import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 class ProxyCachedWebBookDataSource(
     override val proxiedWebBookDataSource: ProxyWebBookDataSource
 ) : ProxyWebBookDataSource {
+    private fun requestKey(method: String, vararg values: String): String = buildString {
+        append(method)
+        values.forEach { value ->
+            append(':')
+            append(value.length)
+            append(':')
+            append(value)
+        }
+    }
+
     private inline fun <reified T : Any> getOrCache(
         key: String,
         block: () -> Result<T, WebRequestError>
@@ -21,15 +31,21 @@ class ProxyCachedWebBookDataSource(
         return Ok(value)
     }
 
-    override suspend fun getBookInformation(id: String, priority: WebDataSourcePriority) = getOrCache(id) {
-        proxiedWebBookDataSource.getBookInformation(id, priority)
-    }
+    override suspend fun getBookInformation(id: String, priority: WebDataSourcePriority) =
+        getOrCache(requestKey("book_information", id)) {
+            proxiedWebBookDataSource.getBookInformation(id, priority)
+        }
 
-    override suspend fun getBookVolumes(id: String, priority: WebDataSourcePriority) = getOrCache(id) {
-        proxiedWebBookDataSource.getBookVolumes(id, priority)
-    }
+    override suspend fun getBookVolumes(id: String, priority: WebDataSourcePriority) =
+        getOrCache(requestKey("book_volumes", id)) {
+            proxiedWebBookDataSource.getBookVolumes(id, priority)
+        }
 
-    override suspend fun getChapterContent(chapterId: String, bookId: String, priority: WebDataSourcePriority) = getOrCache(chapterId + bookId) {
+    override suspend fun getChapterContent(
+        chapterId: String,
+        bookId: String,
+        priority: WebDataSourcePriority
+    ) = getOrCache(requestKey("chapter_content", chapterId, bookId)) {
         proxiedWebBookDataSource.getChapterContent(chapterId, bookId, priority)
     }
 }

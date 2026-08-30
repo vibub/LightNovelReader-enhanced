@@ -46,10 +46,24 @@ class ProxyCachedWebBookDataSourceTest {
         assertEquals("4800", second.bookId)
     }
 
+    @Test
+    fun chapterRequestKeyKeepsChapterAndBookIdsDistinct() = runBlocking {
+        val source = FakeCachingSource()
+        val proxy = ProxyCachedWebBookDataSource(DirectProxy(source))
+
+        val first = proxy.getChapterContent("ab", "c").get()!!
+        val second = proxy.getChapterContent("a", "bc").get()!!
+
+        assertEquals("ab", first.id)
+        assertEquals("a", second.id)
+        assertEquals(2, source.chapterRequestCount)
+    }
+
     private class FakeCachingSource : WebBookDataSource by EmptyWebDataSource {
         override val id = Identifier("test", "cached-source")
         override val cache = Cache(timeout = 60_000)
         var volumeRequestCount = 0
+        var chapterRequestCount = 0
 
         override suspend fun getBookVolumes(id: String): Result<BookVolumes, WebRequestError> {
             volumeRequestCount++
@@ -63,6 +77,20 @@ class ProxyCachedWebBookDataSourceTest {
                             chapters = listOf(ChapterInformation("${id}_chapter", "章节"))
                         )
                     )
+                )
+            )
+        }
+
+        override suspend fun getChapterContent(
+            chapterId: String,
+            bookId: String
+        ): Result<ChapterContent, WebRequestError> {
+            chapterRequestCount++
+            return Ok(
+                ChapterContent(
+                    id = chapterId,
+                    title = bookId,
+                    content = kotlinx.serialization.json.JsonObject(emptyMap())
                 )
             )
         }

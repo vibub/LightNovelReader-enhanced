@@ -25,8 +25,10 @@ import androidx.work.WorkManager
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.ImportUserDataDialog
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.SettingsClickableEntry
+import indi.dmzz_yyhyy.lightnovelreader.ui.components.SettingsMenuEntry
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.SettingsSwitchEntry
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.SettingState
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data.MenuOptions
 import indi.dmzz_yyhyy.lightnovelreader.utils.uriLauncher
 import kotlinx.coroutines.launch
 
@@ -114,6 +116,32 @@ fun DataSettingsList(
         title = stringResource(R.string.settings_storage_manager),
         description = stringResource(R.string.settings_storage_manager_desc),
         onClick = onClickStorageManager
+    )
+    SettingsMenuEntry(
+        modifier = Modifier.background(colorScheme.surfaceContainer),
+        painter = painterResource(R.drawable.wifi_proxy_24px),
+        title = stringResource(R.string.settings_download_network),
+        description = stringResource(R.string.settings_download_network_desc),
+        options = MenuOptions.DownloadNetworkPolicyOptions,
+        selectedOptionKey = settingState.downloadNetworkPolicyKey,
+        stringUserData = settingState.downloadNetworkPolicyUserData
+    )
+    SettingsSwitchEntry(
+        modifier = Modifier.background(colorScheme.surfaceContainer),
+        painter = painterResource(R.drawable.battery_android_full_24px),
+        title = stringResource(R.string.settings_download_only_charging),
+        description = stringResource(R.string.settings_download_only_charging_desc),
+        checked = settingState.downloadOnlyWhenCharging,
+        booleanUserData = settingState.downloadOnlyWhenChargingUserData
+    )
+    SettingsMenuEntry(
+        modifier = Modifier.background(colorScheme.surfaceContainer),
+        painter = painterResource(R.drawable.database_24px),
+        title = stringResource(R.string.settings_download_minimum_storage),
+        description = stringResource(R.string.settings_download_minimum_storage_desc),
+        options = MenuOptions.DownloadMinimumFreeStorageOptions,
+        selectedOptionKey = settingState.downloadMinimumFreeStorageMb,
+        stringUserData = settingState.downloadMinimumFreeStorageMbUserData
     )
     SettingsSwitchEntry(
         modifier = Modifier.background(colorScheme.surfaceContainer),

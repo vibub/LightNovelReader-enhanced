@@ -169,6 +169,12 @@ sealed class UserDataPath(
             data object LogLevel : UserDataPath("log_level", Data)
             /** 是否使用代理 @since Api 2 */
             data object IsUseProxy : UserDataPath("is_use_proxy", Data)
+            /** 下载网络策略 @since Api 4 */
+            data object DownloadNetworkPolicy : UserDataPath("download_network_policy", Data)
+            /** 是否仅在充电时下载 @since Api 4 */
+            data object DownloadOnlyWhenCharging : UserDataPath("download_only_when_charging", Data)
+            /** 下载时最低剩余空间，单位为 MB @since Api 4 */
+            data object DownloadMinimumFreeStorageMb : UserDataPath("download_minimum_free_storage_mb", Data)
             /** 存储统计快照缓存 @since Api 4 */
             data object StorageUsageSnapshot : UserDataPath("storage_usage_snapshot", Data)
         }

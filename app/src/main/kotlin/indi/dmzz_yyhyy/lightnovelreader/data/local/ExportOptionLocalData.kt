@@ -6,6 +6,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookVolumesDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookshelfDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.ChapterContentDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.ChapterDownloadDao
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.DownloadTaskDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.DailyCountDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.FormattingRuleDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.UserDataDao
@@ -16,6 +17,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookshelfBookMeta
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookshelfEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.ChapterContentEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.ChapterDownloadEntity
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.DownloadTaskEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.ChapterInformationEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.DailyCountEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.FormattingRuleEntity
@@ -30,17 +32,19 @@ class ExportOptionLocalData(
     private val bookshelfDao: BookshelfDao,
     private val chapterContentDao: ChapterContentDao,
     private val chapterDownloadDao: ChapterDownloadDao,
+    private val downloadTaskDao: DownloadTaskDao,
     private val bookVolumesDao: BookVolumesDao,
     private val formattingRuleDao: FormattingRuleDao,
     private val userReadingDataDao: UserReadingDataDao,
     private val userDataDao: UserDataDao,
-    webDataSourceUserDataPathSet: Set<String>
+    private val webDataSourceUserDataPathSet: Set<String>,
+    private val sourceId: Int? = null
 ) {
     abstract class OptionSolver {
         var enable: Boolean = false
         abstract suspend fun solve()
     }
-    
+
     val bookInformationEntities = mutableListOf<BookInformationEntity>()
     val bookRecordEntities = mutableListOf<BookRecordEntity>()
     val dailyCountEntities = mutableListOf<DailyCountEntity>()
@@ -48,6 +52,7 @@ class ExportOptionLocalData(
     val bookshelfBookMetadataEntities = mutableListOf<BookshelfBookMetadataEntity>()
     val chapterContentEntities = mutableListOf<ChapterContentEntity>()
     val chapterDownloadEntities = mutableListOf<ChapterDownloadEntity>()
+    val downloadTaskEntities = mutableListOf<DownloadTaskEntity>()
     val chapterInformationEntities = mutableListOf<ChapterInformationEntity>()
     val formattingRuleEntities = mutableListOf<FormattingRuleEntity>()
     val userDataEntities = mutableListOf<UserDataEntity>()
@@ -58,11 +63,27 @@ class ExportOptionLocalData(
 
     val localBookCache = object : OptionSolver() {
         override suspend fun solve() {
-            bookInformationEntities.addAll(bookBookInformationDao.getAllEntities())
-            volumeEntities.addAll(bookVolumesDao.getAllVolumeEntities())
-            chapterContentEntities.addAll(chapterContentDao.getAllEntities())
-            chapterDownloadEntities.addAll(chapterDownloadDao.getAll())
-            chapterInformationEntities.addAll(bookVolumesDao.getAllChapterInformationEntities())
+            bookInformationEntities.addAll(
+                bookBookInformationDao.getAllEntities().filter(::belongsToSelectedSource)
+            )
+            volumeEntities.addAll(
+                bookVolumesDao.getAllVolumeEntities().filter(::belongsToSelectedSource)
+            )
+            chapterContentEntities.addAll(
+                chapterContentDao.getAllEntities().filter { entity ->
+                    sourceId == null || entity.sourceId == sourceId ||
+                        entity.sourceId == ChapterContentEntity.LEGACY_SOURCE_ID
+                }
+            )
+            chapterDownloadEntities.addAll(
+                chapterDownloadDao.getAll().filter(::belongsToSelectedSource)
+            )
+            downloadTaskEntities.addAll(
+                downloadTaskDao.getAll().filter(::belongsToSelectedSource)
+            )
+            chapterInformationEntities.addAll(
+                bookVolumesDao.getAllChapterInformationEntities().filter(::belongsToSelectedSource)
+            )
         }
     }.also(options::add)
 
@@ -80,8 +101,7 @@ class ExportOptionLocalData(
             userReadingDataEntities.addAll(userReadingDataDao.getAll())
             userDataEntities.addAll(userDataDao.getAllEntities().filter {
                 webDataSourceUserDataPathSet.contains(it.path)
-            }
-            )
+            })
         }
     }.also(options::add)
 
@@ -97,4 +117,22 @@ class ExportOptionLocalData(
                 solver.solve()
         }
     }
+
+    private fun belongsToSelectedSource(entity: BookInformationEntity): Boolean =
+        sourceId == null || entity.sourceId == sourceId ||
+            entity.sourceId == BookInformationEntity.LEGACY_SOURCE_ID
+
+    private fun belongsToSelectedSource(entity: VolumeEntity): Boolean =
+        sourceId == null || entity.sourceId == sourceId ||
+            entity.sourceId == VolumeEntity.LEGACY_SOURCE_ID
+
+    private fun belongsToSelectedSource(entity: ChapterInformationEntity): Boolean =
+        sourceId == null || entity.sourceId == sourceId ||
+            entity.sourceId == ChapterInformationEntity.LEGACY_SOURCE_ID
+
+    private fun belongsToSelectedSource(entity: ChapterDownloadEntity): Boolean =
+        sourceId == null || entity.sourceId == sourceId
+
+    private fun belongsToSelectedSource(entity: DownloadTaskEntity): Boolean =
+        sourceId == null || entity.sourceId == sourceId
 }

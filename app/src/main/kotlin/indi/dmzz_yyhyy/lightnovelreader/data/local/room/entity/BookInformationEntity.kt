@@ -3,7 +3,7 @@ package indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity
 import android.net.Uri
 import androidx.room.ColumnInfo
 import androidx.room.Entity
-import androidx.room.PrimaryKey
+import androidx.room.Index
 import androidx.room.TypeConverters
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.converter.ListConverter
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.converter.LocalDateTimeConverter
@@ -22,9 +22,12 @@ import java.time.LocalDateTime
     WorldCountConverter::class,
     UriConverter::class
 )
-@Entity(tableName = "book_information")
+@Entity(
+    tableName = "book_information",
+    primaryKeys = ["source_id", "id"],
+    indices = [Index(value = ["id"])]
+)
 data class BookInformationEntity(
-    @PrimaryKey
     val id: String,
     val title: String,
     val subtitle: String,
@@ -42,7 +45,9 @@ data class BookInformationEntity(
     @Serializable(LocalDateTimeSerializer::class)
     val lastUpdated: LocalDateTime,
     @ColumnInfo(name = "is_complete")
-    val isComplete: Boolean
+    val isComplete: Boolean,
+    @ColumnInfo(name = "source_id", defaultValue = "-1")
+    val sourceId: Int = LEGACY_SOURCE_ID
 ): Mergeable<BookInformationEntity> {
     override fun merge(
         new: BookInformationEntity
@@ -50,4 +55,8 @@ data class BookInformationEntity(
         if (this.lastUpdated.isBefore(new.lastUpdated))
             new
         else this
+
+    companion object {
+        const val LEGACY_SOURCE_ID = -1
+    }
 }

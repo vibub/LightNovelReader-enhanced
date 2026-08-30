@@ -72,6 +72,35 @@ interface ChapterContentDao {
     suspend fun getScoped(sourceId: Int, bookId: String, id: String): ChapterContentEntity? =
         get(sourceId, bookId, id) ?: getLegacy(id)
 
+    /**
+     * 在同一个事务中认领旧版 legacy 正文，避免两个数据源并发读取时各自复制同一份正文。
+     * 当前数据源已有精确正文时只删除 legacy 行，不再让其他数据源复用它。
+     */
+    @Transaction
+    suspend fun migrateLegacyCachedChapterIds(
+        sourceId: Int,
+        bookId: String,
+        chapterIds: List<String>
+    ): List<String> {
+        val ids = chapterIds.map(String::trim).filter(String::isNotBlank).distinct()
+        if (ids.isEmpty()) return emptyList()
+
+        val cachedIds = ids.filter { get(sourceId, bookId, it) != null }.toMutableSet()
+        if (sourceId == ChapterContentEntity.LEGACY_SOURCE_ID) return cachedIds.toList()
+
+        val legacyEntities = ids.mapNotNull { id -> getLegacy(id) }
+        legacyEntities.forEach { entity ->
+            if (entity.id !in cachedIds) {
+                update(entity.copy(sourceId = sourceId, bookId = bookId))
+                cachedIds += entity.id
+            }
+        }
+        if (legacyEntities.isNotEmpty()) {
+            deleteLegacyByIds(legacyEntities.map { it.id })
+        }
+        return cachedIds.toList()
+    }
+
     @Query(
         "select * from chapter_content where id = :id " +
                 "order by case when source_id = -1 and book_id = '' then 0 else 1 end limit 1"

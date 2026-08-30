@@ -11,11 +11,12 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalDataManager
 import indi.dmzz_yyhyy.lightnovelreader.data.local.cbor.AppLocalData
-import indi.dmzz_yyhyy.lightnovelreader.utils.readAppLocalData
+import indi.dmzz_yyhyy.lightnovelreader.data.local.cbor.LocalDataArchive
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.cbor.Cbor
 import kotlinx.serialization.decodeFromByteArray
-import java.io.FileInputStream
+import java.util.UUID
+import kotlinx.coroutines.CancellationException
 
 @HiltWorker
 class ImportDataWork @AssistedInject constructor(
@@ -31,26 +32,40 @@ class ImportDataWork @AssistedInject constructor(
     override suspend fun doWork(): Result {
         val fileUri = inputData.getString("uri")?.let(Uri::parse) ?: return Result.failure()
         val overwrite = inputData.getBoolean("overwrite", false)
-        val appLocalData = try {
-            applicationContext.contentResolver.openFileDescriptor(fileUri, "r")?.use { parcelFileDescriptor ->
-                FileInputStream(parcelFileDescriptor.fileDescriptor).use { inputStream ->
-                    Cbor.decodeFromByteArray<AppLocalData>(inputStream.readAppLocalData())
+        val stagingDirectory = applicationContext.cacheDir
+            .resolve("lnr-import-${UUID.randomUUID()}")
+        stagingDirectory.mkdirs()
+        try {
+            val archive = applicationContext.contentResolver.openInputStream(fileUri)?.use {
+                LocalDataArchive.read(it, stagingDirectory)
+            } ?: return Result.failure()
+            val appLocalData = Cbor.decodeFromByteArray<AppLocalData>(archive.data)
+            val resourceUriMap = archive.manifest?.resources
+                ?.associate { resource ->
+                    resource.sourceUri to Uri.fromFile(
+                        applicationContext.filesDir.resolve(resource.targetPath)
+                    ).toString()
                 }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to load file")
-            e.printStackTrace()
-            return Result.failure()
-        } ?: return Result.failure()
-        if (overwrite) {
-            localDataManager.cleanDatabaseWithoutGlobalUserData()
-        }
-        localDataManager.importAppLocalData(appLocalData)
-            .onErr {
+                .orEmpty()
+            val importResult = localDataManager.importAppLocalData(
+                appLocalData = appLocalData,
+                stagingDirectory = archive.stagingDirectory,
+                resourceUriMap = resourceUriMap,
+                overwrite = overwrite
+            )
+            var failed = false
+            importResult.onErr {
+                failed = true
                 Log.e(TAG, "Failed to import the data")
                 it.printStackTrace()
-                return Result.failure()
             }
-        return Result.success()
+            return if (failed) Result.failure() else Result.success()
+        } catch (throwable: Throwable) {
+            if (throwable is CancellationException) throw throwable
+            Log.e(TAG, "Failed to load or import file", throwable)
+            return Result.failure()
+        } finally {
+            stagingDirectory.deleteRecursively()
+        }
     }
 }

@@ -124,6 +124,19 @@ sealed class MenuOptions {
         Option("verbose", R.string.key_log_level_verbose),
     )
 
+    data object DownloadNetworkPolicyOptions: MenuOptions(
+        Option("wifi_only", R.string.download_network_wifi_only),
+        Option("any_network", R.string.download_network_any_network)
+    )
+
+    data object DownloadMinimumFreeStorageOptions: MenuOptions(
+        Option("0", R.string.download_storage_minimum_none),
+        Option("128", R.string.download_storage_minimum_128),
+        Option("256", R.string.download_storage_minimum_256),
+        Option("512", R.string.download_storage_minimum_512),
+        Option("1024", R.string.download_storage_minimum_1024)
+    )
+
     data object LightThemeNameOptions: MenuOptions(
         Option("light_default", R.string.key_light_theme_default),
         Option("light_designer", R.string.key_light_theme_designer)

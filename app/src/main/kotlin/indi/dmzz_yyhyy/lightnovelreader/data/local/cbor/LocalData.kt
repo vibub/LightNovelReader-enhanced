@@ -6,6 +6,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookshelfBookMeta
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookshelfEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.ChapterContentEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.ChapterDownloadEntity
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.DownloadTaskEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.ChapterInformationEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.DailyCountEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.FormattingRuleEntity
@@ -31,7 +32,8 @@ data class LocalData(
     val userDataEntities: List<UserDataEntity>,
     val userReadingDataEntities: List<UserReadingDataEntity>,
     val volumeEntities: List<VolumeEntity>,
-    val chapterDownloadEntities: List<ChapterDownloadEntity> = emptyList()
+    val chapterDownloadEntities: List<ChapterDownloadEntity> = emptyList(),
+    val downloadTaskEntities: List<DownloadTaskEntity> = emptyList()
 ) {
     companion object {
         fun empty() = LocalData(

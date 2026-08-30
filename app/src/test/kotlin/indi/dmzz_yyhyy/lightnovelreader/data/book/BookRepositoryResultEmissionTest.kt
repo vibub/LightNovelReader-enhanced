@@ -2,6 +2,8 @@ package indi.dmzz_yyhyy.lightnovelreader.data.book
 
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
+import indi.dmzz_yyhyy.lightnovelreader.data.download.ChapterDownloadState
+import indi.dmzz_yyhyy.lightnovelreader.data.download.ChapterDownloadStatus
 import io.nightfish.lightnovelreader.api.book.BookVolumes
 import io.nightfish.lightnovelreader.api.book.ChapterContent
 import io.nightfish.lightnovelreader.api.book.ChapterInformation
@@ -60,6 +62,42 @@ class BookRepositoryResultEmissionTest {
             shouldRequestRemoteChapter(
                 hasUsableLocal = true,
                 wasRecentlyFetched = true
+            )
+        )
+    }
+
+    @Test
+    fun retryKeepsOnlyIncompleteChaptersForSelectedDownload() {
+        val states = mapOf(
+            "completed" to ChapterDownloadState(ChapterDownloadStatus.COMPLETED),
+            "partial" to ChapterDownloadState(ChapterDownloadStatus.PARTIAL),
+            "failed" to ChapterDownloadState(ChapterDownloadStatus.FAILED),
+            "queued" to ChapterDownloadState(ChapterDownloadStatus.QUEUED)
+        )
+
+        assertEquals(
+            listOf("partial", "failed"),
+            retryChapterIds(
+                chapterIds = listOf("completed", "partial", "failed", "queued", "missing", "missing"),
+                states = states,
+                queueAll = false
+            )
+        )
+    }
+
+    @Test
+    fun retryQueuesUntrackedChaptersForFullBookDownload() {
+        val states = mapOf(
+            "completed" to ChapterDownloadState(ChapterDownloadStatus.COMPLETED),
+            "queued" to ChapterDownloadState(ChapterDownloadStatus.QUEUED)
+        )
+
+        assertEquals(
+            listOf("queued", "missing"),
+            retryChapterIds(
+                chapterIds = listOf("completed", "queued", "missing"),
+                states = states,
+                queueAll = true
             )
         )
     }

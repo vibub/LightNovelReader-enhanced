@@ -62,6 +62,7 @@ class ExportBookToEPUBWork @AssistedInject constructor(
     private val notificationManager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     private var notification: Notification? = null
     private var includeImages = true
+    private var imageHeader: Map<String, String> = emptyMap()
 
     private var totalChapters = 0
     private var processedChapters = 0
@@ -151,6 +152,7 @@ class ExportBookToEPUBWork @AssistedInject constructor(
         showProgressNotification(bookId)
         val exportType = ExportType.valueOf(inputData.getString("exportType") ?: return@withContext Result.failure())
         includeImages = inputData.getBoolean("includeImages", true)
+        imageHeader = webBookDataSourceProvider.value.imageHeader
         val selectedVolumeRaw = inputData.getString("selectedVolume")
         val selectedVolumes = selectedVolumeRaw?.split(",")
         Log.d(TAG, "start export bookId=$bookId type=$exportType includeImages=$includeImages selectedVolume=$selectedVolumeRaw")
@@ -279,8 +281,6 @@ class ExportBookToEPUBWork @AssistedInject constructor(
                 cover,
                 bookInformation.title
             )
-        } else {
-            tasks.add(ImageDownloader.Task(cover, bookInformation.coverUri))
         }
         for ((currentVolumeIndex, volume) in bookVolumes.volumes.withIndex()) {
             if (!selectedVolume.contains(volume.volumeId)) continue
@@ -292,8 +292,26 @@ class ExportBookToEPUBWork @AssistedInject constructor(
                 creator = bookInformation.author
                 description = bookInformation.description
                 publisher = bookInformation.publishingHouse
-                if (currentVolumeIndex == 0) cover(cover)
-                else {
+                if (currentVolumeIndex == 0) {
+                    cover(cover)
+                    if (bookInformation.coverUri != Uri.EMPTY) {
+                        tasks.add(
+                            ImageDownloader.Task(
+                                file = cover,
+                                uri = bookInformation.coverUri,
+                                header = imageHeader
+                            ) { finalFile, format ->
+                                renameResource(
+                                    oldHref = "cover.jpg",
+                                    newHref = "cover.${format.extension}",
+                                    id = "cover",
+                                    file = finalFile,
+                                    mediaType = format.mediaType
+                                )
+                            }
+                        )
+                    }
+                } else {
                     val url = runCatching {
                         webBookDataSourceProvider.value.getCoverUriInVolume(
                             bookId,
@@ -306,8 +324,22 @@ class ExportBookToEPUBWork @AssistedInject constructor(
                         cover(cover)
                     } else {
                         val image = tempDir.resolve(url.hashCode().toString() + ".jpg")
-                        tasks.add(ImageDownloader.Task(image, url))
                         cover(image)
+                        tasks.add(
+                            ImageDownloader.Task(
+                                file = image,
+                                uri = url,
+                                header = imageHeader
+                            ) { finalFile, format ->
+                                renameResource(
+                                    oldHref = "cover.jpg",
+                                    newHref = "cover.${format.extension}",
+                                    id = "cover",
+                                    file = finalFile,
+                                    mediaType = format.mediaType
+                                )
+                            }
+                        )
                     }
                 }
                 val progressForVolume = (30 * currentVolumeIndex) / volumesCount
@@ -415,7 +447,21 @@ class ExportBookToEPUBWork @AssistedInject constructor(
                     bookInformation.title
                 )
             } else {
-                tasks.add(ImageDownloader.Task(cover, bookInformation.coverUri))
+                tasks.add(
+                    ImageDownloader.Task(
+                        file = cover,
+                        uri = bookInformation.coverUri,
+                        header = imageHeader
+                    ) { finalFile, format ->
+                        renameResource(
+                            oldHref = "cover.jpg",
+                            newHref = "cover.${format.extension}",
+                            id = "cover",
+                            file = finalFile,
+                            mediaType = format.mediaType
+                        )
+                    }
+                )
             }
             cover(cover)
         }
@@ -500,16 +546,36 @@ class ExportBookToEPUBWork @AssistedInject constructor(
         includeImages: Boolean
     ) {
         val src = this.attributes().firstOrNull { it.name == "src" }
-        if (src != null && src.value.runCatching { this.toUri() }.isSuccess) {
+        if (includeImages && src != null && src.value.runCatching { this.toUri() }.isSuccess) {
+            val sourceUri = src.value.toUri()
             val id = src.value.hashCode()
             val image = tempDir.resolve("image_$id.jpg")
-            tasks.add(ImageDownloader.Task(image, src.value.toUri()))
-            src.value = "image/image_$id.jpg"
+            val initialHref = "image/image_$id.jpg"
+            src.value = initialHref
             epubBuilder.imgRes(
-                href = src.value,
+                href = initialHref,
                 id = id.toString(),
                 file = image
             )
+            tasks.add(
+                ImageDownloader.Task(
+                    file = image,
+                    uri = sourceUri,
+                    header = imageHeader
+                ) { finalFile, format ->
+                    val actualHref = "image/image_$id.${format.extension}"
+                    src.value = actualHref
+                    epubBuilder.renameResource(
+                        oldHref = initialHref,
+                        newHref = actualHref,
+                        id = id.toString(),
+                        file = finalFile,
+                        mediaType = format.mediaType
+                    )
+                }
+            )
+        } else if (src != null) {
+            src.detach()
         }
         this.elements().forEach {
             it.parseSrc(tempDir, tasks, epubBuilder, includeImages)

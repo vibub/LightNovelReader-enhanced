@@ -19,6 +19,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookVolumesDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookshelfDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.ChapterContentDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.ChapterDownloadDao
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.DownloadTaskDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.DailyCountDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.FormattingRuleDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.LinovelibChapterBookmarkDao
@@ -32,6 +33,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.DailyCountEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookshelfEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.ChapterContentEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.ChapterDownloadEntity
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.DownloadTaskEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.ChapterInformationEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.FormattingRuleEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.LinovelibChapterBookmarkEntity
@@ -50,6 +52,7 @@ import io.nightfish.lightnovelreader.api.content.builder.simpleText
         ChapterInformationEntity::class,
         ChapterContentEntity::class,
         ChapterDownloadEntity::class,
+        DownloadTaskEntity::class,
         UserReadingDataEntity::class,
         UserDataEntity::class,
         BookshelfEntity::class,
@@ -59,7 +62,7 @@ import io.nightfish.lightnovelreader.api.content.builder.simpleText
         FormattingRuleEntity::class,
         LinovelibChapterBookmarkEntity::class
     ],
-    version = 20,
+    version = 25,
     exportSchema = false
 )
 abstract class LightNovelReaderDatabase : RoomDatabase() {
@@ -67,6 +70,7 @@ abstract class LightNovelReaderDatabase : RoomDatabase() {
     abstract fun bookVolumesDao(): BookVolumesDao
     abstract fun chapterContentDao(): ChapterContentDao
     abstract fun chapterDownloadDao(): ChapterDownloadDao
+    abstract fun downloadTaskDao(): DownloadTaskDao
     abstract fun userReadingDataDao(): UserReadingDataDao
     abstract fun userDataDao(): UserDataDao
     abstract fun bookshelfDao(): BookshelfDao
@@ -103,7 +107,12 @@ abstract class LightNovelReaderDatabase : RoomDatabase() {
                             MIGRATION_16_17,
                             MIGRATION_17_18,
                             MIGRATION_18_19,
-                            MIGRATION_19_20
+                            MIGRATION_19_20,
+                            MIGRATION_20_21,
+                            MIGRATION_21_22,
+                            MIGRATION_22_23,
+                            MIGRATION_23_24,
+                            MIGRATION_24_25
                         )
                         .allowMainThreadQueries()
                         .build()
@@ -963,6 +972,150 @@ abstract class LightNovelReaderDatabase : RoomDatabase() {
                 db.execSQL(
                     "CREATE INDEX index_chapter_download_status_source_id_book_id " +
                         "ON chapter_download_status(source_id, book_id)"
+                )
+            }
+        }
+
+        private val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE download_task (
+                        source_id INTEGER NOT NULL,
+                        book_id TEXT NOT NULL,
+                        state TEXT NOT NULL,
+                        progress REAL NOT NULL,
+                        total INTEGER NOT NULL,
+                        processed INTEGER NOT NULL,
+                        error_message TEXT,
+                        updated_at INTEGER NOT NULL,
+                        PRIMARY KEY(source_id, book_id)
+                    )
+                    """
+                )
+                db.execSQL("CREATE INDEX index_download_task_state ON download_task(state)")
+            }
+        }
+
+        private val MIGRATION_21_22 = object : Migration(21, 22) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE download_task ADD COLUMN source_key TEXT NOT NULL DEFAULT ''"
+                )
+                db.execSQL(
+                    "ALTER TABLE download_task ADD COLUMN current_chapter_id TEXT"
+                )
+                db.execSQL(
+                    "ALTER TABLE download_task ADD COLUMN current_chapter_title TEXT"
+                )
+                db.execSQL(
+                    "ALTER TABLE download_task ADD COLUMN estimated_bytes INTEGER NOT NULL DEFAULT 0"
+                )
+                db.execSQL(
+                    "ALTER TABLE download_task ADD COLUMN written_bytes INTEGER NOT NULL DEFAULT 0"
+                )
+                db.execSQL(
+                    "ALTER TABLE download_task ADD COLUMN waiting_reason TEXT"
+                )
+            }
+        }
+
+        internal val MIGRATION_22_23 = object : Migration(22, 23) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE book_information RENAME TO book_information_legacy")
+                db.execSQL(
+                    """
+                    CREATE TABLE book_information (
+                        id TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        subtitle TEXT NOT NULL,
+                        cover_uri TEXT NOT NULL,
+                        author TEXT NOT NULL,
+                        description TEXT NOT NULL,
+                        tags TEXT NOT NULL,
+                        publishing_house TEXT NOT NULL,
+                        word_count TEXT NOT NULL,
+                        last_update TEXT NOT NULL,
+                        is_complete INTEGER NOT NULL,
+                        source_id INTEGER NOT NULL DEFAULT -1,
+                        PRIMARY KEY(source_id, id)
+                    )
+                    """
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO book_information(
+                        id, title, subtitle, cover_uri, author, description, tags,
+                        publishing_house, word_count, last_update, is_complete, source_id
+                    )
+                    SELECT id, title, subtitle, cover_uri, author, description, tags,
+                        publishing_house, word_count, last_update, is_complete, -1
+                    FROM book_information_legacy
+                    """
+                )
+                db.execSQL("DROP TABLE book_information_legacy")
+                db.execSQL("CREATE INDEX index_book_information_id ON book_information(id)")
+
+                db.execSQL("ALTER TABLE volume RENAME TO volume_legacy")
+                db.execSQL(
+                    """
+                    CREATE TABLE volume (
+                        book_id TEXT NOT NULL,
+                        volume_id TEXT NOT NULL,
+                        volume_title TEXT NOT NULL,
+                        chapter_id_list TEXT NOT NULL,
+                        volume_index INTEGER NOT NULL,
+                        source_id INTEGER NOT NULL DEFAULT -1,
+                        PRIMARY KEY(source_id, book_id, volume_id)
+                    )
+                    """
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO volume(
+                        book_id, volume_id, volume_title, chapter_id_list, volume_index, source_id
+                    )
+                    SELECT book_id, volume_id, volume_title, chapter_id_list, volume_index, -1
+                    FROM volume_legacy
+                    """
+                )
+                db.execSQL("DROP TABLE volume_legacy")
+
+                db.execSQL("ALTER TABLE chapter_information RENAME TO chapter_information_legacy")
+                db.execSQL(
+                    """
+                    CREATE TABLE chapter_information (
+                        id TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        book_id TEXT NOT NULL DEFAULT '',
+                        source_id INTEGER NOT NULL DEFAULT -1,
+                        PRIMARY KEY(source_id, book_id, id)
+                    )
+                    """
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO chapter_information(id, title, book_id, source_id)
+                    SELECT id, title, '', -1 FROM chapter_information_legacy
+                    """
+                )
+                db.execSQL("DROP TABLE chapter_information_legacy")
+                db.execSQL("CREATE INDEX index_chapter_information_id ON chapter_information(id)")
+            }
+        }
+
+        internal val MIGRATION_23_24 = object : Migration(23, 24) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE download_task ADD COLUMN queue_all INTEGER NOT NULL DEFAULT 0"
+                )
+            }
+        }
+
+        internal val MIGRATION_24_25 = object : Migration(24, 25) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE download_task ADD COLUMN constraints_key TEXT NOT NULL DEFAULT ''"
                 )
             }
         }

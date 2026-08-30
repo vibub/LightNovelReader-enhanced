@@ -80,6 +80,7 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.components.SettingsMenuEntry
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.SettingsSliderEntry
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.SettingsCategory
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data.MenuOptions
+import indi.dmzz_yyhyy.lightnovelreader.utils.ImageUtils
 import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
 import indi.dmzz_yyhyy.lightnovelreader.utils.navigationBarSpacer
 import indi.dmzz_yyhyy.lightnovelreader.utils.readerBackgroundColor
@@ -92,7 +93,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileInputStream
 
 @Composable
 fun ThemeScreen(
@@ -422,7 +422,14 @@ fun ReaderTextSettings(settingState: SettingState, context: Context, onClickChan
         ) { uri ->
             uri ?: return@rememberLauncherForActivityResult
             coroutineScope.launch(Dispatchers.IO) {
-                val fontFile = saveFontToLocal(context, uri) ?: run {
+                val fontFile = saveFontToLocal(context, uri) { file ->
+                    runCatching {
+                        textMeasurer.measure(
+                            text = "",
+                            style = TextStyle(fontFamily = FontFamily(Font(file)))
+                        )
+                    }.isSuccess
+                } ?: run {
                     withContext(Dispatchers.Main) {
                         Toast.makeText(
                             context,
@@ -432,22 +439,7 @@ fun ReaderTextSettings(settingState: SettingState, context: Context, onClickChan
                     }
                     return@launch
                 }
-
-                try {
-                    textMeasurer.measure(
-                        text = "",
-                        style = TextStyle(fontFamily = FontFamily(Font(fontFile)))
-                    )
-                    settingState.fontFamilyUriUserData.set(fontFile.toUri())
-                } catch (_: Exception) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(
-                            context,
-                            context.getString(R.string.font_file_error),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
+                settingState.fontFamilyUriUserData.set(fontFile.toUri())
             }
         }
 
@@ -537,21 +529,66 @@ fun ReaderTextSettings(settingState: SettingState, context: Context, onClickChan
     }
 }
 
-private suspend fun saveFontToLocal(context: Context, uri: Uri): File? = withContext(Dispatchers.IO) {
-    val fontFile = context.filesDir.resolve("readerTextFont").apply {
-        if (exists()) delete()
-        createNewFile()
-    }
+private suspend fun saveFontToLocal(
+    context: Context,
+    uri: Uri,
+    validate: (File) -> Boolean
+): File? = withContext(Dispatchers.IO) {
+    val temporaryFile = context.filesDir.resolve(".readerTextFont.${System.nanoTime()}.download")
+    val targetFile = context.filesDir.resolve("readerTextFont")
     try {
-        context.contentResolver.openFileDescriptor(uri, "r")?.use { fd ->
-            FileInputStream(fd.fileDescriptor).use { input ->
-                fontFile.outputStream().use { output -> input.copyTo(output) }
+        val input = context.contentResolver.openInputStream(uri)
+            ?: return@withContext null
+        input.use { source ->
+            temporaryFile.outputStream().use { target ->
+                source.copyTo(target)
             }
         }
-        fontFile
-    } catch (e: Exception) {
-        Log.e("ReaderTextFont", "Failed to import font", e)
+        if (temporaryFile.length() <= 0L || !validate(temporaryFile)) return@withContext null
+        if (!replaceFileAtomically(temporaryFile, targetFile)) return@withContext null
+        targetFile
+    } catch (throwable: Throwable) {
+        if (throwable is kotlinx.coroutines.CancellationException) throw throwable
+        Log.e("ReaderTextFont", "Failed to import font", throwable)
         null
+    } finally {
+        temporaryFile.delete()
+    }
+}
+
+/** 用备份文件替换目标文件，失败时恢复原文件，避免导入失败导致旧资源丢失。 */
+private fun replaceFileAtomically(temporaryFile: File, targetFile: File): Boolean {
+    val backupFile = targetFile.resolveSibling(
+        ".${targetFile.name}.${System.nanoTime()}.backup"
+    )
+    val hadTarget = targetFile.exists()
+    if (hadTarget && !targetFile.isFile) {
+        temporaryFile.delete()
+        return false
+    }
+
+    return try {
+        if (hadTarget && !targetFile.renameTo(backupFile)) {
+            targetFile.copyTo(backupFile, overwrite = true)
+            check(targetFile.delete()) { "无法准备资源替换" }
+        }
+        if (!temporaryFile.renameTo(targetFile)) {
+            temporaryFile.copyTo(targetFile, overwrite = false)
+        }
+        true
+    } catch (throwable: Throwable) {
+        targetFile.delete()
+        if (hadTarget && backupFile.isFile) {
+            if (!backupFile.renameTo(targetFile)) {
+                backupFile.copyTo(targetFile, overwrite = true)
+            }
+        }
+        if (throwable is kotlinx.coroutines.CancellationException) throw throwable
+        Log.e("ReaderResource", "Failed to replace resource", throwable)
+        false
+    } finally {
+        temporaryFile.delete()
+        backupFile.delete()
     }
 }
 
@@ -569,20 +606,29 @@ fun BackgroundSettings(settingState: SettingState, context: Context) {
         uri ?: return@rememberLauncherForActivityResult
         scope.launch(Dispatchers.IO) {
             val fileName = if (isDarkSelection) "readerDarkBackgroundImage" else "readerBackgroundImage"
-            val file = context.filesDir.resolve(fileName).apply {
-                if (exists()) delete()
-                createNewFile()
-            }
-            context.contentResolver.openFileDescriptor(uri, "r")?.use { fd ->
-                FileInputStream(fd.fileDescriptor).use { input ->
-                    file.outputStream().use { output -> input.copyTo(output) }
+            val targetFile = context.filesDir.resolve(fileName)
+            val temporaryFile = context.filesDir.resolve(".$fileName.${System.nanoTime()}.download")
+            try {
+                val format = ImageUtils.copyEncodedImage(
+                    imageUri = uri,
+                    context = context,
+                    targetFile = temporaryFile
+                ).component1() ?: return@launch
+                if (format.extension !in setOf("png", "gif", "jpg", "webp", "bmp")) {
+                    temporaryFile.delete()
+                    return@launch
                 }
+                if (!replaceFileAtomically(temporaryFile, targetFile)) return@launch
+                val fileUri = targetFile.toUri()
+                if (isDarkSelection)
+                    settingState.backgroundDarkImageUriUserData.set(fileUri)
+                else
+                    settingState.backgroundImageUriUserData.set(fileUri)
+            } catch (throwable: Throwable) {
+                temporaryFile.delete()
+                if (throwable is kotlinx.coroutines.CancellationException) throw throwable
+                Log.e("ReaderBackgroundImage", "Failed to import background image", throwable)
             }
-            val fileUri = file.toUri()
-            if (isDarkSelection)
-                settingState.backgroundDarkImageUriUserData.set(fileUri)
-            else
-                settingState.backgroundImageUriUserData.set(fileUri)
         }
     }
 

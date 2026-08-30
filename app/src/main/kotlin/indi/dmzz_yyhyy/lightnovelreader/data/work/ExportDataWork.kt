@@ -6,13 +6,10 @@ import android.util.Log
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.github.michaelbull.result.andThen
-import com.github.michaelbull.result.onErr
-import com.github.michaelbull.result.runCatching
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalDataManager
-import indi.dmzz_yyhyy.lightnovelreader.utils.writeAppLocalData
+import indi.dmzz_yyhyy.lightnovelreader.data.local.cbor.LocalDataArchive
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.cbor.Cbor
 import kotlinx.serialization.encodeToByteArray
@@ -35,25 +32,40 @@ class ExportDataWork @AssistedInject constructor(
         val exportBookshelf = inputData.getBoolean("exportBookshelf", true)
         val exportReadingData = inputData.getBoolean("exportReadingData", true)
         val exportSetting = inputData.getBoolean("exportSetting", true)
-        localDataManager.exportAppLocalData(
+        val appLocalData = localDataManager.exportAppLocalData(
             localBookCache = exportLocalBookCache,
             bookshelf = exportBookshelf,
             readingRecord = exportReadingData,
             settings = exportSetting
-        ).andThen { appLocalData ->
-            runCatching {
-                applicationContext.contentResolver.openFileDescriptor(fileUri, "w")
-                    ?.use { parcelFileDescriptor ->
-                        FileOutputStream(parcelFileDescriptor.fileDescriptor).use {
-                            it.writeAppLocalData(Cbor.encodeToByteArray(appLocalData))
-                        }
-                    }
-            }
-        }.onErr {
+        ).component1() ?: run {
             Log.e(TAG, "Failed to get AppLocalData")
-            it.printStackTrace()
             return Result.failure()
         }
-        return Result.success()
+
+        val resources = try {
+            localDataManager.exportableResources(appLocalData)
+        } catch (throwable: Throwable) {
+            Log.e(TAG, "Failed to collect backup resources", throwable)
+            return Result.failure()
+        }
+        return try {
+            val written = applicationContext.contentResolver.openFileDescriptor(fileUri, "w")
+                ?.use { parcelFileDescriptor ->
+                    FileOutputStream(parcelFileDescriptor.fileDescriptor).use {
+                        LocalDataArchive.write(
+                            output = it,
+                            data = Cbor.encodeToByteArray(appLocalData),
+                            resources = resources
+                        )
+                    }
+                    true
+                } ?: false
+            if (written) Result.success() else Result.failure()
+        } catch (throwable: Throwable) {
+            Log.e(TAG, "Failed to write backup", throwable)
+            Result.failure()
+        } finally {
+            localDataManager.cleanupTemporaryExportResources(resources)
+        }
     }
 }

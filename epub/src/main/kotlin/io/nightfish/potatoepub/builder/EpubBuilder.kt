@@ -48,7 +48,7 @@ class EpubBuilder {
                         EpubManifest.Item(
                             href = it.key.second,
                             id = it.key.first,
-                            mediaType = "image/jpeg",
+                            mediaType = mediaType(it.value),
                         )
                     )
                     resFiles[it.key.second] = it.value
@@ -62,16 +62,41 @@ class EpubBuilder {
     fun imgRes(
         href: String,
         id: String,
-        file: File
+        file: File,
+        mediaType: String = mediaType(file)
     ) {
         manifestItems.add(
             EpubManifest.Item(
                 href = href,
                 id = id,
-                mediaType = "image/jpeg",
+                mediaType = mediaType,
             )
         )
         resFiles[href] = file
+    }
+
+    /** 在下载完成并识别真实文件格式后，替换资源路径及 manifest MIME。 */
+    fun renameResource(
+        oldHref: String,
+        newHref: String,
+        id: String,
+        file: File,
+        mediaType: String
+    ) {
+        val oldItem = manifestItems.firstOrNull { it.id == id && it.href == oldHref }
+        if (oldItem != null) manifestItems.remove(oldItem)
+        manifestItems.add(
+            (oldItem ?: EpubManifest.Item(
+                href = oldHref,
+                id = id,
+                mediaType = mediaType
+            )).copy(
+                href = newHref,
+                mediaType = mediaType
+            )
+        )
+        if (oldHref != newHref) resFiles.remove(oldHref)
+        resFiles[newHref] = file
     }
 
     fun res(
@@ -94,15 +119,13 @@ class EpubBuilder {
         )
     }
 
-    /**
-     * the cover file must be jpg
-     */
     fun cover(file: File) {
         hasCover = true
+        manifestItems.removeIf { it.id == "cover" }
         res(
             id = "cover",
-            path = "cover.jpg",
-            mediaType = "image/jpeg",
+            path = "cover.${file.extension.ifBlank { "jpg" }}",
+            mediaType = mediaType(file),
             properties = "cover-image",
             file = file
         )
@@ -159,6 +182,16 @@ class EpubBuilder {
                     throw Error("Didn't find res '${it.groupValues[1]}' which appear in file {${chapter.title}}. Pleas make sure use method 'res' to add the res into the EPUB.")
             }
         }
+    }
+
+    private fun mediaType(file: File): String = when (file.extension.lowercase()) {
+        "png" -> "image/png"
+        "gif" -> "image/gif"
+        "jpg", "jpeg" -> "image/jpeg"
+        "webp" -> "image/webp"
+        "bmp" -> "image/bmp"
+        "svg", "svgz" -> "image/svg+xml"
+        else -> "application/octet-stream"
     }
 
     fun build(): Epub {

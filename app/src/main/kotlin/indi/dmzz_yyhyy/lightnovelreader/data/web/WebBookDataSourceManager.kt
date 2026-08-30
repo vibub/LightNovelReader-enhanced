@@ -3,8 +3,13 @@ package indi.dmzz_yyhyy.lightnovelreader.data.web
 import dalvik.system.PathClassLoader
 import indi.dmzz_yyhyy.lightnovelreader.data.plugin.injector.PluginInjector
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.web.proxy.ProxyCachedWebBookDataSource
+import indi.dmzz_yyhyy.lightnovelreader.data.web.proxy.ProxyCoalescingWebBookDataSource
+import indi.dmzz_yyhyy.lightnovelreader.data.web.proxy.ProxyPriorityWebBookDataSource
+import indi.dmzz_yyhyy.lightnovelreader.data.web.proxy.ProxyWebBookDataSource
 import indi.dmzz_yyhyy.lightnovelreader.utils.convertOldId
 import indi.dmzz_yyhyy.lightnovelreader.utils.ofId
+import indi.dmzz_yyhyy.lightnovelreader.utils.toLegacyCompatibleSourceId
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import io.nightfish.lightnovelreader.api.web.WebBookDataSource
@@ -79,12 +84,48 @@ class WebBookDataSourceManager @Inject constructor (
     }
 
     fun unloadWebDataSourcesFromClassLoader(packageName: String) {
-        webDataSourceItemListMap[packageName]?.let { _webDataSourceItems.removeAll(it) }
+        webDataSourceItemListMap.remove(packageName)?.let { items ->
+            val ids = items.map { it.id }.toSet()
+            _webDataSourceItems.removeAll { it.id in ids }
+            webBookDataSources.removeAll { it.id in ids }
+            onWebDataSourceListChange()
+        }
     }
 
     fun getWebDataSourceProvider(): WebBookDataSourceProvider {
         return mutableWebDataSourceProvider
     }
+
+    /**
+     * 为后台任务按已保存的数据源 ID 创建独立的代理链，避免切换当前数据源后读写到错误的源。
+     */
+    fun getWebDataSourceProvider(id: Identifier): ProxyWebBookDataSource? =
+        webBookDataSources
+            .find { it.id == id }
+            ?.also { it.onLoad() }
+            ?.let { source ->
+                ProxyCachedWebBookDataSource(
+                    ProxyCoalescingWebBookDataSource(
+                        ProxyPriorityWebBookDataSource(source)
+                    )
+                )
+            }
+
+    /**
+     * 根据旧版本任务中保存的整数源 ID 恢复数据源。
+     * 新任务优先保存完整的 [Identifier]，此方法只作为缺少 source_key 的兼容回退。
+     */
+    fun getWebDataSourceProvider(sourceId: Int): ProxyWebBookDataSource? =
+        webBookDataSources
+            .find { it.id.toLegacyCompatibleSourceId() == sourceId }
+            ?.also { it.onLoad() }
+            ?.let { source ->
+                ProxyCachedWebBookDataSource(
+                    ProxyCoalescingWebBookDataSource(
+                        ProxyPriorityWebBookDataSource(source)
+                    )
+                )
+            }
 
     fun onWebDataSourceListChange() = runBlocking {
         val webDataSourcesId = userDataRepository

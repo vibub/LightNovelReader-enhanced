@@ -3,9 +3,7 @@ package indi.dmzz_yyhyy.lightnovelreader.data.book
 import android.net.Uri
 import android.util.Log
 import androidx.navigation.NavController
-import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
-import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
@@ -18,13 +16,19 @@ import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import indi.dmzz_yyhyy.lightnovelreader.BuildConfig
 import indi.dmzz_yyhyy.lightnovelreader.data.download.ChapterDownloadRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.download.ChapterDownloadState
 import indi.dmzz_yyhyy.lightnovelreader.data.download.ChapterDownloadStatus
+import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadSettingsRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadTaskRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalBookDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.local.OfflineContentCache
 import indi.dmzz_yyhyy.lightnovelreader.data.text.TextProcessingRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceManager
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
+import indi.dmzz_yyhyy.lightnovelreader.data.web.proxy.ProxyWebBookDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.work.CacheBookWork
+import indi.dmzz_yyhyy.lightnovelreader.utils.convertOldId
 import indi.dmzz_yyhyy.lightnovelreader.utils.toLegacyCompatibleSourceId
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.BookRepositoryApi
@@ -44,7 +48,6 @@ import kotlinx.serialization.json.JsonArray
 import kotlin.time.Duration.Companion.seconds
 import java.io.File
 import java.time.LocalDateTime
-import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -116,14 +119,34 @@ internal fun shouldRequestRemoteChapter(
     wasRecentlyFetched: Boolean
 ): Boolean = !hasUsableLocal || !wasRecentlyFetched
 
+internal fun retryChapterIds(
+    chapterIds: List<String>,
+    states: Map<String, ChapterDownloadState>,
+    queueAll: Boolean
+): List<String> = chapterIds
+    .map(String::trim)
+    .filter(String::isNotBlank)
+    .distinct()
+    .filter { chapterId ->
+        val status = states[chapterId]?.status
+        status in setOf(
+            ChapterDownloadStatus.NOT_DOWNLOADED,
+            ChapterDownloadStatus.PARTIAL,
+            ChapterDownloadStatus.FAILED
+        ) || (queueAll && status != ChapterDownloadStatus.COMPLETED)
+    }
+
 @Singleton
 class BookRepository @Inject constructor(
     private val webBookDataSourceProvider: WebBookDataSourceProvider,
+    private val webBookDataSourceManager: WebBookDataSourceManager,
     private val localBookDataSource: LocalBookDataSource,
     private val chapterDownloadRepository: ChapterDownloadRepository,
     private val offlineContentCache: OfflineContentCache,
     private val bookshelfRepository: BookshelfRepository,
     private val textProcessingRepository: TextProcessingRepository,
+    private val downloadSettingsRepository: DownloadSettingsRepository,
+    private val downloadTaskRepository: DownloadTaskRepository,
     private val workManager: WorkManager
 ): BookRepositoryApi {
     companion object {
@@ -140,18 +163,21 @@ class BookRepository @Inject constructor(
         id: String,
         priority: WebDataSourcePriority
     ): Flow<Result<BookInformation, WebRequestError>> = flow {
-        val local = localBookDataSource.getBookInformation(id)
+        val dataSource = webBookDataSource
+        val sourceId = dataSource.id.toLegacyCompatibleSourceId()
+        val local = localBookDataSource.getBookInformation(sourceId, id)
             ?.takeIf(::isUsableBookInformation)
         local?.let { emit(Ok(it)) }
         if (BuildConfig.BENCHMARK && local != null) return@flow
-        val remote = webBookDataSource.getBookInformation(id, priority)
+        val remote = dataSource.getBookInformation(id, priority)
             .onOk { remote ->
                 val cachedCover = local?.coverUri?.takeIf { uri ->
                     uri.scheme.equals("file", ignoreCase = true) &&
                         uri.path?.let(::File)?.isFile == true
                 }
                 localBookDataSource.updateBookInformation(
-                    cachedCover?.let { remote.copy(coverUri = it) } ?: remote
+                    sourceId = sourceId,
+                    info = cachedCover?.let { remote.copy(coverUri = it) } ?: remote
                 )
                 val bookshelfBookMetadata = bookshelfRepository.getBookshelfBookMetadata(remote.id) ?: return@onOk
                 if (bookshelfBookMetadata.lastUpdate.isBefore(remote.lastUpdated))
@@ -173,9 +199,102 @@ class BookRepository @Inject constructor(
         }
     }
 
+    /**
+     * 为下载管理器按任务保存的数据源加载书籍信息，避免切换当前数据源后显示错误书名。
+     * 目标数据源的详情、封面和本地回退均使用独立的 sourceId。
+     */
+    fun getBookInformationFlowForSource(
+        id: String,
+        sourceKey: String,
+        sourceId: Int? = null,
+        priority: WebDataSourcePriority = WebDataSourcePriority.Default
+    ): Flow<Result<BookInformation, WebRequestError>> {
+        val dataSource = resolveWebBookDataSource(sourceKey, sourceId)
+        if (dataSource == null) {
+            return flow {
+                val resolvedSourceId = sourceId
+                    ?: sourceKey.convertOldId().toLegacyCompatibleSourceId()
+                localBookDataSource.getBookInformation(resolvedSourceId, id)
+                    ?.takeIf(::isUsableBookInformation)
+                    ?.let { emit(Ok(it)) }
+                    ?: emit(
+                        Err(
+                            WebRequestError(
+                                title = "数据源不可用",
+                                message = "无法加载数据源中的书籍 $id"
+                            )
+                        )
+                    )
+            }.map { result ->
+                result.map { textProcessingRepository.processBookInformation { it } }
+            }
+        }
+        if (dataSource.id == webBookDataSource.id) {
+            return getBookInformationFlow(id, priority)
+        }
+        return flow {
+            val targetSourceId = dataSource.id.toLegacyCompatibleSourceId()
+            val local = localBookDataSource.getBookInformation(targetSourceId, id)
+                ?.takeIf(::isUsableBookInformation)
+            val remote = try {
+                dataSource.getBookInformation(id, priority)
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                Err(
+                    WebRequestError(
+                        title = "书籍加载失败",
+                        message = "无法获取书籍 $id",
+                        throwable = throwable
+                    )
+                )
+            }
+            remote.onOk { information ->
+                val cachedCover = local?.coverUri?.takeIf { uri ->
+                    uri.scheme.equals("file", ignoreCase = true) &&
+                        uri.path?.let(::File)?.isFile == true
+                }
+                localBookDataSource.updateBookInformation(
+                    sourceId = targetSourceId,
+                    info = cachedCover?.let { information.copy(coverUri = it) } ?: information
+                )
+            }
+            when {
+                remote.isOk -> emit(remote)
+                local != null -> emit(Ok(local))
+                else -> emit(remote)
+            }
+        }.map { result ->
+            result.map { textProcessingRepository.processBookInformation { it } }
+        }
+    }
+
+    private fun resolveWebBookDataSource(
+        sourceKey: String?,
+        sourceId: Int? = null
+    ): ProxyWebBookDataSource? {
+        val current = webBookDataSource
+        val currentSourceId = current.id.toLegacyCompatibleSourceId()
+        val requested = sourceKey?.takeIf(String::isNotBlank)?.convertOldId()
+        val dataSourceByKey = when {
+            requested != null && requested == current.id -> current
+            requested != null -> webBookDataSourceManager.getWebDataSourceProvider(requested)
+            else -> null
+        }
+        val dataSource = when {
+            sourceId == null -> dataSourceByKey ?: current
+            dataSourceByKey?.id?.toLegacyCompatibleSourceId() == sourceId -> dataSourceByKey
+            sourceId == currentSourceId -> current
+            else -> webBookDataSourceManager.getWebDataSourceProvider(sourceId)
+        }
+        return dataSource
+    }
+
     internal suspend fun getLocalBookshelfBookInformation(
         ids: List<String>
-    ): Map<String, BookInformation> = localBookDataSource.getBookInformationByIds(ids)
+    ): Map<String, BookInformation> = localBookDataSource.getBookInformationByIds(
+        webBookDataSource.id.toLegacyCompatibleSourceId(),
+        ids
+    )
         .mapValues { (_, bookInformation) ->
             textProcessingRepository.processBookInformation { bookInformation }
         }
@@ -184,7 +303,8 @@ class BookRepository @Inject constructor(
         id: String,
         priority: WebDataSourcePriority = WebDataSourcePriority.Default
     ): Flow<Result<BookInformation, WebRequestError>> = flow {
-        val local = localBookDataSource.getBookInformation(id)?.let { bookInformation ->
+        val sourceId = webBookDataSource.id.toLegacyCompatibleSourceId()
+        val local = localBookDataSource.getBookInformation(sourceId, id)?.let { bookInformation ->
             textProcessingRepository.processBookInformation { bookInformation }
         }
         emitAll(
@@ -199,13 +319,15 @@ class BookRepository @Inject constructor(
         id: String,
         priority: WebDataSourcePriority
     ): Flow<Result<BookVolumes, WebRequestError>> = flow {
-        val local = localBookDataSource.getBookVolumes(id)
+        val dataSource = webBookDataSource
+        val sourceId = dataSource.id.toLegacyCompatibleSourceId()
+        val local = localBookDataSource.getBookVolumes(sourceId, id)
             ?.takeIf(::isUsableBookVolumes)
         local?.let { emit(Ok(it)) }
         if (BuildConfig.BENCHMARK && local != null) return@flow
-        val remote = webBookDataSource.getBookVolumes(id, priority)
+        val remote = dataSource.getBookVolumes(id, priority)
             .onOk { remote ->
-                localBookDataSource.updateBookVolumes(remote)
+                localBookDataSource.updateBookVolumes(sourceId, remote)
             }.onErr {
                 Log.e(TAG, "Failed to request web data (title=${it.title}, message=${it.message})")
                 it.throwable?.printStackTrace()
@@ -337,7 +459,12 @@ class BookRepository @Inject constructor(
         localBookDataSource.updateUserReadingData(id, update)
     }
 
-    fun isCacheBookWorkFlow(workId: UUID) = workManager.getWorkInfoByIdFlow(workId)
+    /** 观察 unique work，避免 ExistingWorkPolicy.KEEP 时观察到新建但未被采用的 UUID。 */
+    fun isCacheBookWorkFlow(sourceId: Int, bookId: String) =
+        workManager.getWorkInfosForUniqueWorkFlow(CacheBookWork.ofId(sourceId, bookId))
+            .map { workInfos ->
+                workInfos.firstOrNull { !it.state.isFinished } ?: workInfos.firstOrNull()
+            }
 
     suspend fun cacheBook(
         bookId: String,
@@ -345,7 +472,7 @@ class BookRepository @Inject constructor(
         forceRefresh: Boolean = false
     ): OneTimeWorkRequest {
         val sourceId = webBookDataSource.id.toLegacyCompatibleSourceId()
-        val localBookVolumes = localBookDataSource.getBookVolumes(bookId)
+        val localBookVolumes = localBookDataSource.getBookVolumes(sourceId, bookId)
         val selectedChapterIds = chapterIds
             ?.map(String::trim)
             ?.filter(String::isNotBlank)
@@ -370,59 +497,110 @@ class BookRepository @Inject constructor(
 
         return enqueueCacheWork(
             bookId = bookId,
+            sourceKey = webBookDataSource.id.toString(),
+            sourceId = sourceId,
             queueAll = selectedChapterIds == null && localBookVolumes == null
         )
     }
 
-    fun resumeCachedBook(bookId: String): OneTimeWorkRequest =
-        enqueueCacheWork(bookId = bookId, queueAll = false)
+    suspend fun resumeCachedBook(
+        bookId: String,
+        sourceId: Int? = null,
+        sourceKey: String? = null
+    ): OneTimeWorkRequest {
+        val storedTask = sourceId?.let { downloadTaskRepository.get(it, bookId) }
+        val requestedSourceKey = sourceKey?.takeIf(String::isNotBlank)
+            ?: storedTask?.sourceKey?.takeIf(String::isNotBlank)
+        val dataSource = resolveWebBookDataSource(requestedSourceKey, sourceId)
+        val actualSourceId = dataSource?.id?.toLegacyCompatibleSourceId()
+            ?: sourceId
+            ?: requestedSourceKey?.convertOldId()?.toLegacyCompatibleSourceId()
+            ?: webBookDataSource.id.toLegacyCompatibleSourceId()
+        val actualSourceKey = dataSource?.id?.toString() ?: requestedSourceKey.orEmpty()
+        downloadTaskRepository.resume(actualSourceId, bookId, actualSourceKey)
+        return enqueueCacheWork(
+            bookId = bookId,
+            sourceKey = actualSourceKey,
+            sourceId = actualSourceId,
+            queueAll = storedTask?.queueAll ?: false
+        )
+    }
 
-    suspend fun retryCachedBook(bookId: String): OneTimeWorkRequest {
-        val sourceId = webBookDataSource.id.toLegacyCompatibleSourceId()
-        val chapterIds = localBookDataSource.getBookVolumes(bookId)
-            ?.volumes
-            ?.flatMap { it.chapters }
-            ?.map { it.id }
-            .orEmpty()
+    suspend fun retryCachedBook(
+        bookId: String,
+        sourceId: Int? = null,
+        sourceKey: String? = null
+    ): OneTimeWorkRequest {
+        val storedTask = sourceId?.let { downloadTaskRepository.get(it, bookId) }
+        val requestedSourceKey = sourceKey?.takeIf(String::isNotBlank)
+            ?: storedTask?.sourceKey?.takeIf(String::isNotBlank)
+        val dataSource = resolveWebBookDataSource(requestedSourceKey, sourceId)
+        val actualSourceId = dataSource?.id?.toLegacyCompatibleSourceId()
+            ?: sourceId
+            ?: requestedSourceKey?.convertOldId()?.toLegacyCompatibleSourceId()
+            ?: webBookDataSource.id.toLegacyCompatibleSourceId()
+        val actualSourceKey = dataSource?.id?.toString() ?: requestedSourceKey.orEmpty()
+        val task = downloadTaskRepository.get(actualSourceId, bookId) ?: storedTask
+        val chapterIds = if (dataSource == null) emptyList() else {
+            localBookDataSource.getBookVolumes(actualSourceId, bookId)
+                ?.volumes
+                ?.flatMap { it.chapters }
+                ?.map { it.id }
+                .orEmpty()
+        }
         if (chapterIds.isNotEmpty()) {
-            val states = chapterDownloadRepository.getStates(sourceId, bookId)
-            val retryIds = chapterIds.filter { chapterId ->
-                states[chapterId]?.status in setOf(
-                    ChapterDownloadStatus.PARTIAL,
-                    ChapterDownloadStatus.FAILED
-                )
-            }
+            val states = chapterDownloadRepository.getStates(actualSourceId, bookId)
+            val retryIds = retryChapterIds(
+                chapterIds = chapterIds,
+                states = states,
+                queueAll = task?.queueAll == true
+            )
             if (retryIds.isNotEmpty()) {
                 chapterDownloadRepository.queue(
-                    sourceId = sourceId,
+                    sourceId = actualSourceId,
                     bookId = bookId,
                     chapterIds = retryIds,
                     forceRefresh = true
                 )
             }
         }
-        return enqueueCacheWork(bookId = bookId, queueAll = false)
+        return enqueueCacheWork(
+            bookId = bookId,
+            sourceKey = actualSourceKey,
+            sourceId = actualSourceId,
+            queueAll = task?.queueAll == true
+        )
     }
 
-    private fun enqueueCacheWork(
+    private suspend fun enqueueCacheWork(
         bookId: String,
+        sourceKey: String,
+        sourceId: Int,
         queueAll: Boolean
     ): OneTimeWorkRequest {
+        val settings = downloadSettingsRepository.get()
+        downloadTaskRepository.markRunning(
+            sourceId = sourceId,
+            bookId = bookId,
+            sourceKey = sourceKey,
+            queueAll = queueAll,
+            constraintsKey = settings.constraintsKey
+        )
         val workRequest = OneTimeWorkRequestBuilder<CacheBookWork>()
-            .setConstraints(
-                Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.UNMETERED)
-                    .build()
-            )
+            .setConstraints(settings.constraints())
             .setInputData(
                 workDataOf(
                     "bookId" to bookId,
+                    "sourceKey" to sourceKey,
+                    "sourceId" to sourceId,
                     "queueAll" to queueAll
                 )
             )
             .build()
+        // 取消升级前的全局任务，避免它与新的源隔离任务同时写入缓存。
+        workManager.cancelUniqueWork(CacheBookWork.ofId(bookId))
         workManager.enqueueUniqueWork(
-            CacheBookWork.ofId(bookId),
+            CacheBookWork.ofId(sourceId, bookId),
             ExistingWorkPolicy.KEEP,
             workRequest
         )
@@ -431,40 +609,100 @@ class BookRepository @Inject constructor(
 
     override suspend fun getIsBookCached(bookId: String): Boolean {
         val sourceId = webBookDataSource.id.toLegacyCompatibleSourceId()
-        val bookVolumes = localBookDataSource.getBookVolumes(bookId) ?: return false
+        val bookVolumes = localBookDataSource.getBookVolumes(sourceId, bookId) ?: return false
         val chapterIds = bookVolumes.volumes.flatMap { volume -> volume.chapters.map { it.id } }
         if (chapterIds.isEmpty()) return false
         chapterDownloadRepository.migrateLegacyCachedChapters(sourceId, bookId, chapterIds)
         return chapterDownloadRepository.isBookFullyDownloaded(sourceId, bookId, chapterIds)
     }
 
-    suspend fun cancelCachedBook(bookId: String) {
-        val sourceId = webBookDataSource.id.toLegacyCompatibleSourceId()
-        chapterDownloadRepository.clearPending(sourceId, bookId)
-    }
-
-    suspend fun clearCachedChapters(bookId: String, chapterIds: List<String>) {
-        val ids = chapterIds.map(String::trim).filter(String::isNotBlank).distinct()
-        if (ids.isEmpty()) return
-        val sourceId = webBookDataSource.id.toLegacyCompatibleSourceId()
-        localBookDataSource.deleteChapterContent(sourceId, bookId, ids)
-        chapterDownloadRepository.clearChapters(sourceId, bookId, ids)
-        ids.forEach { chapterId ->
-            offlineContentCache.deleteChapterImages(sourceId, bookId, chapterId)
+    suspend fun pauseCachedBook(
+        bookId: String,
+        sourceId: Int? = null,
+        sourceKey: String? = null
+    ) {
+        val task = sourceId?.let { downloadTaskRepository.get(it, bookId) }
+        val requestedSourceKey = sourceKey?.takeIf(String::isNotBlank)
+            ?: task?.sourceKey?.takeIf(String::isNotBlank)
+        val actualSourceId = resolveSourceId(sourceId, requestedSourceKey)
+        chapterDownloadRepository.pause(actualSourceId, bookId)
+        downloadTaskRepository.get(actualSourceId, bookId)?.let { currentTask ->
+            downloadTaskRepository.markPaused(
+                sourceId = actualSourceId,
+                bookId = bookId,
+                progress = currentTask.progress,
+                total = currentTask.total,
+                processed = currentTask.processed,
+                sourceKey = requestedSourceKey ?: currentTask.sourceKey,
+                estimatedBytes = currentTask.estimatedBytes,
+                writtenBytes = currentTask.writtenBytes,
+                currentChapterId = currentTask.currentChapterId,
+                currentChapterTitle = currentTask.currentChapterTitle,
+                clearWaitingReason = true
+            )
         }
     }
 
-    suspend fun clearCachedBook(bookId: String) {
-        val sourceId = webBookDataSource.id.toLegacyCompatibleSourceId()
-        val chapterIds = localBookDataSource.getBookVolumes(bookId)
+    suspend fun cancelCachedBook(
+        bookId: String,
+        sourceId: Int? = null,
+        sourceKey: String? = null
+    ) {
+        val task = sourceId?.let { downloadTaskRepository.get(it, bookId) }
+        val requestedSourceKey = sourceKey?.takeIf(String::isNotBlank)
+            ?: task?.sourceKey?.takeIf(String::isNotBlank)
+        val actualSourceId = resolveSourceId(sourceId, requestedSourceKey)
+        chapterDownloadRepository.clearPending(actualSourceId, bookId)
+        downloadTaskRepository.clear(actualSourceId, bookId)
+    }
+
+    suspend fun clearCachedChapters(
+        bookId: String,
+        chapterIds: List<String>,
+        sourceId: Int? = null,
+        sourceKey: String? = null
+    ) {
+        val ids = chapterIds.map(String::trim).filter(String::isNotBlank).distinct()
+        if (ids.isEmpty()) return
+        val actualSourceId = resolveSourceId(sourceId, sourceKey)
+        localBookDataSource.deleteChapterContent(actualSourceId, bookId, ids)
+        chapterDownloadRepository.clearChapters(actualSourceId, bookId, ids)
+        ids.forEach { chapterId ->
+            offlineContentCache.deleteChapterImages(actualSourceId, bookId, chapterId)
+        }
+    }
+
+    suspend fun clearCachedBook(
+        bookId: String,
+        sourceId: Int? = null,
+        sourceKey: String? = null
+    ) {
+        val task = sourceId?.let { downloadTaskRepository.get(it, bookId) }
+        val requestedSourceKey = sourceKey?.takeIf(String::isNotBlank)
+            ?: task?.sourceKey?.takeIf(String::isNotBlank)
+        val actualSourceId = resolveSourceId(sourceId, requestedSourceKey)
+        val chapterIds = localBookDataSource.getBookVolumes(actualSourceId, bookId)
             ?.volumes
             ?.flatMap { it.chapters }
             ?.map { it.id }
             .orEmpty()
-        clearCachedChapters(bookId, chapterIds)
-        chapterDownloadRepository.clearBook(sourceId, bookId)
-        offlineContentCache.deleteBookImages(sourceId, bookId)
+        clearCachedChapters(
+            bookId = bookId,
+            chapterIds = chapterIds,
+            sourceId = actualSourceId,
+            sourceKey = requestedSourceKey
+        )
+        chapterDownloadRepository.clearBook(actualSourceId, bookId)
+        downloadTaskRepository.clear(actualSourceId, bookId)
+        offlineContentCache.deleteBookImages(actualSourceId, bookId)
     }
+
+    private fun resolveSourceId(sourceId: Int?, sourceKey: String?): Int =
+        sourceId
+            ?: resolveWebBookDataSource(sourceKey)?.id?.toLegacyCompatibleSourceId()
+            ?: sourceKey?.takeIf(String::isNotBlank)?.convertOldId()
+                ?.toLegacyCompatibleSourceId()
+            ?: webBookDataSource.id.toLegacyCompatibleSourceId()
 
     override fun progressBookTagClick(tag: String, navController: NavController) =
         webBookDataSource.progressBookTagClick(tag, navController)

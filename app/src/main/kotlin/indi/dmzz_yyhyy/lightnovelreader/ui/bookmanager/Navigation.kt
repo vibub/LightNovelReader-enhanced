@@ -41,8 +41,7 @@ fun NavGraphBuilder.bookManager() {
             onClickCancel = viewModel::onClickCancel,
             onClickPause = viewModel::onClickPause,
             onClickResume = viewModel::onClickResume,
-            onClickRetry = viewModel::onClickRetry,
-            onClickClearCompleted = viewModel::onClickClearCompleted
+            onClickRetry = viewModel::onClickRetry
         )
     }
 }

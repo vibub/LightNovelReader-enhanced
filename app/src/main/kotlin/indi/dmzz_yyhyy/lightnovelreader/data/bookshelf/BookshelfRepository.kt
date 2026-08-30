@@ -6,8 +6,12 @@ import androidx.work.WorkManager
 import androidx.work.workDataOf
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.converter.ListConverter
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookshelfDao
+import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadSettingsRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadTaskRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookshelfEntity
+import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
 import indi.dmzz_yyhyy.lightnovelreader.data.work.CacheBookWork
+import indi.dmzz_yyhyy.lightnovelreader.utils.toLegacyCompatibleSourceId
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.bookshelf.Bookshelf
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfBookMetadata
@@ -21,7 +25,11 @@ import javax.inject.Singleton
 
 @Singleton
 class BookshelfRepository @Inject constructor(
-    private val bookshelfDao: BookshelfDao, private val workManager: WorkManager
+    private val bookshelfDao: BookshelfDao,
+    private val workManager: WorkManager,
+    private val webBookDataSourceProvider: WebBookDataSourceProvider,
+    private val downloadSettingsRepository: DownloadSettingsRepository,
+    private val downloadTaskRepository: DownloadTaskRepository
 ) : BookshelfRepositoryApi {
     override suspend fun getAllBookshelfIds(): List<Int> = bookshelfDao.getAllBookshelfIds()
 
@@ -121,13 +129,31 @@ class BookshelfRepository @Inject constructor(
             bookshelfIds = listOf(bookshelfId)
         )
         if (bookshelf.autoCache && bookshelf.allBookIds.contains(bookInformation.id)) {
-            val workRequest = OneTimeWorkRequestBuilder<CacheBookWork>().setInputData(
+            val source = webBookDataSourceProvider.value
+            val sourceId = source.id.toLegacyCompatibleSourceId()
+            val settings = downloadSettingsRepository.get()
+            downloadTaskRepository.markRunning(
+                sourceId = sourceId,
+                bookId = bookInformation.id,
+                sourceKey = source.id.toString(),
+                queueAll = true,
+                constraintsKey = settings.constraintsKey
+            )
+            val workRequest = OneTimeWorkRequestBuilder<CacheBookWork>()
+                .setConstraints(settings.constraints())
+                .setInputData(
                     workDataOf(
-                        "bookId" to bookInformation.id
+                        "bookId" to bookInformation.id,
+                        "sourceKey" to source.id.toString(),
+                        "sourceId" to sourceId,
+                        "queueAll" to true
                     )
-                ).build()
+                )
+                .build()
             workManager.enqueueUniqueWork(
-                CacheBookWork.ofId(bookInformation.id), ExistingWorkPolicy.KEEP, workRequest
+                CacheBookWork.ofId(sourceId, bookInformation.id),
+                ExistingWorkPolicy.KEEP,
+                workRequest
             )
         }
         (bookshelf.allBookIds + listOf(bookInformation.id)).let {

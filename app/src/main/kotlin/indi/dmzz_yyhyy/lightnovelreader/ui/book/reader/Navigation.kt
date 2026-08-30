@@ -3,6 +3,7 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader
 import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
+import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -20,6 +21,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import androidx.navigation.NavDestination
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.dialog
@@ -104,17 +106,48 @@ fun NavController.navigateToBookReaderDestination(
     context: Context,
     restoreProgress: Boolean = true
 ) {
-    val entry = this.getBackStackEntry<Route.Book>()
-    val viewModel = ViewModelProvider.create(
-        entry,
-        HiltViewModelFactory(
-            context = context,
-            delegateFactory = entry.defaultViewModelProviderFactory
-        ),
-    )[ReaderViewModel::class.java]
-    viewModel.bookId = bookId
-    viewModel.changeChapter(chapterId, restoreProgress)
-    this.navigate(Route.Book.Reader)
+    fun navigateFromBookGraph() {
+        val entry = runCatching { getBackStackEntry<Route.Book>() }.getOrNull()
+            ?: return
+        val viewModel = ViewModelProvider.create(
+            entry,
+            HiltViewModelFactory(
+                context = context,
+                delegateFactory = entry.defaultViewModelProviderFactory
+            ),
+        )[ReaderViewModel::class.java]
+        viewModel.bookId = bookId
+        viewModel.changeChapter(chapterId, restoreProgress)
+        navigate(Route.Book.Reader)
+    }
+
+    if (runCatching { getBackStackEntry<Route.Book>() }.getOrNull() != null) {
+        navigateFromBookGraph()
+        return
+    }
+
+    // 从阅读首页或探索页快速进入阅读器时，Book 导航图可能尚未进入回退栈。
+    // 先打开详情页，等导航图建立后再初始化 ReaderViewModel，避免 getBackStackEntry 崩溃。
+    val listener = object : NavController.OnDestinationChangedListener {
+        override fun onDestinationChanged(
+            controller: NavController,
+            destination: NavDestination,
+            arguments: Bundle?
+        ) {
+            if (runCatching { controller.getBackStackEntry<Route.Book>() }.getOrNull() == null) {
+                return
+            }
+            controller.removeOnDestinationChangedListener(this)
+            navigateFromBookGraph()
+        }
+    }
+    addOnDestinationChangedListener(listener)
+    try {
+        navigate(Route.Book.Detail(bookId))
+    } catch (throwable: Throwable) {
+        removeOnDestinationChangedListener(listener)
+        throw throwable
+    }
 }
 
 private fun NavGraphBuilder.colorPickerDialog() {

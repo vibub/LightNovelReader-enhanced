@@ -28,18 +28,37 @@ class LocalBookDataSource @Inject constructor(
 
     override suspend fun getBookInformation(id: String): BookInformation? = bookInformationDao.get(id)
 
-    suspend fun getBookInformationByIds(ids: List<String>): Map<String, BookInformation> =
-        ids.distinct()
-            .chunked(500)
-            .flatMap { bookInformationDao.getByIds(it) }
-            .associateBy(BookInformation::id)
+    suspend fun getBookInformation(sourceId: Int, id: String): BookInformation? =
+        bookInformationDao.getForSource(sourceId, id)
 
-    override suspend fun updateBookInformation(info: BookInformation) = bookInformationDao.insert(info)
-    override suspend fun getBookVolumes(id: String): BookVolumes? = bookVolumesDao.getBookVolumes(id)
+    suspend fun getBookInformationByIds(
+        sourceId: Int,
+        ids: List<String>
+    ): Map<String, BookInformation> = ids.distinct()
+        .chunked(500)
+        .flatMap { bookInformationDao.getByIdsForSource(sourceId, it) }
+        .associateBy(BookInformation::id)
+
+    override suspend fun updateBookInformation(info: BookInformation) =
+        bookInformationDao.insert(info)
+
+    suspend fun updateBookInformation(sourceId: Int, info: BookInformation) =
+        bookInformationDao.insertForSource(sourceId, info)
+
+    override suspend fun getBookVolumes(id: String): BookVolumes? =
+        bookVolumesDao.getBookVolumes(id).takeIf(::hasVolumes)
+
+    suspend fun getBookVolumes(sourceId: Int, id: String): BookVolumes? =
+        bookVolumesDao.getBookVolumes(sourceId, id).takeIf(::hasVolumes)
+
     override suspend fun updateBookVolumes(bookVolumes: BookVolumes) =
         bookVolumesDao.insertVolume(bookVolumes.bookId, bookVolumes)
 
-    override suspend fun getChapterContent(id: String) = chapterContentDao.get(id)?.toChapterContent()
+    suspend fun updateBookVolumes(sourceId: Int, bookVolumes: BookVolumes) =
+        bookVolumesDao.insertVolume(sourceId, bookVolumes.bookId, bookVolumes)
+
+    override suspend fun getChapterContent(id: String) =
+        chapterContentDao.get(id)?.toChapterContent()
 
     suspend fun getChapterContent(sourceId: Int, bookId: String, id: String): ChapterContent? =
         chapterContentDao.getScoped(sourceId, bookId, id)?.toChapterContent()
@@ -57,7 +76,9 @@ class LocalBookDataSource @Inject constructor(
         val ids = chapterIds.map(String::trim).filter(String::isNotBlank).distinct()
         if (ids.isEmpty()) return
         chapterContentDao.deleteByIds(sourceId, bookId, ids)
-        chapterContentDao.deleteLegacyByIds(ids)
+        if (sourceId == ChapterContentEntity.LEGACY_SOURCE_ID) {
+            chapterContentDao.deleteLegacyByIds(ids)
+        }
     }
 
     override suspend fun getUserReadingData(id: String) = userReadingDataDao.getEntity(id).let {
@@ -150,6 +171,8 @@ class LocalBookDataSource @Inject constructor(
         bookVolumesDao.clear()
         chapterContentDao.clear()
     }
+
+    private fun hasVolumes(bookVolumes: BookVolumes): Boolean = bookVolumes.volumes.isNotEmpty()
 
     private fun ChapterContentEntity.toChapterContent() = ChapterContent(
         id,

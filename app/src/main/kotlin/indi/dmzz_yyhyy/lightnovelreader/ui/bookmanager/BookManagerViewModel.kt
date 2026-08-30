@@ -61,8 +61,14 @@ class BookManagerViewModel @Inject constructor(
     fun onClickCancel(item: DownloadItem) {
         workManager.cancelUniqueWork(workName(item))
         if (item.type == DownloadType.CACHE) {
+            // 兼容升级前使用全局 cache:$bookId 命名的任务。
+            workManager.cancelUniqueWork(CacheBookWork.ofId(item.bookId))
             viewModelScope.launch(Dispatchers.IO) {
-                bookRepository.cancelCachedBook(item.bookId)
+                bookRepository.cancelCachedBook(
+                    bookId = item.bookId,
+                    sourceId = item.sourceId,
+                    sourceKey = item.sourceKey
+                )
             }
         }
         downloadProgressRepository.removeExportItem(item)
@@ -71,15 +77,41 @@ class BookManagerViewModel @Inject constructor(
     fun onClickPause(item: DownloadItem) {
         if (item.type != DownloadType.CACHE || item.state != DownloadItemState.RUNNING) return
         item.state = DownloadItemState.PAUSED
-        workManager.cancelUniqueWork(workName(item))
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                bookRepository.pauseCachedBook(
+                    bookId = item.bookId,
+                    sourceId = item.sourceId,
+                    sourceKey = item.sourceKey
+                )
+                downloadProgressRepository.persistState(item, DownloadItemState.PAUSED)
+                workManager.cancelUniqueWork(workName(item))
+                // 兼容升级前使用全局 cache:$bookId 命名的任务。
+                workManager.cancelUniqueWork(CacheBookWork.ofId(item.bookId))
+            }.onFailure {
+                item.state = DownloadItemState.FAILED
+            }
+        }
     }
 
     fun onClickResume(item: DownloadItem) {
         if (item.type != DownloadType.CACHE || item.state != DownloadItemState.PAUSED) return
         item.state = DownloadItemState.RUNNING
+        item.waitingReason = null
+        item.currentChapterTitle = null
+        item.errorMessage = null
         viewModelScope.launch(Dispatchers.IO) {
-            runCatching { bookRepository.resumeCachedBook(item.bookId) }
-                .onFailure { item.state = DownloadItemState.FAILED }
+            runCatching {
+                downloadProgressRepository.persistState(item, DownloadItemState.RUNNING)
+                bookRepository.resumeCachedBook(
+                    bookId = item.bookId,
+                    sourceId = item.sourceId,
+                    sourceKey = item.sourceKey
+                )
+            }.onFailure {
+                item.state = DownloadItemState.FAILED
+                downloadProgressRepository.persistState(item, DownloadItemState.FAILED)
+            }
         }
     }
 
@@ -87,17 +119,27 @@ class BookManagerViewModel @Inject constructor(
         if (item.type != DownloadType.CACHE || item.state != DownloadItemState.FAILED) return
         item.progress = 0f
         item.state = DownloadItemState.RUNNING
+        item.waitingReason = null
+        item.currentChapterTitle = null
+        item.errorMessage = null
         viewModelScope.launch(Dispatchers.IO) {
-            runCatching { bookRepository.retryCachedBook(item.bookId) }
-                .onFailure { item.state = DownloadItemState.FAILED }
+            runCatching {
+                downloadProgressRepository.persistState(item, DownloadItemState.RUNNING)
+                bookRepository.retryCachedBook(
+                    bookId = item.bookId,
+                    sourceId = item.sourceId,
+                    sourceKey = item.sourceKey
+                )
+            }.onFailure {
+                item.state = DownloadItemState.FAILED
+                downloadProgressRepository.persistState(item, DownloadItemState.FAILED)
+            }
         }
     }
 
-    fun onClickClearCompleted() = downloadProgressRepository.clearCompleted()
-
     private fun workName(item: DownloadItem): String = when (item.type) {
         DownloadType.EPUB_EXPORT -> ExportBookToEPUBWork.ofId(item.bookId)
-        DownloadType.CACHE -> CacheBookWork.ofId(item.bookId)
+        DownloadType.CACHE -> CacheBookWork.ofId(item.sourceId, item.bookId)
     }
 
     fun loadLocalBooks() {

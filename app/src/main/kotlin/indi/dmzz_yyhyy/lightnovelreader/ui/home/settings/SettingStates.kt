@@ -18,6 +18,15 @@ class SettingState(
     val updateChannelKeyUserData = userDataRepository.stringUserData(UserDataPath.Settings.App.UpdateChannel.path)
     val logLevelKeyUserData = userDataRepository.stringUserData(UserDataPath.Settings.Data.LogLevel.path)
     val isUseProxyUserData = userDataRepository.booleanUserData(UserDataPath.Settings.Data.IsUseProxy.path)
+    val downloadNetworkPolicyUserData = userDataRepository.stringUserData(
+        UserDataPath.Settings.Data.DownloadNetworkPolicy.path
+    )
+    val downloadOnlyWhenChargingUserData = userDataRepository.booleanUserData(
+        UserDataPath.Settings.Data.DownloadOnlyWhenCharging.path
+    )
+    val downloadMinimumFreeStorageMbUserData = userDataRepository.stringUserData(
+        UserDataPath.Settings.Data.DownloadMinimumFreeStorageMb.path
+    )
     val enableSimplifiedTraditionalTransformUserData = userDataRepository.booleanUserData(
         UserDataPath.Reader.EnableSimplifiedTraditionalTransform.path)
     val dateFormatUserData = userDataRepository.stringUserData(UserDataPath.Settings.Display.DateStyle.path)
@@ -31,6 +40,9 @@ class SettingState(
     val updateChannelKey by updateChannelKeyUserData.asState("Development")
     val logLevelKey by logLevelKeyUserData.asState("none")
     val isUseProxy by isUseProxyUserData.asState(false)
+    val downloadNetworkPolicyKey by downloadNetworkPolicyUserData.safeAsState("wifi_only")
+    val downloadOnlyWhenCharging by downloadOnlyWhenChargingUserData.safeAsState(false)
+    val downloadMinimumFreeStorageMb by downloadMinimumFreeStorageMbUserData.safeAsState("256")
     val enableSimplifiedTraditionalTransform by enableSimplifiedTraditionalTransformUserData.safeAsState(false)
     val dateFormat by dateFormatUserData.safeAsState("numeric")
     val dateShowYear by dateShowYearUserData.asState(true)
