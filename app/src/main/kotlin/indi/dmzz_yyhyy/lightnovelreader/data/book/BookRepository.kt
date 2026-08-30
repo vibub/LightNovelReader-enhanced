@@ -459,7 +459,7 @@ class BookRepository @Inject constructor(
         localBookDataSource.updateUserReadingData(id, update)
     }
 
-    /** 观察 unique work，避免 ExistingWorkPolicy.KEEP 时观察到新建但未被采用的 UUID。 */
+    /** 观察按数据源和书籍串联的 unique work，始终取当前未完成的 WorkInfo。 */
     fun isCacheBookWorkFlow(sourceId: Int, bookId: String) =
         workManager.getWorkInfosForUniqueWorkFlow(CacheBookWork.ofId(sourceId, bookId))
             .map { workInfos ->
@@ -599,9 +599,11 @@ class BookRepository @Inject constructor(
             .build()
         // 取消升级前的全局任务，避免它与新的源隔离任务同时写入缓存。
         workManager.cancelUniqueWork(CacheBookWork.ofId(bookId))
+        // 同一本书再次选择章节时追加到现有任务，避免 KEEP 丢弃第二批 WorkRequest。
+        // 当前 Worker 会在前一批结束后读取仍处于 QUEUED 的章节并继续处理。
         workManager.enqueueUniqueWork(
             CacheBookWork.ofId(sourceId, bookId),
-            ExistingWorkPolicy.KEEP,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
             workRequest
         )
         return workRequest
