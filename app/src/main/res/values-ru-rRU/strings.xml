@@ -43,6 +43,12 @@
     <string name="switch_and_restart">Сменить и перезапустить</string>
     <string name="hide_read">Скрыть прочитанное</string>
     <string name="mark_as_read">Mark as read…</string>
+    <string name="detail_chapter_action_download">Скачать эту главу</string>
+    <string name="detail_volume_action_download">Скачать этот том</string>
+    <string name="detail_action_mark_as_read">Отметить как прочитанное</string>
+    <string name="detail_action_mark_read_through_chapter">Отметить прочитанным до этой главы</string>
+    <string name="detail_action_mark_read_through_volume">Отметить прочитанным до этого тома</string>
+    <string name="detail_action_multi_select">Выбрать несколько</string>
     <string name="export_epub">Export as Epub</string>
     <string name="export_include_images">Include images</string>
     <string name="export_split_volumes">Export by volumes</string>

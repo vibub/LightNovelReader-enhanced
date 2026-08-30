@@ -44,6 +44,12 @@
     <string name="switch_and_restart">Switch and Restart</string>
     <string name="hide_read">Hide Read</string>
     <string name="mark_as_read">Mark as read…</string>
+    <string name="detail_chapter_action_download">Download this chapter</string>
+    <string name="detail_volume_action_download">Download this volume</string>
+    <string name="detail_action_mark_as_read">Mark as read</string>
+    <string name="detail_action_mark_read_through_chapter">Mark as read through this chapter</string>
+    <string name="detail_action_mark_read_through_volume">Mark as read through this volume</string>
+    <string name="detail_action_multi_select">Select multiple chapters</string>
     <string name="export_epub">Export as Epub</string>
     <string name="export_include_images">Include images</string>
     <string name="export_split_volumes">Export by volumes</string>

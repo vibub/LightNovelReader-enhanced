@@ -221,6 +221,12 @@ fun NavGraphBuilder.bookDetailDestination() {
             onClickMarkAsRead = {
                 navController.navigateToMarkAllChaptersAsReadDialog(bookId)
             },
+            onMarkChaptersAsRead = { chapterIds ->
+                viewModel.markChaptersAsRead(bookId, chapterIds)
+            },
+            onMarkReadThrough = { chapterIds ->
+                viewModel.markChaptersAsRead(bookId, chapterIds)
+            },
             onClickWebView = if (viewModel.uiState.isLinovelibSource) {
                 {
                     navController.navigateToLinovelibWebBookDestination(bookId)

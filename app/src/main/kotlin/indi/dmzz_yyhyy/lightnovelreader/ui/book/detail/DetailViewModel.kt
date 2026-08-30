@@ -22,16 +22,46 @@ import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.download.ChapterDownloadRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadProgressRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadType
+import indi.dmzz_yyhyy.lightnovelreader.data.statistics.StatsRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
 import indi.dmzz_yyhyy.lightnovelreader.data.work.ExportBookToEPUBWork
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.sync.LinovelibBookmarkRepository
 import indi.dmzz_yyhyy.lightnovelreader.utils.toLegacyCompatibleSourceId
+import io.nightfish.lightnovelreader.api.book.UserReadingData
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
+import java.time.LocalDateTime
 import javax.inject.Inject
+
+internal fun UserReadingData.copyWithMarkedChaptersAsRead(
+    chapterIds: Collection<String>,
+    allChapterIds: List<String>
+): UserReadingData {
+    val validChapterIds = chapterIds.toSet().intersect(allChapterIds.toSet())
+    if (validChapterIds.isEmpty()) return this
+
+    val updatedCurrentProgress = currentChapterReadingProgressMap.toMutableMap()
+    val updatedMaxProgress = maxChapterReadingProgressMap.toMutableMap()
+    validChapterIds.forEach { chapterId ->
+        updatedCurrentProgress[chapterId] = 1f
+        updatedMaxProgress[chapterId] = 1f
+    }
+    val readingProgress = if (allChapterIds.isEmpty()) {
+        readingProgress
+    } else {
+        (allChapterIds.sumOf { (updatedMaxProgress[it] ?: 0f).toDouble() } /
+            allChapterIds.size).toFloat().coerceIn(0f, 1f)
+    }
+
+    return copy(
+        readingProgress = readingProgress,
+        currentChapterReadingProgressMap = updatedCurrentProgress,
+        maxChapterReadingProgressMap = updatedMaxProgress
+    )
+}
 
 @HiltViewModel
 class DetailViewModel @Inject constructor(
@@ -40,6 +70,7 @@ class DetailViewModel @Inject constructor(
     private val chapterDownloadRepository: ChapterDownloadRepository,
     private val downloadProgressRepository: DownloadProgressRepository,
     private val workManager: WorkManager,
+    private val statsRepository: StatsRepository,
     private val linovelibBookmarkRepository: LinovelibBookmarkRepository,
     private val webBookDataSourceProvider: WebBookDataSourceProvider
 ) : ViewModel() {
@@ -159,6 +190,28 @@ class DetailViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             bookRepository.clearCachedChapters(bookId, chapterIds)
             _uiState.isCached = bookRepository.getIsBookCached(bookId)
+        }
+    }
+
+    fun markChaptersAsRead(bookId: String, chapterIds: List<String>) {
+        val allChapterIds = _uiState.bookVolumes?.get()?.volumes
+            ?.flatMap { it.chapters }
+            ?.map { it.id }
+            ?: return
+        val selectedChapterIds = chapterIds.toSet().intersect(allChapterIds.toSet())
+        if (selectedChapterIds.isEmpty()) return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            bookRepository.updateUserReadingData(bookId) { userReadingData ->
+                userReadingData.copyWithMarkedChaptersAsRead(
+                    chapterIds = selectedChapterIds,
+                    allChapterIds = allChapterIds
+                ).copy(lastReadTime = LocalDateTime.now())
+            }
+            val readingData = bookRepository.getUserReadingData(bookId)
+            if (readingData.readingProgress >= 1f) {
+                statsRepository.markBookFinished(bookId)
+            }
         }
     }
 

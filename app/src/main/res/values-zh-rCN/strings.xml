@@ -43,6 +43,12 @@
     <string name="switch_and_restart">切换并重启</string>
     <string name="hide_read">仅显示未读</string>
     <string name="mark_as_read">标记为已读…</string>
+    <string name="detail_chapter_action_download">下载此章节</string>
+    <string name="detail_volume_action_download">下载此卷</string>
+    <string name="detail_action_mark_as_read">标记为已读</string>
+    <string name="detail_action_mark_read_through_chapter">标记已读到此章节</string>
+    <string name="detail_action_mark_read_through_volume">标记已读到此卷</string>
+    <string name="detail_action_multi_select">多选</string>
     <string name="export_epub">导出为 Epub</string>
     <string name="export_include_images">包含图片</string>
     <string name="export_split_volumes">分卷导出</string>
