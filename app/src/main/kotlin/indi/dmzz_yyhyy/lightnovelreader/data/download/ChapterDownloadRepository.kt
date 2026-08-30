@@ -32,7 +32,8 @@ class ChapterDownloadRepository @Inject constructor(
     }
 
     /**
-     * 将旧版使用 legacy 主键保存的章节缓存迁移到当前数据源和书籍。
+     * 将旧版使用 legacy 主键保存的章节正文迁移到当前数据源和书籍。
+     * 旧版正文可能只是网络阅读缓存，迁移时不能创建下载完成状态。
      * 迁移后删除 legacy 行，避免不同数据源再次共享同一份章节正文。
      */
     suspend fun migrateLegacyCachedChapters(
@@ -40,34 +41,11 @@ class ChapterDownloadRepository @Inject constructor(
         bookId: String,
         chapterIds: List<String>
     ) {
-        val ids = chapterIds.map(String::trim).filter(String::isNotBlank).distinct()
-        if (ids.isEmpty()) return
-        val existing = chapterDownloadDao.getByBook(sourceId, bookId).associateBy { it.chapterId }
-        val now = System.currentTimeMillis()
-        val migratedIds = chapterContentDao.migrateLegacyCachedChapterIds(
+        chapterContentDao.migrateLegacyCachedChapterIds(
             sourceId = sourceId,
             bookId = bookId,
-            chapterIds = ids
-        ).toSet()
-        val migrated = migratedIds.mapNotNull { chapterId ->
-            val old = existing[chapterId]
-            if (old != null && old.status in setOf(
-                    ChapterDownloadStatus.QUEUED.name,
-                    ChapterDownloadStatus.DOWNLOADING.name
-                )
-            ) {
-                return@mapNotNull null
-            }
-            ChapterDownloadEntity(
-                sourceId = sourceId,
-                bookId = bookId,
-                chapterId = chapterId,
-                status = ChapterDownloadStatus.COMPLETED.name,
-                errorMessage = null,
-                updatedAt = now
-            )
-        }
-        if (migrated.isNotEmpty()) chapterDownloadDao.upsertAll(migrated)
+            chapterIds = chapterIds
+        )
     }
 
     suspend fun queue(

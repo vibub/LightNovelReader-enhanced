@@ -58,17 +58,14 @@ class ChapterDownloadRepositoryTest {
     }
 
     @Test
-    fun legacyContentIsMigratedToCompletedStatus() = runBlocking {
+    fun legacyContentIsMigratedWithoutCreatingDownloadStatus() = runBlocking {
         val statusDao = InMemoryChapterDownloadDao()
         val contentDao = FakeChapterContentDao(emptySet(), legacyIds = setOf("chapter"))
         val repository = ChapterDownloadRepository(statusDao, contentDao)
 
         repository.migrateLegacyCachedChapters(3, "book", listOf("chapter", "chapter"))
 
-        assertEquals(
-            ChapterDownloadStatus.COMPLETED.name,
-            statusDao.getStatus(3, "book", "chapter")
-        )
+        assertEquals(null, statusDao.getStatus(3, "book", "chapter"))
     }
 
     @Test
