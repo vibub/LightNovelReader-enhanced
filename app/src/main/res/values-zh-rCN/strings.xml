@@ -144,6 +144,7 @@
     <string name="download_clear_confirm_content">确定清理已选择的 %1$d 个章节吗？之后仍可重新下载。</string>
     <string name="download_cancel">取消</string>
     <string name="download_progress_summary">已下载 %1$d/%2$d</string>
+    <string name="download_selected_cached_count">其中 %1$d 章已有缓存</string>
     <string name="download_state_not_downloaded">未下载</string>
     <string name="download_state_queued">排队中</string>
     <string name="download_state_downloading">下载中</string>

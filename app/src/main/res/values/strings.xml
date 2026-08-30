@@ -148,6 +148,7 @@
     <string name="download_clear_confirm_content">Clear cached content for %1$d selected chapters? The chapters can be downloaded again later.</string>
     <string name="download_cancel">Cancel</string>
     <string name="download_progress_summary">Downloaded %1$d/%2$d</string>
+    <string name="download_selected_cached_count">%1$d selected cached chapters</string>
     <string name="download_state_not_downloaded">Not downloaded</string>
     <string name="download_state_queued">Queued</string>
     <string name="download_state_downloading">Downloading</string>

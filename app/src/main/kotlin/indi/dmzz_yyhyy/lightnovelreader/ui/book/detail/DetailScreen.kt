@@ -2,6 +2,7 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.book.detail
 
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
@@ -15,6 +16,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -37,6 +39,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -54,6 +57,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme.colorScheme
 import androidx.compose.material3.MaterialTheme.typography
 import androidx.compose.material3.Scaffold
@@ -63,6 +67,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
@@ -90,12 +95,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.github.michaelbull.result.getOrElse
@@ -174,6 +182,9 @@ fun DetailScreen(
     val allChapterIds = uiState.bookVolumes?.component1()?.volumes.orEmpty()
         .flatMap { it.chapters }
         .map { it.id }
+    val completedChapterCount = allChapterIds.count { chapterId ->
+        uiState.chapterDownloadStates[chapterId]?.status == ChapterDownloadStatus.COMPLETED
+    }
 
     fun selectAllUnfinishedChapters() {
         selectedChapterIds = allChapterIds.filter { chapterId ->
@@ -200,6 +211,12 @@ fun DetailScreen(
     val volumesEmpty = uiState.bookVolumes == null
     val selectedCachedCount = selectedChapterIds.count {
         uiState.chapterDownloadStates[it]?.isAvailableOffline == true
+    }
+    var downloadCardHeight by remember { mutableIntStateOf(0) }
+    val downloadContentBottomPadding: Dp = if (downloadSelectionMode) {
+        with(LocalDensity.current) { downloadCardHeight.toDp() } + 48.dp
+    } else {
+        0.dp
     }
 
     val isCollapsed by remember {
@@ -287,44 +304,14 @@ fun DetailScreen(
                 }
             }
         },
-        bottomBar = {
-            if (downloadSelectionMode) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding(),
-                    tonalElevation = 3.dp
-                ) {
-                    DownloadSelectionBottomBar(
-                        selectedCount = selectedChapterIds.size,
-                        selectedCachedCount = selectedCachedCount,
-                        totalCount = allChapterIds.size,
-                        forceRefresh = forceRefreshDownload,
-                        onToggleForceRefresh = { forceRefreshDownload = !forceRefreshDownload },
-                        onCancel = {
-                            downloadSelectionMode = false
-                            selectedChapterIds = emptySet()
-                        },
-                        onConfirm = {
-                            if (selectedChapterIds.isNotEmpty()) showDownloadConfirmation = true
-                        },
-                        onSelectAllUnfinished = ::selectAllUnfinishedChapters,
-                        onSelectAll = { selectedChapterIds = allChapterIds.toSet() },
-                        onClearSelection = { selectedChapterIds = emptySet() },
-                        onClearCache = {
-                            if (selectedCachedCount > 0) showClearCacheConfirmation = true
-                        }
-                    )
-                }
-            }
-        },
         contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            Column(modifier = Modifier.fillMaxSize()) {
             TopBar(
                 title = uiState.bookInformation?.map { it.title }?.getOrElse { "" } ?: "",
                 readingProgress = uiState.userReadingData?.readingProgress ?: 0f,
@@ -355,6 +342,7 @@ fun DetailScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .background(colorScheme.surface),
+                        bottomContentPadding = downloadContentBottomPadding,
                         uiState = uiState,
                         bookInformation = it,
                         onClickChapter = onClickChapter,
@@ -400,6 +388,60 @@ fun DetailScreen(
                             .background(colorScheme.surface)
                     )
             }
+        }
+
+        AnimatedContent(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 14.dp),
+            targetState = downloadSelectionMode,
+            transitionSpec = {
+                (
+                    slideInVertically(
+                        initialOffsetY = { it / 3 },
+                        animationSpec = tween(250, easing = FastOutSlowInEasing)
+                    ) + fadeIn(tween(200, easing = FastOutSlowInEasing))
+                    ) togetherWith (
+                    slideOutVertically(
+                        targetOffsetY = { it / 3 },
+                        animationSpec = tween(180, easing = FastOutSlowInEasing)
+                    ) + fadeOut(tween(150, easing = FastOutSlowInEasing))
+                    )
+            },
+            label = "downloadSelectionCard"
+        ) { selecting ->
+            if (selecting) {
+                DownloadSelectionBottomBar(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onSizeChanged { downloadCardHeight = it.height },
+                    bookInformation = uiState.bookInformation?.component1(),
+                    volumeCount = uiState.bookVolumes?.component1()?.volumes?.size ?: 0,
+                    completedChapterCount = completedChapterCount,
+                    selectedCount = selectedChapterIds.size,
+                    selectedCachedCount = selectedCachedCount,
+                    totalCount = allChapterIds.size,
+                    forceRefresh = forceRefreshDownload,
+                    onToggleForceRefresh = { forceRefreshDownload = !forceRefreshDownload },
+                    onCancel = {
+                        downloadSelectionMode = false
+                        selectedChapterIds = emptySet()
+                    },
+                    onConfirm = {
+                        if (selectedChapterIds.isNotEmpty()) showDownloadConfirmation = true
+                    },
+                    onSelectAllUnfinished = ::selectAllUnfinishedChapters,
+                    onSelectAll = { selectedChapterIds = allChapterIds.toSet() },
+                    onClearSelection = { selectedChapterIds = emptySet() },
+                    onClearCache = {
+                        if (selectedCachedCount > 0) showClearCacheConfirmation = true
+                    }
+                )
+            } else {
+                Spacer(Modifier)
+            }
+        }
         }
 
 
@@ -644,6 +686,7 @@ private val itemVerticalPadding = 8.dp
 @Composable
 private fun DetailContent(
     modifier: Modifier = Modifier,
+    bottomContentPadding: Dp = 0.dp,
     uiState: DetailUiState,
     bookInformation: BookInformation,
     lazyListState: LazyListState,
@@ -689,7 +732,8 @@ private fun DetailContent(
 
     LazyColumn(
         state = lazyListState,
-        modifier = modifier
+        modifier = modifier,
+        contentPadding = PaddingValues(bottom = bottomContentPadding)
     ) {
         if (visible >= 1) item {
             BookCardBlock(
@@ -822,6 +866,9 @@ private fun DetailContent(
 @Composable
 private fun DownloadSelectionBottomBar(
     modifier: Modifier = Modifier,
+    bookInformation: BookInformation?,
+    volumeCount: Int,
+    completedChapterCount: Int,
     selectedCount: Int,
     selectedCachedCount: Int,
     totalCount: Int,
@@ -834,70 +881,176 @@ private fun DownloadSelectionBottomBar(
     onClearSelection: () -> Unit,
     onClearCache: () -> Unit
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = itemHorizontalPadding, vertical = itemVerticalPadding),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+    Surface(
+        modifier = modifier.widthIn(max = 640.dp),
+        shape = RoundedCornerShape(20.dp),
+        color = colorScheme.surfaceContainerHigh
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = onCancel,
+                    colors = IconButtonDefaults.outlinedIconButtonColors()
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.expand_circle_down_24px),
+                        contentDescription = stringResource(R.string.download_cancel)
+                    )
+                }
                 Text(
-                    text = stringResource(R.string.download_select_mode),
+                    text = stringResource(R.string.local_book_info_title),
                     style = typography.displayMedium,
+                    color = colorScheme.onSurface,
                     fontWeight = FontWeight.W600
                 )
-                Text(
-                    text = stringResource(R.string.download_selected_count, selectedCount) +
-                        " / $totalCount",
-                    style = typography.bodyMedium,
-                    color = colorScheme.secondary
+            }
+
+            bookInformation?.let { information ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Cover(
+                        width = 64.dp,
+                        height = 93.dp,
+                        uri = information.coverUri,
+                        title = information.title
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = information.title,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            style = typography.titleMedium,
+                            fontWeight = FontWeight.W600
+                        )
+                        Text(
+                            text = information.author,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = typography.bodyLarge,
+                            fontWeight = FontWeight.Medium,
+                            color = colorScheme.primary
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.detail_info_stats_count_content,
+                                volumeCount,
+                                totalCount
+                            ),
+                            style = typography.bodyMedium,
+                            color = colorScheme.secondary
+                        )
+                    }
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                DownloadSelectionInfoRow(
+                    label = stringResource(R.string.download_select_mode),
+                    value = stringResource(R.string.download_selected_count, selectedCount) +
+                        " / $totalCount"
+                )
+                DownloadSelectionInfoRow(
+                    label = stringResource(
+                        R.string.download_progress_summary,
+                        completedChapterCount,
+                        totalCount
+                    ),
+                    value = stringResource(
+                        R.string.download_selected_cached_count,
+                        selectedCachedCount
+                    )
                 )
             }
-            TextButton(onClick = onCancel) {
-                Text(stringResource(R.string.download_cancel))
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            TextButton(onClick = onSelectAllUnfinished) {
-                Text(stringResource(R.string.download_select_all))
-            }
-            TextButton(onClick = onSelectAll) {
-                Text(stringResource(R.string.download_select_everything))
-            }
-            TextButton(onClick = onClearSelection) {
-                Text(stringResource(R.string.download_select_none))
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            SwitchChip(
-                label = stringResource(R.string.download_refresh_completed),
-                selected = forceRefresh,
-                onClick = onToggleForceRefresh
-            )
-            Spacer(Modifier.weight(1f))
-            TextButton(
-                enabled = selectedCachedCount > 0,
-                onClick = onClearCache
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(stringResource(R.string.download_clear_cache))
+                TextButton(onClick = onSelectAllUnfinished) {
+                    Text(stringResource(R.string.download_select_all))
+                }
+                TextButton(onClick = onSelectAll) {
+                    Text(stringResource(R.string.download_select_everything))
+                }
+                TextButton(onClick = onClearSelection) {
+                    Text(stringResource(R.string.download_select_none))
+                }
             }
-            TextButton(
-                enabled = selectedCount > 0,
-                onClick = onConfirm
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(stringResource(R.string.download_start))
+                SwitchChip(
+                    label = stringResource(R.string.download_refresh_completed),
+                    selected = forceRefresh,
+                    onClick = onToggleForceRefresh
+                )
+                Spacer(Modifier.weight(1f))
+                TextButton(
+                    enabled = selectedCachedCount > 0,
+                    onClick = onClearCache
+                ) {
+                    Text(stringResource(R.string.download_clear_cache))
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onCancel,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(stringResource(R.string.download_cancel))
+                }
+                Button(
+                    onClick = onConfirm,
+                    enabled = selectedCount > 0,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(stringResource(R.string.download_start))
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun DownloadSelectionInfoRow(
+    label: String,
+    value: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.weight(1f),
+            style = typography.bodyMedium
+        )
+        Text(
+            text = value,
+            style = typography.bodyMedium,
+            color = colorScheme.secondary
+        )
     }
 }
 
