@@ -99,9 +99,9 @@ class LinovelibWebsiteDataSource(
         ?: ""
 
     internal fun parseBookDescription(document: Document): String {
-        val description = document.metaContent("og:description")
+        val description = document.firstDescriptionText()
+            ?: document.metaContent("og:description")
             ?: document.metaContent("description")
-            ?: document.firstText("#bookIntro", ".book-intro", ".book-desc", ".intro", ".book-dec")
             ?: ""
         return description.cleanDescription()
     }
@@ -569,6 +569,16 @@ class LinovelibWebsiteDataSource(
         selectFirst(selector)?.text()?.cleanText()?.takeIf { it.isNotBlank() }
     }
 
+    private fun Document.firstDescriptionText(): String? =
+        BOOK_DESCRIPTION_SELECTORS.firstNotNullOfOrNull { selector ->
+            selectFirst(selector)
+                ?.clone()
+                ?.apply { select(".notice").forEach { it.remove() } }
+                ?.wholeText()
+                ?.cleanText()
+                ?.takeIf { it.isNotBlank() }
+        }
+
     private fun Document.firstCoverImageUrl(): String? = COVER_IMAGE_SELECTORS.firstNotNullOfOrNull { selector ->
         selectFirst(selector)?.imageUrl()?.takeIf { it.isNotBlank() }
     }
@@ -630,6 +640,8 @@ class LinovelibWebsiteDataSource(
     private fun String.normalizeChapterId(): String = trim().substringBefore('.').substringAfterLast('/').filter { it.isDigit() || it == '_' }
 
     private fun String.cleanDescription(): String = cleanText()
+        .replace(Regex("[ \\t]*\\n[ \\t]*"), "\n")
+        .replace(Regex("\\n{2,}"), "\n")
         .removePrefix("简介：")
         .removePrefix("内容简介：")
         .trim()
@@ -679,6 +691,14 @@ class LinovelibWebsiteDataSource(
         private val JAVASCRIPT_CID_REGEX = Regex(
             """^javascript:\s*cid\(\d+\)""",
             RegexOption.IGNORE_CASE
+        )
+        private val BOOK_DESCRIPTION_SELECTORS = listOf(
+            ".book-dec.Jbook-dec",
+            "#bookIntro",
+            ".book-intro",
+            ".book-desc",
+            ".intro",
+            ".book-dec"
         )
         private val COVER_IMAGE_SELECTORS = listOf(
             ".book-img img",

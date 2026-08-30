@@ -33,6 +33,55 @@ class LinovelibWebsiteDataSourceTest {
     }
 
     @Test
+    fun parseBookDescriptionPrefersVisibleBookDescription() {
+        val document = Jsoup.parse(
+            """
+            <html><head>
+              <meta property="og:description" content="SEO 缩略简介">
+            </head><body>
+              <div class="book-dec Jbook-dec">红框中的完整简介</div>
+            </body></html>
+            """.trimIndent()
+        )
+
+        val description = LinovelibWebsiteDataSource(LinovelibJsoup()).parseBookDescription(document)
+
+        assertEquals("红框中的完整简介", description)
+    }
+
+    @Test
+    fun parseBookDescriptionRemovesNoticeFromVisibleBookDescription() {
+        val document = Jsoup.parse(
+            """
+            <html><body>
+              <div class="book-dec Jbook-dec">
+                <aside class="notice">
+                  <p class="notice-body">※译者暂停售翻译，ai暂代。</p>
+                </aside>
+                <p>简介正文第一段<br>简介正文第二段</p>
+              </div>
+            </body></html>
+            """.trimIndent()
+        )
+
+        val description = LinovelibWebsiteDataSource(LinovelibJsoup()).parseBookDescription(document)
+
+        assertFalse(description.contains("译者暂停售翻译"))
+        assertEquals("简介正文第一段\n简介正文第二段", description)
+    }
+
+    @Test
+    fun parseBookDescriptionCollapsesBlankLinesAroundHtmlBreaks() {
+        val document = Jsoup.parse(
+            "<div class=\"book-dec Jbook-dec\"><p>第一段<br />\n第二段<br />\n第三段</p></div>"
+        )
+
+        val description = LinovelibWebsiteDataSource(LinovelibJsoup()).parseBookDescription(document)
+
+        assertEquals("第一段\n第二段\n第三段", description)
+    }
+
+    @Test
     fun parseBookDescriptionFallsBackToMetaDescription() {
         val document = Jsoup.parse(
             """
