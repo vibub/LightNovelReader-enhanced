@@ -23,6 +23,18 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 
+internal fun shouldLoadPreviousChapter(
+    itemKey: Any?,
+    previousChapterId: String?,
+    isPreviousChapterLoaded: Boolean,
+    itemOffset: Int?,
+    hasPreviousChapter: Boolean
+): Boolean = itemKey == previousChapterId &&
+    isPreviousChapterLoaded &&
+    itemOffset != null &&
+    itemOffset <= 0 &&
+    hasPreviousChapter
+
 class ScrollContentViewModel(
     val bookRepository: BookRepository,
     val coroutineScope: CoroutineScope,
@@ -165,7 +177,11 @@ class ScrollContentViewModel(
     }
 
     private fun publishReadingProgress(chapterId: String, progress: Float) {
-        val chapter = uiState.readingChapterContent?.get() ?: return
+        val chapter = uiState.contentList
+            .firstOrNull { it?.first == chapterId }
+            ?.second
+            ?.get()
+            ?: return
         updateReadingProgress(
             ReadingProgressSnapshot(
                 bookId = uiState.bookId,
@@ -188,19 +204,21 @@ class ScrollContentViewModel(
             }.collect { (itemInfo, isPrevChapterLoaded, isNextChapterLoaded) ->
                 uiState.readingChapterContent?.onOk { readingChapterContent ->
                     if (
-                        itemInfo != null &&
-                        itemInfo.key == readingChapterContent.prevChapter &&
-                        isPrevChapterLoaded &&
                         lazyColumnSize.height != 0 &&
-                        itemInfo.offset <= -lazyColumnSize.height &&
-                        readingChapterContent.hasPrevChapter()
+                        shouldLoadPreviousChapter(
+                            itemKey = itemInfo?.key,
+                            previousChapterId = readingChapterContent.prevChapter,
+                            isPreviousChapterLoaded = isPrevChapterLoaded,
+                            itemOffset = itemInfo?.offset,
+                            hasPreviousChapter = readingChapterContent.hasPrevChapter()
+                        )
                     ) {
                         collectNextChapterJob?.cancel()
                         collectCurrentChapterJob?.cancel()
                         collectPrevChapterJob?.cancel()
                         val nextChapter = uiState.contentList[1]
                         val currentChapter = uiState.contentList[0]
-                        val currentChapterId = readingChapterContent.prevChapter
+                        val currentChapterId = readingChapterContent.prevChapter ?: return@onOk
                         val currentChapterContent = currentChapter?.second?.get()
                         resetContentList()
                         uiState.contentList[2] = nextChapter

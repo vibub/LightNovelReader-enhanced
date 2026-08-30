@@ -28,6 +28,7 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentViewModel
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.flip.FlipPageContentViewModel
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.scroll.ScrollContentViewModel
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.preloadReaderImageHeight
+import io.nightfish.lightnovelreader.api.book.UserReadingData
 import io.nightfish.lightnovelreader.api.content.component.ImageComponentData
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import kotlinx.coroutines.CoroutineScope
@@ -50,6 +51,21 @@ data class ReadingProgressSnapshot(
     val progress: Float,
     val restoreAnchor: String? = null
 )
+
+internal fun UserReadingData.copyWithUpdatedBookReadingProgress(
+    chapterId: String,
+    progress: Float,
+    totalChapterCount: Int
+): UserReadingData {
+    val updated = copyWithUpdatedChapterReadingProgress(chapterId, progress)
+    val readingProgress = if (totalChapterCount > 0) {
+        (updated.maxChapterReadingProgressMap.values.sum() / totalChapterCount)
+            .coerceIn(0f, 1f)
+    } else {
+        updated.readingProgress
+    }
+    return updated.copy(readingProgress = readingProgress)
+}
 
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
@@ -323,24 +339,18 @@ class ReaderViewModel @Inject constructor(
                 } else {
                     0
                 }
-                val readingProgress = if (total > 0) {
-                    (userReadingData.maxChapterReadingProgressMap.values.sum() / total)
-                        .coerceIn(0f, 1f)
-                } else {
-                    userReadingData.readingProgress
-                }
                 Log.v(
                     "ReaderViewModel",
                     "${snapshot.bookId}/${snapshot.chapterId} Saving progress ${snapshot.progress}. (${snapshot.chapterTitle})"
                 )
-                userReadingData.copyWithUpdatedChapterReadingProgress(
-                    snapshot.chapterId,
-                    snapshot.progress
+                userReadingData.copyWithUpdatedBookReadingProgress(
+                    chapterId = snapshot.chapterId,
+                    progress = snapshot.progress,
+                    totalChapterCount = total
                 ).copy(
                     lastReadTime = currentTime,
                     lastReadChapterId = snapshot.chapterId,
-                    lastReadChapterTitle = snapshot.chapterTitle,
-                    readingProgress = readingProgress
+                    lastReadChapterTitle = snapshot.chapterTitle
                 )
             }
             val readingData = bookRepository.getUserReadingData(snapshot.bookId)

@@ -1,9 +1,37 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.scroll
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ScrollReadingProgressTest {
+    @Test
+    fun visibleShortPreviousChapterCanBeLoaded() {
+        assertTrue(
+            shouldLoadPreviousChapter(
+                itemKey = "previous",
+                previousChapterId = "previous",
+                isPreviousChapterLoaded = true,
+                itemOffset = -120,
+                hasPreviousChapter = true
+            )
+        )
+    }
+
+    @Test
+    fun previousChapterPlaceholderCannotBeLoaded() {
+        assertFalse(
+            shouldLoadPreviousChapter(
+                itemKey = "placeholder-0",
+                previousChapterId = "previous",
+                isPreviousChapterLoaded = false,
+                itemOffset = -120,
+                hasPreviousChapter = true
+            )
+        )
+    }
+
     @Test
     fun componentProgressUsesOnlyRealContentComponents() {
         val progress = scrollContentChapterProgress(

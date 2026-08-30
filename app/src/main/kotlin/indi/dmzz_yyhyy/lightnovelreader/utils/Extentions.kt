@@ -33,9 +33,13 @@ import androidx.navigation.NavController
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hierarchy
 import io.nightfish.lightnovelreader.api.Route
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.launch
 import java.util.Collections
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun withHaptic(action: (() -> Unit)?): () -> Unit {
@@ -55,21 +59,64 @@ fun Modifier.fadingEdge(brush: Brush) = this
         drawRect(brush = brush, blendMode = BlendMode.DstIn)
     }
 
-fun <T> Flow<T>.throttleLatest(periodMillis: Long): Flow<T> = flow {
-    var lastTime = 0L
-    var pendingValue: T? = null
-    collect { value ->
-        val currentTime = System.currentTimeMillis()
-        if (currentTime - lastTime >= periodMillis) {
-            lastTime = currentTime
-            pendingValue = null
-            emit(value)
-        } else {
-            pendingValue = value
+private class ThrottleLatestValue<T>(
+    val value: T
+)
+
+/**
+ * 立即发出首个值，并在每个时间窗口结束时发出窗口内最新值。
+ * 与只在上游结束时处理 pending 值的实现不同，该扩展可以持续处理 snapshotFlow。
+ */
+fun <T> Flow<T>.throttleLatest(periodMillis: Long): Flow<T> = channelFlow {
+    if (periodMillis <= 0L) {
+        this@throttleLatest.collect { send(it) }
+        return@channelFlow
+    }
+
+    val values = Channel<ThrottleLatestValue<T>>(Channel.CONFLATED)
+    val upstream = launch {
+        try {
+            this@throttleLatest.collect { values.send(ThrottleLatestValue(it)) }
+        } finally {
+            values.close()
         }
     }
 
-    pendingValue?.let { emit(it) }
+    try {
+        var pending: ThrottleLatestValue<T>? = null
+        while (true) {
+            val pendingValue = pending
+            if (pendingValue != null) {
+                pending = null
+                send(pendingValue.value)
+            } else {
+                val result = values.receiveCatching()
+                if (result.isClosed) break
+                send(result.getOrThrow().value)
+            }
+
+            delay(periodMillis.milliseconds)
+            var closed = false
+            while (true) {
+                val result = values.tryReceive()
+                when {
+                    result.isSuccess -> pending = result.getOrThrow()
+                    result.isClosed -> {
+                        closed = true
+                        break
+                    }
+                    else -> break
+                }
+            }
+            if (closed) {
+                pending?.let { send(it.value) }
+                break
+            }
+        }
+    } finally {
+        upstream.cancel()
+        values.cancel()
+    }
 }
 
 @Composable
