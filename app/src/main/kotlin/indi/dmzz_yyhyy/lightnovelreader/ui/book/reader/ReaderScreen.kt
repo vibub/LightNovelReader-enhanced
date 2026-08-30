@@ -130,6 +130,7 @@ fun ReaderScreen(
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     var isImmersive by remember { mutableStateOf(true) }
     val context = LocalContext.current
+    val loadingChapterTitle = stringResource(R.string.reader_chapter_loading)
     val snackbarHostState = LocalSnackbarHost.current
     val backBlockMode = settingState.backBlockMode
     var lastBackPressTime: Long by remember { mutableLongStateOf(0) }
@@ -207,8 +208,8 @@ fun ReaderScreen(
                     onClickBackButton = onClickBackButton,
                     title = readingScreenUiState.contentUiState?.readingChapterContent
                         ?.map { it.title }
-                        ?.getOrElse { "Unknowing" }
-                        ?: "Unknowing",
+                        ?.getOrElse { loadingChapterTitle }
+                        ?: loadingChapterTitle,
                     scrollBehavior
                 )
             }
@@ -385,6 +386,7 @@ fun Content(
     val activity = context as Activity
     val window = activity.window
     val density = LocalDensity.current
+    val loadingChapterTitle = stringResource(R.string.reader_chapter_loading)
     val chapterTitleById = remember(readingScreenUiState.bookVolumes) {
         readingScreenUiState.bookVolumes?.get()?.volumes
             ?.flatMap { it.chapters }
@@ -568,8 +570,8 @@ fun Content(
                     enableChapterTitle = settingState.enableChapterTitleIndicator,
                     chapterTitle = readingScreenUiState.contentUiState?.readingChapterContent
                         ?.map { it.title }
-                        ?.getOrElse { "Unknowing" }
-                        ?: "Unknowing",
+                        ?.getOrElse { loadingChapterTitle }
+                        ?: loadingChapterTitle,
                     enableReadingChapterProgressIndicator = settingState.enableReadingChapterProgressIndicator,
                     readingChapterProgress = readingScreenUiState.contentUiState?.readingProgress ?: 0f,
                 )

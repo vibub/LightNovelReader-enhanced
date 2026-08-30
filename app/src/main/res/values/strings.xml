@@ -788,6 +788,7 @@
     <string name="chapter_comments_hot_tab">Hot</string>
     <string name="chapter_comments_all_tab">All</string>
     <string name="chapter_comments_view">View chapter comments</string>
+    <string name="reader_chapter_loading">Loading…</string>
     <string name="reader_chapter_end">End of chapter</string>
     <string name="reader_next_chapter_title">Next: %1$s</string>
     <string name="chapter_comments_login_required">Sign in to view all comments</string>

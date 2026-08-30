@@ -755,6 +755,7 @@
     <string name="chapter_comments_hot_tab">热门评论</string>
     <string name="chapter_comments_all_tab">全部评论</string>
     <string name="chapter_comments_view">查看章评</string>
+    <string name="reader_chapter_loading">加载中…</string>
     <string name="reader_chapter_end">本章完</string>
     <string name="reader_next_chapter_title">下一章：%1$s</string>
     <string name="chapter_comments_login_required">登录后查看全部评论</string>

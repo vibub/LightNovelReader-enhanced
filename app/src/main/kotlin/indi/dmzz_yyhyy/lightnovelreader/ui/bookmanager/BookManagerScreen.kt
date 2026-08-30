@@ -371,14 +371,6 @@ private fun DownloadManagerContent(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         if (runningItems.isNotEmpty()) {
-            item {
-                Text(
-                    modifier = Modifier.height(34.dp).animateItem(),
-                    text = stringResource(R.string.download_in_progress),
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.W600
-                )
-            }
             items(
                 items = runningItems.reversed(),
                 key = { "${it.item.type.name}_${it.item.sourceId}_${it.item.bookId}" }
@@ -479,15 +471,6 @@ private fun Card(
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.W600
-                )
-                Text(
-                    text = bookInformation.author,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.W500,
-                    letterSpacing = 0.15.sp,
-                    color = MaterialTheme.colorScheme.primary
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
