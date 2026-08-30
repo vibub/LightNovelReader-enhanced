@@ -33,7 +33,7 @@ class BookManagerViewModel @Inject constructor(
     private val offlineContentCache: OfflineContentCache,
     val workManager: WorkManager
 ) : ViewModel() {
-    val downloadItemIdList get() = downloadProgressRepository.downloadItemIdList
+    val downloadItemListFlow get() = downloadProgressRepository.downloadItemListFlow
     private val _clearedItemsFlow = MutableSharedFlow<Int>()
     val clearedItemsFlow = _clearedItemsFlow.asSharedFlow()
     val localBookManagerUiState = MutableLocalBookManagerUiState(

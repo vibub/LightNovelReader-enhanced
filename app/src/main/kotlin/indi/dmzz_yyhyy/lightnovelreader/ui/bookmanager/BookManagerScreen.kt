@@ -60,6 +60,7 @@ import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadItem
+import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadItemSnapshot
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadItemState
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadType
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.Cover
@@ -73,7 +74,7 @@ import indi.dmzz_yyhyy.lightnovelreader.utils.navigationBarSpacer
 @Composable
 fun BookManagerScreen(
     onClickBack: () -> Unit,
-    downloadItemIdList: List<DownloadItem>,
+    downloadItemList: List<DownloadItemSnapshot>,
     uiState: LocalBookManagerUiState,
     onClickCancel: (DownloadItem) -> Unit,
     onClickPause: (DownloadItem) -> Unit,
@@ -171,7 +172,7 @@ fun BookManagerScreen(
             Box {
                 if (tabIndex == 0) {
                     DownloadManagerContent(
-                        downloadItemIdList = downloadItemIdList,
+                        downloadItemList = downloadItemList,
                         onClickCancel = onClickCancel,
                         onClickPause = onClickPause,
                         onClickResume = onClickResume,
@@ -343,14 +344,14 @@ private fun SelectingAppBar(
 
 @Composable
 private fun DownloadManagerContent(
-    downloadItemIdList: List<DownloadItem>,
+    downloadItemList: List<DownloadItemSnapshot>,
     onClickCancel: (DownloadItem) -> Unit,
     onClickPause: (DownloadItem) -> Unit,
     onClickResume: (DownloadItem) -> Unit,
     onClickRetry: (DownloadItem) -> Unit
 ) {
-    val itemList = downloadItemIdList
-        .distinctBy { Triple(it.type, it.sourceId, it.bookId) }
+    val itemList = downloadItemList
+        .distinctBy { Triple(it.item.type, it.item.sourceId, it.item.bookId) }
         .filterNot { it.state == DownloadItemState.COMPLETED }
     if (itemList.isEmpty()) {
         EmptyPage(
@@ -380,15 +381,15 @@ private fun DownloadManagerContent(
             }
             items(
                 items = runningItems.reversed(),
-                key = { "${it.type.name}_${it.sourceId}_${it.bookId}" }
+                key = { "${it.item.type.name}_${it.item.sourceId}_${it.item.bookId}" }
             ) { downloadItem ->
                 Card(
                     modifier = Modifier.animateItem(),
                     downloadItem = downloadItem,
-                    onClickCancel = { onClickCancel(downloadItem) },
-                    onClickPause = { onClickPause(downloadItem) },
-                    onClickResume = { onClickResume(downloadItem) },
-                    onClickRetry = { onClickRetry(downloadItem) }
+                    onClickCancel = { onClickCancel(downloadItem.item) },
+                    onClickPause = { onClickPause(downloadItem.item) },
+                    onClickResume = { onClickResume(downloadItem.item) },
+                    onClickRetry = { onClickRetry(downloadItem.item) }
                 )
             }
         }
@@ -403,15 +404,15 @@ private fun DownloadManagerContent(
             }
             items(
                 items = pendingItems.reversed(),
-                key = { "${it.type.name}_${it.sourceId}_${it.bookId}" }
+                key = { "${it.item.type.name}_${it.item.sourceId}_${it.item.bookId}" }
             ) { downloadItem ->
                 Card(
                     modifier = Modifier.animateItem(),
                     downloadItem = downloadItem,
-                    onClickCancel = { onClickCancel(downloadItem) },
-                    onClickPause = { onClickPause(downloadItem) },
-                    onClickResume = { onClickResume(downloadItem) },
-                    onClickRetry = { onClickRetry(downloadItem) }
+                    onClickCancel = { onClickCancel(downloadItem.item) },
+                    onClickPause = { onClickPause(downloadItem.item) },
+                    onClickResume = { onClickResume(downloadItem.item) },
+                    onClickRetry = { onClickRetry(downloadItem.item) }
                 )
             }
         }
@@ -422,7 +423,7 @@ private fun DownloadManagerContent(
 @Composable
 private fun Card(
     modifier: Modifier = Modifier,
-    downloadItem: DownloadItem,
+    downloadItem: DownloadItemSnapshot,
     onClickCancel: () -> Unit,
     onClickPause: () -> Unit,
     onClickResume: () -> Unit,
@@ -433,7 +434,7 @@ private fun Card(
         animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
         label = "",
     )
-    val result by downloadItem.bookInformationFlow.collectAsStateWithLifecycle(null)
+    val result by downloadItem.item.bookInformationFlow.collectAsStateWithLifecycle(null)
     result?.onOk { bookInformation ->
         val isRunning = downloadItem.state == DownloadItemState.RUNNING
         val isPaused = downloadItem.state == DownloadItemState.PAUSED
@@ -496,7 +497,7 @@ private fun Card(
                             DownloadItemState.COMPLETED -> painterResource(R.drawable.done_outline_24px)
                             DownloadItemState.FAILED -> painterResource(R.drawable.error_24px)
                             DownloadItemState.PAUSED -> painterResource(R.drawable.hourglass_top_24px)
-                            DownloadItemState.RUNNING -> painterResource(downloadItem.type.icon)
+                            DownloadItemState.RUNNING -> painterResource(downloadItem.item.type.icon)
                         },
                         contentDescription = null
                     )
@@ -514,11 +515,11 @@ private fun Card(
                             )
                             DownloadItemState.FAILED -> stringResource(
                                 R.string.download_item_failed,
-                                downloadItem.type.typeName
+                                downloadItem.item.type.typeName
                             )
                             DownloadItemState.COMPLETED -> stringResource(
                                 R.string.download_item_finished,
-                                downloadItem.type.typeName
+                                downloadItem.item.type.typeName
                             )
                         },
                         maxLines = 1,
@@ -550,7 +551,7 @@ private fun Card(
                 }
             }
             when {
-                isRunning && downloadItem.type == DownloadType.CACHE -> {
+                isRunning && downloadItem.item.type == DownloadType.CACHE -> {
                     IconButton(onClickPause) {
                         Icon(
                             painter = painterResource(R.drawable.pause_24px),
@@ -572,7 +573,7 @@ private fun Card(
                         )
                     }
                 }
-                isPaused && downloadItem.type == DownloadType.CACHE -> {
+                isPaused && downloadItem.item.type == DownloadType.CACHE -> {
                     IconButton(onClickResume) {
                         Icon(
                             painter = painterResource(R.drawable.play_arrow_24px),
@@ -586,7 +587,7 @@ private fun Card(
                         )
                     }
                 }
-                isFailed && downloadItem.type == DownloadType.CACHE -> {
+                isFailed && downloadItem.item.type == DownloadType.CACHE -> {
                     IconButton(onClickRetry) {
                         Icon(
                             painter = painterResource(R.drawable.autorenew_24px),

@@ -1,8 +1,10 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.bookmanager
 
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
@@ -19,6 +21,7 @@ fun NavGraphBuilder.bookManager() {
         val snackbarHostState = LocalSnackbarHost.current
         val viewModel = hiltViewModel<BookManagerViewModel>()
         val uiState = viewModel.localBookManagerUiState
+        val downloadItemList by viewModel.downloadItemListFlow.collectAsStateWithLifecycle(emptyList())
         val clearedItemsText = stringResource(R.string.book_manager_cleared_items)
         LaunchedEffect(viewModel.clearedItemsFlow) {
             viewModel.clearedItemsFlow.collect { count ->
@@ -36,7 +39,7 @@ fun NavGraphBuilder.bookManager() {
         }
         BookManagerScreen(
             onClickBack = navController::popBackStackIfResumed,
-            downloadItemIdList = viewModel.downloadItemIdList,
+            downloadItemList = downloadItemList,
             uiState = uiState,
             onClickCancel = viewModel::onClickCancel,
             onClickPause = viewModel::onClickPause,

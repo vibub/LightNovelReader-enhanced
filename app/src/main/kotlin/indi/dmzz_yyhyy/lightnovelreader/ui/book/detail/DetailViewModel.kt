@@ -169,12 +169,18 @@ class DetailViewModel @Inject constructor(
         chapterIds: List<String>,
         forceRefresh: Boolean = false
     ): Flow<WorkInfo?> {
+        val dataSource = webBookDataSourceProvider.value
+        val sourceId = dataSource.id.toLegacyCompatibleSourceId()
+        downloadProgressRepository.addCacheItem(
+            bookId = bookId,
+            sourceId = sourceId,
+            sourceKey = dataSource.id.toString()
+        )
         bookRepository.cacheBook(
             bookId = bookId,
             chapterIds = chapterIds,
             forceRefresh = forceRefresh
         )
-        val sourceId = webBookDataSourceProvider.value.id.toLegacyCompatibleSourceId()
         val isCachedFlow = bookRepository.isCacheBookWorkFlow(sourceId, bookId)
         viewModelScope.launch(Dispatchers.IO) {
             isCachedFlow.collect { workInfo ->

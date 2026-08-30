@@ -11,11 +11,24 @@ import io.nightfish.lightnovelreader.api.userdata.UserData
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import java.time.LocalDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
+
+data class DownloadItemSnapshot(
+    val item: DownloadItem,
+    val startTime: LocalDateTime,
+    val progress: Float,
+    val state: DownloadItemState,
+    val writtenBytes: Long,
+    val currentChapterTitle: String?,
+    val waitingReason: String?,
+    val errorMessage: String?
+)
 
 @Singleton
 class DownloadProgressRepository @Inject constructor(
@@ -24,13 +37,11 @@ class DownloadProgressRepository @Inject constructor(
     private val downloadTaskRepository: DownloadTaskRepository,
     private val webBookDataSourceProvider: WebBookDataSourceProvider
 ) {
-    private data class DownloadItemSnapshot(
-        val progress: Float,
-        val state: DownloadItemState,
-        val writtenBytes: Long,
-        val currentChapterTitle: String?,
-        val waitingReason: String?,
-        val errorMessage: String?
+    private data class DownloadItemKey(
+        val type: DownloadType,
+        val bookId: String,
+        val sourceId: Int,
+        val sourceKey: String
     )
 
     class DownItemListUserData (
@@ -81,6 +92,7 @@ class DownloadProgressRepository @Inject constructor(
     }
 
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
+    private val observationJobs = mutableMapOf<DownloadItemKey, Job>()
     private val completedBookListUserData = DownItemListUserData(
         path = UserDataPath.CompletedDownloadBookList.path,
         userDataDao = userDataDao,
@@ -90,6 +102,9 @@ class DownloadProgressRepository @Inject constructor(
     )
     private val _downloadItemList = mutableStateListOf<DownloadItem>()
     val downloadItemIdList: List<DownloadItem> get() = _downloadItemList.toList()
+    val downloadItemListFlow: Flow<List<DownloadItemSnapshot>> = snapshotFlow {
+        _downloadItemList.map { it.toSnapshot() }
+    }
 
     init {
         coroutineScope.launch {
@@ -132,22 +147,47 @@ class DownloadProgressRepository @Inject constructor(
         }
     }
 
+    /**
+     * 预先登记缓存任务，使 WorkManager 仍在排队时下载管理页也能显示任务。
+     * 此时不启动状态监听，真正开始执行后由 CacheBookWork 接管并登记监听。
+     */
+    fun addCacheItem(
+        bookId: String,
+        sourceId: Int,
+        sourceKey: String
+    ): DownloadItem {
+        val downloadItem = MutableDownloadItem(
+            type = DownloadType.CACHE,
+            bookId = bookId,
+            bookInformationFlow = bookRepository.getBookInformationFlowForSource(
+                id = bookId,
+                sourceKey = sourceKey,
+                sourceId = sourceId
+            ),
+            sourceId = sourceId,
+            sourceKey = sourceKey
+        )
+        val existing = _downloadItemList.firstOrNull { it.key() == downloadItem.key() }
+        if (existing?.state == DownloadItemState.RUNNING) return existing
+        addExportItem(downloadItem, observe = false)
+        return downloadItem
+    }
+
     fun addExportItem(downloadItem: DownloadItem) {
-        if (_downloadItemList.contains(downloadItem)) {
-            _downloadItemList.removeIf { it == downloadItem }
-        }
+        addExportItem(downloadItem, observe = true)
+    }
+
+    private fun addExportItem(downloadItem: DownloadItem, observe: Boolean) {
+        val itemKey = downloadItem.key()
+        _downloadItemList
+            .filter { it.key() == itemKey }
+            .forEach { observationJobs.remove(it.key())?.cancel() }
+        _downloadItemList.removeIf { it.key() == itemKey }
         _downloadItemList.add(downloadItem)
-        coroutineScope.launch {
-            snapshotFlow {
-                DownloadItemSnapshot(
-                    progress = downloadItem.progress,
-                    state = downloadItem.state,
-                    writtenBytes = downloadItem.writtenBytes,
-                    currentChapterTitle = downloadItem.currentChapterTitle,
-                    waitingReason = downloadItem.waitingReason,
-                    errorMessage = downloadItem.errorMessage
-                )
-            }.collect { snapshot ->
+        if (!observe) return
+
+        observationJobs[itemKey] = coroutineScope.launch {
+            snapshotFlow { downloadItem.toSnapshot() }.collect { snapshot ->
                 val progress = snapshot.progress
                 val state = snapshot.state
                 when {
@@ -179,13 +219,32 @@ class DownloadProgressRepository @Inject constructor(
     }
 
     fun removeExportItem(downloadItem: DownloadItem) {
-        _downloadItemList.remove(downloadItem)
+        observationJobs.remove(downloadItem.key())?.cancel()
+        _downloadItemList.removeIf { it.key() == downloadItem.key() }
         if (downloadItem.type == DownloadType.CACHE) {
             coroutineScope.launch {
                 downloadTaskRepository.clear(downloadItem.sourceId, downloadItem.bookId)
             }
         }
     }
+
+    private fun DownloadItem.key() = DownloadItemKey(
+        type = type,
+        bookId = bookId,
+        sourceId = sourceId,
+        sourceKey = sourceKey
+    )
+
+    private fun DownloadItem.toSnapshot() = DownloadItemSnapshot(
+        item = this,
+        startTime = startTime,
+        progress = progress,
+        state = state,
+        writtenBytes = writtenBytes,
+        currentChapterTitle = currentChapterTitle,
+        waitingReason = waitingReason,
+        errorMessage = errorMessage
+    )
 
     private suspend fun persistTask(downloadItem: DownloadItem) {
         if (downloadItem.type != DownloadType.CACHE) return
