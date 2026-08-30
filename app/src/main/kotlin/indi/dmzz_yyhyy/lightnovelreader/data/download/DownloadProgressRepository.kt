@@ -27,7 +27,6 @@ class DownloadProgressRepository @Inject constructor(
     private data class DownloadItemSnapshot(
         val progress: Float,
         val state: DownloadItemState,
-        val estimatedBytes: Long,
         val writtenBytes: Long,
         val currentChapterTitle: String?,
         val waitingReason: String?,
@@ -123,7 +122,6 @@ class DownloadProgressRepository @Inject constructor(
                 ).apply {
                     progress = task.progress
                     this.state = itemState
-                    estimatedBytes = task.estimatedBytes
                     writtenBytes = task.writtenBytes
                     currentChapterTitle = task.currentChapterTitle
                     waitingReason = task.waitingReason
@@ -144,7 +142,6 @@ class DownloadProgressRepository @Inject constructor(
                 DownloadItemSnapshot(
                     progress = downloadItem.progress,
                     state = downloadItem.state,
-                    estimatedBytes = downloadItem.estimatedBytes,
                     writtenBytes = downloadItem.writtenBytes,
                     currentChapterTitle = downloadItem.currentChapterTitle,
                     waitingReason = downloadItem.waitingReason,
@@ -204,7 +201,6 @@ class DownloadProgressRepository @Inject constructor(
             },
             progress = progress,
             sourceKey = downloadItem.sourceKey,
-            estimatedBytes = downloadItem.estimatedBytes,
             writtenBytes = downloadItem.writtenBytes,
             currentChapterTitle = downloadItem.currentChapterTitle,
             waitingReason = downloadItem.waitingReason,

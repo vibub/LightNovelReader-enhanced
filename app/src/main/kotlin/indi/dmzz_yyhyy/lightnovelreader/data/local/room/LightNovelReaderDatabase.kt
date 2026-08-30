@@ -62,7 +62,7 @@ import io.nightfish.lightnovelreader.api.content.builder.simpleText
         FormattingRuleEntity::class,
         LinovelibChapterBookmarkEntity::class
     ],
-    version = 25,
+    version = 26,
     exportSchema = false
 )
 abstract class LightNovelReaderDatabase : RoomDatabase() {
@@ -112,7 +112,8 @@ abstract class LightNovelReaderDatabase : RoomDatabase() {
                             MIGRATION_21_22,
                             MIGRATION_22_23,
                             MIGRATION_23_24,
-                            MIGRATION_24_25
+                            MIGRATION_24_25,
+                            MIGRATION_25_26
                         )
                         .allowMainThreadQueries()
                         .build()
@@ -1117,6 +1118,51 @@ abstract class LightNovelReaderDatabase : RoomDatabase() {
                 db.execSQL(
                     "ALTER TABLE download_task ADD COLUMN constraints_key TEXT NOT NULL DEFAULT ''"
                 )
+            }
+        }
+
+        internal val MIGRATION_25_26 = object : Migration(25, 26) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE download_task_new (
+                        source_id INTEGER NOT NULL,
+                        book_id TEXT NOT NULL,
+                        source_key TEXT NOT NULL DEFAULT '',
+                        queue_all INTEGER NOT NULL DEFAULT 0,
+                        constraints_key TEXT NOT NULL DEFAULT '',
+                        state TEXT NOT NULL,
+                        progress REAL NOT NULL,
+                        total INTEGER NOT NULL,
+                        processed INTEGER NOT NULL,
+                        current_chapter_id TEXT,
+                        current_chapter_title TEXT,
+                        written_bytes INTEGER NOT NULL DEFAULT 0,
+                        waiting_reason TEXT,
+                        error_message TEXT,
+                        updated_at INTEGER NOT NULL,
+                        PRIMARY KEY(source_id, book_id)
+                    )
+                    """
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO download_task_new(
+                        source_id, book_id, source_key, queue_all, constraints_key,
+                        state, progress, total, processed, current_chapter_id,
+                        current_chapter_title, written_bytes, waiting_reason,
+                        error_message, updated_at
+                    )
+                    SELECT source_id, book_id, source_key, queue_all, constraints_key,
+                           state, progress, total, processed, current_chapter_id,
+                           current_chapter_title, written_bytes, waiting_reason,
+                           error_message, updated_at
+                    FROM download_task
+                    """
+                )
+                db.execSQL("DROP TABLE download_task")
+                db.execSQL("ALTER TABLE download_task_new RENAME TO download_task")
+                db.execSQL("CREATE INDEX index_download_task_state ON download_task(state)")
             }
         }
     }

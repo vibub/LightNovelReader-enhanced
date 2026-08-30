@@ -72,7 +72,7 @@
     <string name="download_in_progress">进行中</string>
     <string name="download_pending">已暂停或失败</string>
     <string name="download_item_progress">%1$s 已下载 %2$d%%</string>
-    <string name="download_item_bytes">已写入 %1$s / 预计 %2$s</string>
+    <string name="download_item_bytes">已写入 %1$s</string>
     <string name="download_item_current_chapter">当前章节：%s</string>
     <string name="download_item_paused">已暂停（%d%%）</string>
     <string name="download_pause">暂停</string>

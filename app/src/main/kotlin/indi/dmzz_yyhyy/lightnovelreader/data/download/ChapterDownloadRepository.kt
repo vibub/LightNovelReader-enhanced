@@ -44,12 +44,12 @@ class ChapterDownloadRepository @Inject constructor(
         if (ids.isEmpty()) return
         val existing = chapterDownloadDao.getByBook(sourceId, bookId).associateBy { it.chapterId }
         val now = System.currentTimeMillis()
-        val cachedIds = chapterContentDao.migrateLegacyCachedChapterIds(
+        val migratedIds = chapterContentDao.migrateLegacyCachedChapterIds(
             sourceId = sourceId,
             bookId = bookId,
             chapterIds = ids
         ).toSet()
-        val migrated = cachedIds.mapNotNull { chapterId ->
+        val migrated = migratedIds.mapNotNull { chapterId ->
             val old = existing[chapterId]
             if (old != null && old.status in setOf(
                     ChapterDownloadStatus.QUEUED.name,

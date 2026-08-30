@@ -15,7 +15,9 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.UserReadingDataEn
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.VolumeEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.serializer.LocalDataIdentifierSerializer
 import io.nightfish.lightnovelreader.api.identifier.Identifier
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.cbor.Cbor
 
 @Serializable
 data class LocalData(
@@ -51,4 +53,10 @@ data class LocalData(
             volumeEntities = emptyList()
         )
     }
+}
+
+/** 兼容旧版本地数据中已经移除的字段。 */
+@OptIn(ExperimentalSerializationApi::class)
+internal val localDataCbor = Cbor {
+    ignoreUnknownKeys = true
 }

@@ -15,6 +15,7 @@ import com.github.michaelbull.result.runCatching
 import dagger.hilt.android.qualifiers.ApplicationContext
 import indi.dmzz_yyhyy.lightnovelreader.data.local.cbor.AppLocalData
 import indi.dmzz_yyhyy.lightnovelreader.data.local.cbor.LocalData
+import indi.dmzz_yyhyy.lightnovelreader.data.local.cbor.localDataCbor
 import indi.dmzz_yyhyy.lightnovelreader.data.local.cbor.LocalDataArchive
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookInformationDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.BookRecordDao
@@ -110,7 +111,7 @@ class LocalDataManager @Inject constructor(
         val localDataList = mutableListOf<LocalData>()
         localDataDir.listFiles()?.forEach {
             it.inputStream().use { inputStream ->
-                Cbor.decodeFromByteArray<LocalData>(inputStream.readAppLocalData())
+                localDataCbor.decodeFromByteArray<LocalData>(inputStream.readAppLocalData())
             }.let(localDataList::add)
         }
         exportCurrentLocalData(
@@ -577,7 +578,7 @@ class LocalDataManager @Inject constructor(
         }
         val oldLocalData = oldLocalDataFile.inputStream().buffered().use {
             runCatching {
-                Cbor.decodeFromByteArray<LocalData>(it.readBytes())
+                localDataCbor.decodeFromByteArray<LocalData>(it.readBytes())
             }
         }.let {
             it.component1() ?: return it.asErr()

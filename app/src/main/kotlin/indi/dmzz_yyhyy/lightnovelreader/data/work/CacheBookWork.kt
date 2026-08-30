@@ -44,7 +44,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
-import kotlin.math.max
 import kotlin.math.min
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -68,12 +67,6 @@ class CacheBookWork @AssistedInject constructor(
         private const val CHANNEL_ID = "BookCache"
         private const val MAX_CHAPTER_ATTEMPTS = 3
         private const val NOTIFICATION_ID_OFFSET = 0x4c4e5200
-        private const val DEFAULT_ESTIMATED_BYTES_PER_CHAPTER = 512L * 1024L
-        private const val MIN_ESTIMATED_BYTES_PER_CHAPTER = 64L * 1024L
-        private const val COVER_ESTIMATE_BYTES = 1L * 1024L * 1024L
-
-        private fun saturatedAdd(first: Long, second: Long): Long =
-            if (Long.MAX_VALUE - first < second) Long.MAX_VALUE else first + second
 
         fun ofId(id: String): String = "cache:$id"
 
@@ -179,44 +172,6 @@ class CacheBookWork @AssistedInject constructor(
         }
 
         val settings = downloadSettingsRepository.get()
-        val cachedChapterBytes = chaptersToDownload.map { chapter ->
-            val contentBytes = localBookDataSource
-                .getChapterContent(sourceId, bookId, chapter.id)
-                ?.content
-                ?.toString()
-                ?.encodeToByteArray()
-                ?.size
-                ?.toLong()
-                ?: 0L
-            val imageBytes = offlineContentCache.chapterImageBytes(
-                sourceId = sourceId,
-                bookId = bookId,
-                chapterId = chapter.id
-            )
-            saturatedAdd(contentBytes, imageBytes)
-        }
-        val knownChapterBytes = cachedChapterBytes.filter { it > 0L }
-        val averageChapterBytes = if (knownChapterBytes.isEmpty()) {
-            DEFAULT_ESTIMATED_BYTES_PER_CHAPTER
-        } else {
-            (knownChapterBytes.sum() / knownChapterBytes.size)
-                .coerceAtLeast(MIN_ESTIMATED_BYTES_PER_CHAPTER)
-        }
-        val estimatedPayloadBytes = cachedChapterBytes.fold(0L) { total, bytes ->
-            saturatedAdd(total, if (bytes > 0L) bytes else averageChapterBytes)
-        }
-        // 原子替换章节图片时临时目录会与旧目录同时存在，保留旧图片大小作为峰值余量。
-        val replacementBytes = chaptersToDownload.sumOf { chapter ->
-            offlineContentCache.chapterImageBytes(sourceId, bookId, chapter.id)
-        }
-        val estimatedRequiredBytes = DownloadStorageManager.requiredBytes(
-            chapterCount = 1,
-            minimumFreeStorageBytes = settings.minimumFreeStorageBytes,
-            estimatedBytesPerChapter = saturatedAdd(
-                saturatedAdd(estimatedPayloadBytes, replacementBytes),
-                COVER_ESTIMATE_BYTES
-            ).coerceAtLeast(1L)
-        )
         val downloadItem = MutableDownloadItem(
             type = DownloadType.CACHE,
             bookId = bookId,
@@ -227,11 +182,9 @@ class CacheBookWork @AssistedInject constructor(
             ),
             sourceId = sourceId,
             sourceKey = sourceKey
-        ).apply {
-            this.estimatedBytes = estimatedRequiredBytes
-        }
+        )
         runCatching {
-            downloadStorageManager.requireEnoughSpace(estimatedRequiredBytes)
+            downloadStorageManager.requireEnoughSpace(settings.minimumFreeStorageBytes)
         }.onFailure { throwable ->
             val waitingReason = throwable.message ?: "存储空间不足"
             downloadTaskRepository.markPaused(
@@ -239,8 +192,7 @@ class CacheBookWork @AssistedInject constructor(
                 bookId = bookId,
                 total = chaptersToDownload.size,
                 sourceKey = sourceKey,
-                waitingReason = waitingReason,
-                estimatedBytes = estimatedRequiredBytes
+                waitingReason = waitingReason
             )
             downloadItem.waitingReason = waitingReason
             downloadItem.state = DownloadItemState.PAUSED
@@ -261,7 +213,6 @@ class CacheBookWork @AssistedInject constructor(
             processed = 0,
             sourceKey = sourceKey,
             constraintsKey = settings.constraintsKey,
-            estimatedBytes = estimatedRequiredBytes,
             writtenBytes = 0L
         )
         if (shouldStopTask(sourceId, bookId)) return@withContext Result.success()
@@ -291,7 +242,7 @@ class CacheBookWork @AssistedInject constructor(
                 )
         }.toMap()
 
-        for ((chapterIndex, chapterInformation) in chaptersToDownload.withIndex()) {
+        for (chapterInformation in chaptersToDownload) {
             currentCoroutineContext().ensureActive()
             if (shouldStopTask(sourceId, bookId)) return@withContext Result.success()
             if (!chapterDownloadRepository.isDownloadRequested(sourceId, bookId, chapterInformation.id)) {
@@ -306,20 +257,11 @@ class CacheBookWork @AssistedInject constructor(
                     downloadItem = downloadItem,
                     notificationId = notificationId,
                     sourceKey = sourceKey,
-                    estimatedBytes = estimatedRequiredBytes,
                     writtenBytes = writtenBytes
                 )
                 continue
             }
-            val remainingChapterEstimate = max(
-                cachedChapterBytes.getOrElse(chapterIndex) { 0L },
-                averageChapterBytes
-            )
-            val remainingStorageRequirement = saturatedAdd(
-                settings.minimumFreeStorageBytes,
-                remainingChapterEstimate
-            )
-            if (!downloadStorageManager.hasEnoughSpace(remainingStorageRequirement)) {
+            if (!downloadStorageManager.hasEnoughSpace(settings.minimumFreeStorageBytes)) {
                 chapterDownloadRepository.resetDownloading(sourceId, bookId)
                 val message = "存储空间不足，已暂停缓存任务"
                 val processed = completedCount + partialCount + failedCount + skippedCount
@@ -333,7 +275,6 @@ class CacheBookWork @AssistedInject constructor(
                     processed = processed,
                     sourceKey = sourceKey,
                     waitingReason = message,
-                    estimatedBytes = estimatedRequiredBytes,
                     writtenBytes = writtenBytes,
                     currentChapterId = chapterInformation.id,
                     currentChapterTitle = chapterInformation.title
@@ -354,7 +295,6 @@ class CacheBookWork @AssistedInject constructor(
                 total = chaptersToDownload.size,
                 processed = completedCount + partialCount + failedCount + skippedCount,
                 sourceKey = sourceKey,
-                estimatedBytes = estimatedRequiredBytes,
                 writtenBytes = writtenBytes,
                 currentChapterId = chapterInformation.id,
                 currentChapterTitle = chapterInformation.title
@@ -405,7 +345,6 @@ class CacheBookWork @AssistedInject constructor(
                     downloadItem = downloadItem,
                     notificationId = notificationId,
                     sourceKey = sourceKey,
-                    estimatedBytes = estimatedRequiredBytes,
                     writtenBytes = writtenBytes
                 )
                 continue
@@ -459,7 +398,6 @@ class CacheBookWork @AssistedInject constructor(
                 downloadItem = downloadItem,
                 notificationId = notificationId,
                 sourceKey = sourceKey,
-                estimatedBytes = estimatedRequiredBytes,
                 writtenBytes = writtenBytes
             )
         }
@@ -475,7 +413,6 @@ class CacheBookWork @AssistedInject constructor(
         if (isSuccessful) {
             cacheBookInformation(bookId, webBookDataSource)
             downloadItem.progress = 1f
-            downloadItem.estimatedBytes = estimatedRequiredBytes
             downloadItem.writtenBytes = writtenBytes
             downloadItem.currentChapterTitle = null
             downloadItem.waitingReason = null
@@ -486,7 +423,6 @@ class CacheBookWork @AssistedInject constructor(
                 total = chaptersToDownload.size,
                 processed = processedCount,
                 sourceKey = sourceKey,
-                estimatedBytes = estimatedRequiredBytes,
                 writtenBytes = writtenBytes
             )
         } else if (hasCancelledChapters && failedCount == 0 && partialCount == 0) {
@@ -499,12 +435,10 @@ class CacheBookWork @AssistedInject constructor(
                 processed = processedCount,
                 sourceKey = sourceKey,
                 waitingReason = message,
-                estimatedBytes = estimatedRequiredBytes,
                 writtenBytes = writtenBytes,
                 clearWaitingReason = false
             )
             downloadItem.progress = progress.coerceAtMost(0.99f)
-            downloadItem.estimatedBytes = estimatedRequiredBytes
             downloadItem.writtenBytes = writtenBytes
             downloadItem.currentChapterTitle = null
             downloadItem.waitingReason = message
@@ -520,7 +454,6 @@ class CacheBookWork @AssistedInject constructor(
                 }
             }
             downloadItem.progress = -1f
-            downloadItem.estimatedBytes = estimatedRequiredBytes
             downloadItem.writtenBytes = writtenBytes
             downloadItem.currentChapterTitle = null
             downloadItem.waitingReason = null
@@ -533,7 +466,6 @@ class CacheBookWork @AssistedInject constructor(
                 total = chaptersToDownload.size,
                 processed = processedCount,
                 sourceKey = sourceKey,
-                estimatedBytes = estimatedRequiredBytes,
                 writtenBytes = writtenBytes
             )
         }
@@ -546,7 +478,6 @@ class CacheBookWork @AssistedInject constructor(
                 "failed" to failedCount,
                 "skipped" to skippedCount,
                 "processed" to processedCount,
-                "estimatedBytes" to estimatedRequiredBytes,
                 "writtenBytes" to writtenBytes
             )
         )
@@ -702,12 +633,10 @@ class CacheBookWork @AssistedInject constructor(
         downloadItem: MutableDownloadItem,
         notificationId: Int,
         sourceKey: String,
-        estimatedBytes: Long,
         writtenBytes: Long
     ) {
         val progress = if (total == 0) 1f else processed.toFloat() / total
         downloadItem.progress = progress.coerceAtMost(0.99f)
-        downloadItem.estimatedBytes = estimatedBytes
         downloadItem.writtenBytes = writtenBytes
         downloadItem.currentChapterTitle = currentTitle
         downloadItem.waitingReason = null
@@ -718,7 +647,6 @@ class CacheBookWork @AssistedInject constructor(
             total = total,
             processed = processed,
             sourceKey = sourceKey,
-            estimatedBytes = estimatedBytes,
             writtenBytes = writtenBytes,
             currentChapterId = null,
             currentChapterTitle = currentTitle
@@ -730,7 +658,6 @@ class CacheBookWork @AssistedInject constructor(
                 "processed" to processed,
                 "failed" to failed,
                 "progress" to progress,
-                "estimatedBytes" to estimatedBytes,
                 "writtenBytes" to writtenBytes,
                 "currentChapterTitle" to currentTitle
             )

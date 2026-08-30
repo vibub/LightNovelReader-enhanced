@@ -6,7 +6,6 @@ import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.math.max
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -105,22 +104,4 @@ class DownloadSettingsRepository @Inject constructor(
         )
     }.distinctUntilChanged()
 
-    companion object {
-        fun estimateRequiredBytes(
-            chapterCount: Int,
-            minimumFreeStorageBytes: Long,
-            estimatedBytesPerChapter: Long = DEFAULT_ESTIMATED_BYTES_PER_CHAPTER
-        ): Long = max(0, chapterCount).toLong()
-            .coerceAtMost(Long.MAX_VALUE / max(1L, estimatedBytesPerChapter))
-            .times(max(1L, estimatedBytesPerChapter))
-            .let { estimatedBytes ->
-                if (Long.MAX_VALUE - estimatedBytes < minimumFreeStorageBytes) {
-                    Long.MAX_VALUE
-                } else {
-                    estimatedBytes + minimumFreeStorageBytes
-                }
-            }
-
-        private const val DEFAULT_ESTIMATED_BYTES_PER_CHAPTER = 512L * 1024L
-    }
 }

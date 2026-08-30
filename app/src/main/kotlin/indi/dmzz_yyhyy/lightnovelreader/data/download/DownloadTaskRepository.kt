@@ -30,7 +30,6 @@ class DownloadTaskRepository @Inject constructor(
         sourceKey: String = "",
         queueAll: Boolean? = null,
         constraintsKey: String? = null,
-        estimatedBytes: Long? = null,
         writtenBytes: Long? = null,
         currentChapterId: String? = null,
         currentChapterTitle: String? = null
@@ -45,7 +44,6 @@ class DownloadTaskRepository @Inject constructor(
         total = total,
         processed = processed,
         errorMessage = null,
-        estimatedBytes = estimatedBytes,
         writtenBytes = writtenBytes,
         currentChapterId = currentChapterId,
         currentChapterTitle = currentChapterTitle,
@@ -64,7 +62,6 @@ class DownloadTaskRepository @Inject constructor(
             sourceKey = sourceKey.ifBlank { old?.sourceKey.orEmpty() },
             queueAll = old?.queueAll,
             constraintsKey = old?.constraintsKey,
-            estimatedBytes = old?.estimatedBytes,
             writtenBytes = old?.writtenBytes,
             currentChapterId = null,
             currentChapterTitle = null
@@ -80,7 +77,6 @@ class DownloadTaskRepository @Inject constructor(
         sourceKey: String = "",
         queueAll: Boolean? = null,
         waitingReason: String? = null,
-        estimatedBytes: Long? = null,
         writtenBytes: Long? = null,
         currentChapterId: String? = null,
         currentChapterTitle: String? = null,
@@ -96,7 +92,6 @@ class DownloadTaskRepository @Inject constructor(
         processed = processed,
         errorMessage = null,
         waitingReason = waitingReason,
-        estimatedBytes = estimatedBytes,
         writtenBytes = writtenBytes,
         currentChapterId = currentChapterId,
         currentChapterTitle = currentChapterTitle,
@@ -111,7 +106,6 @@ class DownloadTaskRepository @Inject constructor(
         total: Int? = null,
         processed: Int? = null,
         sourceKey: String = "",
-        estimatedBytes: Long? = null,
         writtenBytes: Long? = null,
         currentChapterId: String? = null,
         currentChapterTitle: String? = null
@@ -124,7 +118,6 @@ class DownloadTaskRepository @Inject constructor(
         total = total,
         processed = processed,
         errorMessage = message,
-        estimatedBytes = estimatedBytes,
         writtenBytes = writtenBytes,
         currentChapterId = currentChapterId,
         currentChapterTitle = currentChapterTitle,
@@ -139,7 +132,6 @@ class DownloadTaskRepository @Inject constructor(
         total: Int,
         processed: Int,
         sourceKey: String = "",
-        estimatedBytes: Long? = null,
         writtenBytes: Long? = null,
         currentChapterId: String? = null,
         currentChapterTitle: String? = null
@@ -155,7 +147,6 @@ class DownloadTaskRepository @Inject constructor(
             processed = processed,
             errorMessage = old?.errorMessage,
             preserveErrorMessage = true,
-            estimatedBytes = estimatedBytes,
             writtenBytes = writtenBytes,
             currentChapterId = currentChapterId,
             currentChapterTitle = currentChapterTitle,
@@ -171,7 +162,6 @@ class DownloadTaskRepository @Inject constructor(
         progress: Float,
         errorMessage: String? = null,
         sourceKey: String = "",
-        estimatedBytes: Long? = null,
         writtenBytes: Long? = null,
         currentChapterTitle: String? = null,
         waitingReason: String? = null
@@ -188,7 +178,6 @@ class DownloadTaskRepository @Inject constructor(
             errorMessage = errorMessage,
             preserveErrorMessage = state == DownloadTaskStatus.PAUSED ||
                 state == DownloadTaskStatus.FAILED,
-            estimatedBytes = estimatedBytes ?: old?.estimatedBytes,
             writtenBytes = writtenBytes ?: old?.writtenBytes,
             currentChapterId = old?.currentChapterId,
             currentChapterTitle = currentChapterTitle ?: old?.currentChapterTitle,
@@ -207,7 +196,6 @@ class DownloadTaskRepository @Inject constructor(
         total: Int? = null,
         processed: Int? = null,
         sourceKey: String = "",
-        estimatedBytes: Long? = null,
         writtenBytes: Long? = null
     ) = upsert(
         sourceId = sourceId,
@@ -218,7 +206,6 @@ class DownloadTaskRepository @Inject constructor(
         total = total,
         processed = processed ?: total,
         errorMessage = null,
-        estimatedBytes = estimatedBytes,
         writtenBytes = writtenBytes,
         clearCurrentChapter = true,
         clearWaitingReason = true
@@ -240,7 +227,6 @@ class DownloadTaskRepository @Inject constructor(
         constraintsKey: String? = null,
         errorMessage: String?,
         preserveErrorMessage: Boolean = false,
-        estimatedBytes: Long? = null,
         writtenBytes: Long? = null,
         currentChapterId: String? = null,
         currentChapterTitle: String? = null,
@@ -269,7 +255,6 @@ class DownloadTaskRepository @Inject constructor(
                 else currentChapterId ?: old?.currentChapterId,
                 currentChapterTitle = if (clearCurrentChapter) null
                 else currentChapterTitle ?: old?.currentChapterTitle,
-                estimatedBytes = (estimatedBytes ?: old?.estimatedBytes ?: 0L).coerceAtLeast(0L),
                 writtenBytes = (writtenBytes ?: old?.writtenBytes ?: 0L).coerceAtLeast(0L),
                 waitingReason = if (clearWaitingReason) null
                 else waitingReason ?: old?.waitingReason,

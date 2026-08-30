@@ -75,6 +75,7 @@ interface ChapterContentDao {
     /**
      * 在同一个事务中认领旧版 legacy 正文，避免两个数据源并发读取时各自复制同一份正文。
      * 当前数据源已有精确正文时只删除 legacy 行，不再让其他数据源复用它。
+     * 返回值只包含实际从 legacy 迁移的章节，当前数据源已有的正文可能只是网络阅读缓存。
      */
     @Transaction
     suspend fun migrateLegacyCachedChapterIds(
@@ -85,20 +86,24 @@ interface ChapterContentDao {
         val ids = chapterIds.map(String::trim).filter(String::isNotBlank).distinct()
         if (ids.isEmpty()) return emptyList()
 
-        val cachedIds = ids.filter { get(sourceId, bookId, it) != null }.toMutableSet()
-        if (sourceId == ChapterContentEntity.LEGACY_SOURCE_ID) return cachedIds.toList()
-
+        val exactIds = ids.filter { get(sourceId, bookId, it) != null }.toSet()
         val legacyEntities = ids.mapNotNull { id -> getLegacy(id) }
-        legacyEntities.forEach { entity ->
-            if (entity.id !in cachedIds) {
+        if (sourceId == ChapterContentEntity.LEGACY_SOURCE_ID) {
+            return legacyEntities.map { it.id }
+        }
+
+        val migratedIds = legacyEntities.mapNotNull { entity ->
+            if (entity.id in exactIds) {
+                null
+            } else {
                 update(entity.copy(sourceId = sourceId, bookId = bookId))
-                cachedIds += entity.id
+                entity.id
             }
         }
         if (legacyEntities.isNotEmpty()) {
             deleteLegacyByIds(legacyEntities.map { it.id })
         }
-        return cachedIds.toList()
+        return migratedIds
     }
 
     @Query(

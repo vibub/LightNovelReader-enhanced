@@ -634,7 +634,6 @@ class BookRepository @Inject constructor(
                 total = currentTask.total,
                 processed = currentTask.processed,
                 sourceKey = requestedSourceKey ?: currentTask.sourceKey,
-                estimatedBytes = currentTask.estimatedBytes,
                 writtenBytes = currentTask.writtenBytes,
                 currentChapterId = currentTask.currentChapterId,
                 currentChapterTitle = currentTask.currentChapterTitle,

@@ -72,6 +72,18 @@ class ChapterDownloadRepositoryTest {
     }
 
     @Test
+    fun existingScopedContentIsNotMarkedAsDownloaded() = runBlocking {
+        val statusDao = InMemoryChapterDownloadDao()
+        val contentDao = FakeChapterContentDao(setOf("chapter"))
+        val repository = ChapterDownloadRepository(statusDao, contentDao)
+
+        repository.migrateLegacyCachedChapters(3, "book", listOf("chapter"))
+
+        assertEquals(null, statusDao.getStatus(3, "book", "chapter"))
+        assertTrue(repository.getStates(3, "book").isEmpty())
+    }
+
+    @Test
     fun partialContentIsAvailableOfflineButNotFullyDownloaded() = runBlocking {
         val statusDao = InMemoryChapterDownloadDao()
         val contentDao = FakeChapterContentDao(setOf("chapter"))

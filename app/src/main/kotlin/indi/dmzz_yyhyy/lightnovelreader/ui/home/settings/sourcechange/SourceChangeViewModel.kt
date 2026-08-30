@@ -17,6 +17,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalDataManager
 import indi.dmzz_yyhyy.lightnovelreader.data.local.cbor.LocalData
+import indi.dmzz_yyhyy.lightnovelreader.data.local.cbor.localDataCbor
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceManager
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
@@ -83,7 +84,6 @@ class SourceChangeViewModel @Inject constructor(
                     processed = current.processed,
                     sourceKey = current.sourceKey,
                     waitingReason = "切换数据源前已暂停",
-                    estimatedBytes = current.estimatedBytes,
                     writtenBytes = current.writtenBytes,
                     currentChapterId = current.currentChapterId,
                     currentChapterTitle = current.currentChapterTitle
@@ -131,7 +131,7 @@ class SourceChangeViewModel @Inject constructor(
                         file
                             .inputStream()
                             .use {
-                                Cbor.decodeFromByteArray<LocalData>(it.readAppLocalData())
+                                localDataCbor.decodeFromByteArray<LocalData>(it.readAppLocalData())
                             }
                     }.andThen {
                         localDataManager.importLocalDataToDatabase(it)
@@ -165,7 +165,7 @@ class SourceChangeViewModel @Inject constructor(
                     .resolve(webBookDataSourceId.toString())
                     .inputStream()
                     .use {
-                        Cbor.decodeFromByteArray<LocalData>(it.readAppLocalData())
+                        localDataCbor.decodeFromByteArray<LocalData>(it.readAppLocalData())
                     }
             localDataManager.importLocalDataToDatabase(localData)
         }

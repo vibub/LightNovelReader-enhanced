@@ -22,7 +22,6 @@ class DownloadTaskRepositoryTest {
             processed = 4,
             sourceKey = "source:one",
             waitingReason = "等待存储空间",
-            estimatedBytes = 10_000L,
             writtenBytes = 4_000L,
             currentChapterId = "chapter-5",
             currentChapterTitle = "第五章"
@@ -41,7 +40,6 @@ class DownloadTaskRepositoryTest {
         assertEquals("source:one", task.sourceKey)
         assertEquals(10, task.total)
         assertEquals(4, task.processed)
-        assertEquals(10_000L, task.estimatedBytes)
         assertEquals(4_000L, task.writtenBytes)
         assertNull(task.currentChapterId)
         assertNull(task.currentChapterTitle)
@@ -60,7 +58,6 @@ class DownloadTaskRepositoryTest {
             processed = 4,
             sourceKey = "source:one",
             queueAll = true,
-            estimatedBytes = 800L,
             writtenBytes = 400L
         )
 
@@ -72,7 +69,6 @@ class DownloadTaskRepositoryTest {
         assertTrue(task.queueAll)
         assertEquals(8, task.total)
         assertEquals(4, task.processed)
-        assertEquals(800L, task.estimatedBytes)
         assertEquals(400L, task.writtenBytes)
         assertNull(task.waitingReason)
     }

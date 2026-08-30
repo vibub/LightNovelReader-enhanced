@@ -30,16 +30,4 @@ class DownloadStorageManager @Inject constructor(
             throw InsufficientStorageException(available, requiredBytes)
         }
     }
-
-    companion object {
-        fun requiredBytes(
-            chapterCount: Int,
-            minimumFreeStorageBytes: Long,
-            estimatedBytesPerChapter: Long = 512L * 1024L
-        ): Long = DownloadSettingsRepository.estimateRequiredBytes(
-            chapterCount = chapterCount,
-            minimumFreeStorageBytes = minimumFreeStorageBytes,
-            estimatedBytesPerChapter = estimatedBytesPerChapter
-        )
-    }
 }

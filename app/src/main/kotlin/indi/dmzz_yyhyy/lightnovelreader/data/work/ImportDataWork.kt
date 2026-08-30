@@ -12,8 +12,8 @@ import dagger.assisted.AssistedInject
 import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalDataManager
 import indi.dmzz_yyhyy.lightnovelreader.data.local.cbor.AppLocalData
 import indi.dmzz_yyhyy.lightnovelreader.data.local.cbor.LocalDataArchive
+import indi.dmzz_yyhyy.lightnovelreader.data.local.cbor.localDataCbor
 import kotlinx.serialization.ExperimentalSerializationApi
-import kotlinx.serialization.cbor.Cbor
 import kotlinx.serialization.decodeFromByteArray
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
@@ -39,7 +39,7 @@ class ImportDataWork @AssistedInject constructor(
             val archive = applicationContext.contentResolver.openInputStream(fileUri)?.use {
                 LocalDataArchive.read(it, stagingDirectory)
             } ?: return Result.failure()
-            val appLocalData = Cbor.decodeFromByteArray<AppLocalData>(archive.data)
+            val appLocalData = localDataCbor.decodeFromByteArray<AppLocalData>(archive.data)
             val resourceUriMap = archive.manifest?.resources
                 ?.associate { resource ->
                     resource.sourceUri to Uri.fromFile(

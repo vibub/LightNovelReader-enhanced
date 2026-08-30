@@ -218,6 +218,28 @@ class DatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun migration25To26RemovesEstimatedBytesAndKeepsWrittenBytes() {
+        helper = openVersion26Database()
+        val database = helper!!.writableDatabase
+
+        val columns = database.query("pragma table_info(download_task)").use { cursor ->
+            val nameIndex = cursor.getColumnIndexOrThrow("name")
+            buildList {
+                while (cursor.moveToNext()) add(cursor.getString(nameIndex))
+            }
+        }
+        assertTrue("estimated_bytes" !in columns)
+        assertTrue("written_bytes" in columns)
+        database.query(
+            "select state from download_task where source_id = ? and book_id = ?",
+            arrayOf("7", "legacy-download")
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("RUNNING", cursor.getString(0))
+        }
+    }
+
     private fun openVersion23Database(): SupportSQLiteOpenHelper = createHelper(
         callback = object : SupportSQLiteOpenHelper.Callback(23) {
             override fun onCreate(database: SupportSQLiteDatabase) = Unit
@@ -270,6 +292,31 @@ class DatabaseMigrationTest {
                 }
                 if (oldVersion < 25) {
                     LightNovelReaderDatabase.MIGRATION_24_25.migrate(database)
+                }
+            }
+        }
+    )
+
+    private fun openVersion26Database(): SupportSQLiteOpenHelper = createHelper(
+        callback = object : SupportSQLiteOpenHelper.Callback(26) {
+            override fun onCreate(database: SupportSQLiteDatabase) = Unit
+
+            override fun onUpgrade(
+                database: SupportSQLiteDatabase,
+                oldVersion: Int,
+                newVersion: Int
+            ) {
+                if (oldVersion < 23) {
+                    LightNovelReaderDatabase.MIGRATION_22_23.migrate(database)
+                }
+                if (oldVersion < 24) {
+                    LightNovelReaderDatabase.MIGRATION_23_24.migrate(database)
+                }
+                if (oldVersion < 25) {
+                    LightNovelReaderDatabase.MIGRATION_24_25.migrate(database)
+                }
+                if (oldVersion < 26) {
+                    LightNovelReaderDatabase.MIGRATION_25_26.migrate(database)
                 }
             }
         }

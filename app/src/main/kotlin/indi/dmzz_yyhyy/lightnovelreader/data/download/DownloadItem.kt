@@ -28,7 +28,6 @@ interface DownloadItem {
     val startTime: LocalDateTime
     var progress: Float
     var state: DownloadItemState
-    var estimatedBytes: Long
     var writtenBytes: Long
     var currentChapterTitle: String?
     var waitingReason: String?
@@ -47,7 +46,6 @@ class MutableDownloadItem(
 ): DownloadItem {
     override var progress by mutableFloatStateOf(0f)
     override var state by mutableStateOf(DownloadItemState.RUNNING)
-    override var estimatedBytes by mutableStateOf(0L)
     override var writtenBytes by mutableStateOf(0L)
     override var currentChapterTitle by mutableStateOf<String?>(null)
     override var waitingReason by mutableStateOf<String?>(null)

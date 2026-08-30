@@ -30,8 +30,6 @@ data class DownloadTaskEntity(
     val currentChapterId: String? = null,
     @ColumnInfo(name = "current_chapter_title")
     val currentChapterTitle: String? = null,
-    @ColumnInfo(name = "estimated_bytes")
-    val estimatedBytes: Long = 0L,
     @ColumnInfo(name = "written_bytes")
     val writtenBytes: Long = 0L,
     @ColumnInfo(name = "waiting_reason")

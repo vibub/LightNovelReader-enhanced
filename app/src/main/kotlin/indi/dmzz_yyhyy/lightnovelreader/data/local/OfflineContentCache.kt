@@ -223,9 +223,6 @@ class OfflineContentCache @Inject constructor(
         bookDirectory(sourceId, bookId).deleteRecursively()
     }
 
-    fun chapterImageBytes(sourceId: Int, bookId: String, chapterId: String): Long =
-        directoryBytes(chapterDirectory(sourceId, bookId, chapterId))
-
     fun deleteAllImages() {
         rootDirectory.deleteRecursively()
     }

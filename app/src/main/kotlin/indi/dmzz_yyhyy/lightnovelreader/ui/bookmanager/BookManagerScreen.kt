@@ -448,12 +448,11 @@ private fun Card(
             downloadItem.errorMessage
                 ?.takeIf(String::isNotBlank)
                 ?.let(::add)
-            if ((isRunning || isPaused) && downloadItem.estimatedBytes > 0L) {
+            if (isRunning || isPaused) {
                 add(
                     stringResource(
                         R.string.download_item_bytes,
-                        formatSize(downloadItem.writtenBytes.coerceAtLeast(0L)),
-                        formatSize(downloadItem.estimatedBytes)
+                        formatSize(downloadItem.writtenBytes.coerceAtLeast(0L))
                     )
                 )
             }
