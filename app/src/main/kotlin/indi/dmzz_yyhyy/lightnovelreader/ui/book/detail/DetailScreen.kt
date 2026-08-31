@@ -418,8 +418,6 @@ fun DetailScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .onSizeChanged { downloadCardHeight = it.height },
-                    bookInformation = uiState.bookInformation?.component1(),
-                    volumeCount = uiState.bookVolumes?.component1()?.volumes?.size ?: 0,
                     completedChapterCount = completedChapterCount,
                     selectedCount = selectedChapterIds.size,
                     selectedCachedCount = selectedCachedCount,
@@ -868,8 +866,6 @@ private fun DetailContent(
 @Composable
 private fun DownloadSelectionBottomBar(
     modifier: Modifier = Modifier,
-    bookInformation: BookInformation?,
-    volumeCount: Int,
     completedChapterCount: Int,
     selectedCount: Int,
     selectedCachedCount: Int,
@@ -883,6 +879,7 @@ private fun DownloadSelectionBottomBar(
     onClearSelection: () -> Unit,
     onClearCache: () -> Unit
 ) {
+    val controlRowHeight = 48.dp
     Surface(
         modifier = modifier.widthIn(max = 640.dp),
         shape = RoundedCornerShape(20.dp),
@@ -915,46 +912,6 @@ private fun DownloadSelectionBottomBar(
                 )
             }
 
-            bookInformation?.let { information ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Cover(
-                        width = 64.dp,
-                        height = 93.dp,
-                        uri = information.coverUri,
-                        title = information.title
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Text(
-                            text = information.title,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            style = typography.titleMedium,
-                            fontWeight = FontWeight.W600
-                        )
-                        Text(
-                            text = information.author,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = typography.bodyLarge,
-                            fontWeight = FontWeight.Medium,
-                            color = colorScheme.primary
-                        )
-                        Text(
-                            text = stringResource(
-                                R.string.detail_info_stats_count_content,
-                                volumeCount,
-                                totalCount
-                            ),
-                            style = typography.bodyMedium,
-                            color = colorScheme.secondary
-                        )
-                    }
-                }
-            }
 
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 DownloadSelectionInfoRow(
@@ -978,6 +935,7 @@ private fun DownloadSelectionBottomBar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .height(controlRowHeight)
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
@@ -993,7 +951,9 @@ private fun DownloadSelectionBottomBar(
             }
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(controlRowHeight),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 SwitchChip(
@@ -1011,7 +971,9 @@ private fun DownloadSelectionBottomBar(
             }
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(controlRowHeight),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 OutlinedButton(
@@ -1674,6 +1636,39 @@ private fun downloadStatusIcon(status: ChapterDownloadStatus): Int = when (statu
 }
 
 @Composable
+private fun VolumeExpandIcon(
+    visible: Boolean,
+    rotation: Float
+) {
+    Box(
+        modifier = Modifier.size(48.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(animationSpec = tween(180)) +
+                    slideInHorizontally(
+                        animationSpec = tween(180),
+                        initialOffsetX = { it / 4 }
+                    ),
+            exit = fadeOut(animationSpec = tween(140)) +
+                    slideOutHorizontally(
+                        animationSpec = tween(140),
+                        targetOffsetX = { it / 4 }
+                    )
+        ) {
+            Icon(
+                modifier = Modifier
+                    .size(16.dp)
+                    .rotate(rotation),
+                painter = painterResource(id = R.drawable.arrow_forward_ios_24px),
+                contentDescription = null
+            )
+        }
+    }
+}
+
+@Composable
 private fun VolumeItem(
     modifier: Modifier,
     volume: Volume,
@@ -1794,27 +1789,10 @@ private fun VolumeItem(
                     }
                     Spacer(Modifier.weight(1f))
                     if (!selectionMode) {
-                        AnimatedVisibility(
+                        VolumeExpandIcon(
                             visible = !hideReadChapters || !isFullyRead,
-                            enter = fadeIn(animationSpec = tween(180)) +
-                                    slideInHorizontally(
-                                        animationSpec = tween(180),
-                                        initialOffsetX = { it / 4 }
-                                    ),
-                            exit = fadeOut(animationSpec = tween(140)) +
-                                    slideOutHorizontally(
-                                        animationSpec = tween(140),
-                                        targetOffsetX = { it / 4 }
-                                    )
-                        ) {
-                            Icon(
-                                modifier = Modifier
-                                    .size(16.dp)
-                                    .rotate(rotation),
-                                painter = painterResource(id = R.drawable.arrow_forward_ios_24px),
-                                contentDescription = null
-                            )
-                        }
+                            rotation = rotation
+                        )
                     }
                 }
                 if (selectionMode) {
