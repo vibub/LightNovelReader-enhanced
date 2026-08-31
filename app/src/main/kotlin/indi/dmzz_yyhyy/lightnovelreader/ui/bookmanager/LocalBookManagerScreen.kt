@@ -389,7 +389,7 @@ fun LocalBookManagerContent(
 }
 
 @Composable
-private fun CollapseHeader(
+internal fun CollapseHeader(
     icon: Painter,
     title: String,
     expanded: Boolean,

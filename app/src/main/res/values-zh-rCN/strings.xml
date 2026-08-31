@@ -76,7 +76,8 @@
     <string name="import_in_progress_title">正在导入…</string>
     <string name="import_in_progress_desc">请稍候…</string>
     <string name="download_in_progress">进行中</string>
-    <string name="download_pending">已暂停或失败</string>
+    <string name="download_paused">已暂停</string>
+    <string name="download_failed">失败</string>
     <string name="download_item_progress">%1$s 已下载 %2$d%%</string>
     <string name="download_item_bytes">已写入 %1$s</string>
     <string name="download_item_current_chapter">当前章节：%s</string>

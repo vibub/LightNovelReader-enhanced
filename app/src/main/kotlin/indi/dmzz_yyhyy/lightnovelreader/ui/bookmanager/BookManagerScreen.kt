@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -350,6 +351,10 @@ private fun DownloadManagerContent(
     onClickResume: (DownloadItem) -> Unit,
     onClickRetry: (DownloadItem) -> Unit
 ) {
+    var runningCollapsed by rememberSaveable { mutableStateOf(false) }
+    var pausedCollapsed by rememberSaveable { mutableStateOf(false) }
+    var failedCollapsed by rememberSaveable { mutableStateOf(false) }
+
     val itemList = downloadItemList
         .distinctBy { Triple(it.item.type, it.item.sourceId, it.item.bookId) }
         .filterNot { it.state == DownloadItemState.COMPLETED }
@@ -363,49 +368,89 @@ private fun DownloadManagerContent(
         return
     }
     val runningItems = itemList.filter { it.state == DownloadItemState.RUNNING }
-    val pendingItems = itemList.filter {
-        it.state == DownloadItemState.PAUSED || it.state == DownloadItemState.FAILED
-    }
+    val pausedItems = itemList.filter { it.state == DownloadItemState.PAUSED }
+    val failedItems = itemList.filter { it.state == DownloadItemState.FAILED }
+
     LazyColumn(
-        modifier = Modifier.padding(horizontal = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 12.dp),
+        contentPadding = PaddingValues(top = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         if (runningItems.isNotEmpty()) {
-            items(
-                items = runningItems.reversed(),
-                key = { "${it.item.type.name}_${it.item.sourceId}_${it.item.bookId}" }
-            ) { downloadItem ->
-                Card(
-                    modifier = Modifier.animateItem(),
-                    downloadItem = downloadItem,
-                    onClickCancel = { onClickCancel(downloadItem.item) },
-                    onClickPause = { onClickPause(downloadItem.item) },
-                    onClickResume = { onClickResume(downloadItem.item) },
-                    onClickRetry = { onClickRetry(downloadItem.item) }
+            item(key = "download_running_header") {
+                CollapseHeader(
+                    icon = painterResource(R.drawable.downloading_24px),
+                    title = stringResource(R.string.download_in_progress),
+                    expanded = !runningCollapsed,
+                    onToggleExpand = { runningCollapsed = !runningCollapsed }
                 )
+            }
+            if (!runningCollapsed) {
+                items(
+                    items = runningItems.reversed(),
+                    key = { "running_${it.item.type.name}_${it.item.sourceId}_${it.item.bookId}" }
+                ) { downloadItem ->
+                    Card(
+                        modifier = Modifier.animateItem(),
+                        downloadItem = downloadItem,
+                        onClickCancel = { onClickCancel(downloadItem.item) },
+                        onClickPause = { onClickPause(downloadItem.item) },
+                        onClickResume = { onClickResume(downloadItem.item) },
+                        onClickRetry = { onClickRetry(downloadItem.item) }
+                    )
+                }
             }
         }
-        if (pendingItems.isNotEmpty()) {
-            item {
-                Text(
-                    modifier = Modifier.height(34.dp).animateItem(),
-                    text = stringResource(R.string.download_pending),
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.W600
+        if (pausedItems.isNotEmpty()) {
+            item(key = "download_paused_header") {
+                CollapseHeader(
+                    icon = painterResource(R.drawable.hourglass_top_24px),
+                    title = stringResource(R.string.download_paused),
+                    expanded = !pausedCollapsed,
+                    onToggleExpand = { pausedCollapsed = !pausedCollapsed }
                 )
             }
-            items(
-                items = pendingItems.reversed(),
-                key = { "${it.item.type.name}_${it.item.sourceId}_${it.item.bookId}" }
-            ) { downloadItem ->
-                Card(
-                    modifier = Modifier.animateItem(),
-                    downloadItem = downloadItem,
-                    onClickCancel = { onClickCancel(downloadItem.item) },
-                    onClickPause = { onClickPause(downloadItem.item) },
-                    onClickResume = { onClickResume(downloadItem.item) },
-                    onClickRetry = { onClickRetry(downloadItem.item) }
+            if (!pausedCollapsed) {
+                items(
+                    items = pausedItems.reversed(),
+                    key = { "paused_${it.item.type.name}_${it.item.sourceId}_${it.item.bookId}" }
+                ) { downloadItem ->
+                    Card(
+                        modifier = Modifier.animateItem(),
+                        downloadItem = downloadItem,
+                        onClickCancel = { onClickCancel(downloadItem.item) },
+                        onClickPause = { onClickPause(downloadItem.item) },
+                        onClickResume = { onClickResume(downloadItem.item) },
+                        onClickRetry = { onClickRetry(downloadItem.item) }
+                    )
+                }
+            }
+        }
+        if (failedItems.isNotEmpty()) {
+            item(key = "download_failed_header") {
+                CollapseHeader(
+                    icon = painterResource(R.drawable.error_24px),
+                    title = stringResource(R.string.download_failed),
+                    expanded = !failedCollapsed,
+                    onToggleExpand = { failedCollapsed = !failedCollapsed }
                 )
+            }
+            if (!failedCollapsed) {
+                items(
+                    items = failedItems.reversed(),
+                    key = { "failed_${it.item.type.name}_${it.item.sourceId}_${it.item.bookId}" }
+                ) { downloadItem ->
+                    Card(
+                        modifier = Modifier.animateItem(),
+                        downloadItem = downloadItem,
+                        onClickCancel = { onClickCancel(downloadItem.item) },
+                        onClickPause = { onClickPause(downloadItem.item) },
+                        onClickResume = { onClickResume(downloadItem.item) },
+                        onClickRetry = { onClickRetry(downloadItem.item) }
+                    )
+                }
             }
         }
         navigationBarSpacer()
