@@ -496,7 +496,7 @@ private fun Card(
             }
         }
         Row(
-            modifier = modifier,
+            modifier = modifier.padding(vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Cover(
