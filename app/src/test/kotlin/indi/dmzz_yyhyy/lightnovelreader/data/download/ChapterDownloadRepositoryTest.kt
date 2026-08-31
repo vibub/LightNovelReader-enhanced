@@ -29,12 +29,13 @@ class ChapterDownloadRepositoryTest {
         )
         val repository = ChapterDownloadRepository(statusDao, contentDao)
 
-        repository.queue(
+        val queuedChapterIds = repository.queue(
             sourceId = 1,
             bookId = "book",
             chapterIds = listOf("cached", "queued", "queued")
         )
 
+        assertEquals(listOf("queued"), queuedChapterIds)
         assertEquals(listOf("queued"), statusDao.getQueuedChapterIds(1, "book"))
     }
 

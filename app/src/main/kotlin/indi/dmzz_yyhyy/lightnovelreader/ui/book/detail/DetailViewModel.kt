@@ -32,6 +32,7 @@ import io.nightfish.lightnovelreader.api.book.UserReadingData
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import javax.inject.Inject
@@ -171,16 +172,18 @@ class DetailViewModel @Inject constructor(
     ): Flow<WorkInfo?> {
         val dataSource = webBookDataSourceProvider.value
         val sourceId = dataSource.id.toLegacyCompatibleSourceId()
-        downloadProgressRepository.addCacheItem(
-            bookId = bookId,
-            sourceId = sourceId,
-            sourceKey = dataSource.id.toString()
-        )
         bookRepository.cacheBook(
             bookId = bookId,
             chapterIds = chapterIds,
-            forceRefresh = forceRefresh
-        )
+            forceRefresh = forceRefresh,
+            onTaskRegistered = {
+                downloadProgressRepository.addCacheItem(
+                    bookId = bookId,
+                    sourceId = sourceId,
+                    sourceKey = dataSource.id.toString()
+                )
+            }
+        ) ?: return emptyFlow()
         val isCachedFlow = bookRepository.isCacheBookWorkFlow(sourceId, bookId)
         viewModelScope.launch(Dispatchers.IO) {
             isCachedFlow.collect { workInfo ->

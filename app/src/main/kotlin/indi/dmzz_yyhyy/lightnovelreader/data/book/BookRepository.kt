@@ -469,8 +469,9 @@ class BookRepository @Inject constructor(
     suspend fun cacheBook(
         bookId: String,
         chapterIds: List<String>? = null,
-        forceRefresh: Boolean = false
-    ): OneTimeWorkRequest {
+        forceRefresh: Boolean = false,
+        onTaskRegistered: (() -> Unit)? = null
+    ): OneTimeWorkRequest? {
         val sourceId = webBookDataSource.id.toLegacyCompatibleSourceId()
         val localBookVolumes = localBookDataSource.getBookVolumes(sourceId, bookId)
         val selectedChapterIds = chapterIds
@@ -481,7 +482,7 @@ class BookRepository @Inject constructor(
             ?.volumes
             ?.flatMap { it.chapters }
             ?.map { it.id }
-        if (!chaptersToQueue.isNullOrEmpty()) {
+        val queuedChapterIds = if (!chaptersToQueue.isNullOrEmpty()) {
             chapterDownloadRepository.migrateLegacyCachedChapters(
                 sourceId = sourceId,
                 bookId = bookId,
@@ -493,13 +494,18 @@ class BookRepository @Inject constructor(
                 chapterIds = chaptersToQueue,
                 forceRefresh = forceRefresh
             )
+        } else {
+            emptyList()
         }
+        val canDeferQueueToWorker = selectedChapterIds == null && localBookVolumes == null
+        if (queuedChapterIds.isEmpty() && !canDeferQueueToWorker) return null
 
         return enqueueCacheWork(
             bookId = bookId,
             sourceKey = webBookDataSource.id.toString(),
             sourceId = sourceId,
-            queueAll = selectedChapterIds == null && localBookVolumes == null
+            queueAll = canDeferQueueToWorker,
+            onTaskRegistered = onTaskRegistered
         )
     }
 
@@ -576,7 +582,8 @@ class BookRepository @Inject constructor(
         bookId: String,
         sourceKey: String,
         sourceId: Int,
-        queueAll: Boolean
+        queueAll: Boolean,
+        onTaskRegistered: (() -> Unit)? = null
     ): OneTimeWorkRequest {
         val settings = downloadSettingsRepository.get()
         downloadTaskRepository.markRunning(
@@ -586,6 +593,7 @@ class BookRepository @Inject constructor(
             queueAll = queueAll,
             constraintsKey = settings.constraintsKey
         )
+        onTaskRegistered?.invoke()
         val workRequest = OneTimeWorkRequestBuilder<CacheBookWork>()
             .setConstraints(settings.constraints())
             .setInputData(

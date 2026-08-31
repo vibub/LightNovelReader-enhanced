@@ -53,32 +53,32 @@ class ChapterDownloadRepository @Inject constructor(
         bookId: String,
         chapterIds: List<String>,
         forceRefresh: Boolean = false
-    ) {
+    ): List<String> {
         val ids = chapterIds.map(String::trim).filter(String::isNotBlank).distinct()
-        if (ids.isEmpty()) return
+        if (ids.isEmpty()) return emptyList()
         val existing = chapterDownloadDao.getByBook(sourceId, bookId).associateBy { it.chapterId }
         val cachedIds = chapterContentDao.getIds(sourceId, bookId).toSet()
         val now = System.currentTimeMillis()
+        val queuedChapterIds = ids.filter { chapterId ->
+            val old = existing[chapterId]
+            forceRefresh ||
+                old?.status != ChapterDownloadStatus.COMPLETED.name ||
+                chapterId !in cachedIds
+        }
+        if (queuedChapterIds.isEmpty()) return emptyList()
         chapterDownloadDao.upsertAll(
-            ids.mapNotNull { chapterId ->
-                val old = existing[chapterId]
-                if (!forceRefresh &&
-                    old?.status == ChapterDownloadStatus.COMPLETED.name &&
-                    chapterId in cachedIds
-                ) {
-                    null
-                } else {
-                    ChapterDownloadEntity(
-                        sourceId = sourceId,
-                        bookId = bookId,
-                        chapterId = chapterId,
-                        status = ChapterDownloadStatus.QUEUED.name,
-                        errorMessage = null,
-                        updatedAt = now
-                    )
-                }
+            queuedChapterIds.map { chapterId ->
+                ChapterDownloadEntity(
+                    sourceId = sourceId,
+                    bookId = bookId,
+                    chapterId = chapterId,
+                    status = ChapterDownloadStatus.QUEUED.name,
+                    errorMessage = null,
+                    updatedAt = now
+                )
             }
         )
+        return queuedChapterIds
     }
 
     suspend fun resetDownloading(sourceId: Int, bookId: String) {
