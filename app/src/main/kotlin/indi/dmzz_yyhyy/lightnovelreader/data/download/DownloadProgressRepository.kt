@@ -143,7 +143,8 @@ class DownloadProgressRepository @Inject constructor(
                     errorMessage = task.errorMessage
                 }
             }
-            _downloadItemList.addAll((completedBookList + persistedTasks).distinct())
+            // 数据库中的任务状态是当前状态的权威来源，优先于已完成历史，避免旧记录覆盖重新开始的任务。
+            _downloadItemList.addAll((persistedTasks + completedBookList).distinct())
         }
     }
 
