@@ -50,7 +50,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -794,7 +793,7 @@ private fun DetailContent(
             )
         }
 
-        if (visible >= 5 && !downloadSelectionMode) item(key = "contents") {
+        if (visible >= 5) item(key = "contents") {
             Row(
                 modifier = Modifier
                     .fadeInOnce("contents")
@@ -1726,75 +1725,109 @@ private fun VolumeItem(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .combinedClickable(
-                        onClick = { expanded = !expanded },
-                        onLongClick = { if (!selectionMode) actionMenuExpanded = true }
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        if (selectionMode && totalCount > 0 && selectedCount == totalCount) {
+                            colorScheme.secondaryContainer
+                        } else {
+                            Color.Transparent
+                        }
+                    )
+                    .then(
+                        if (selectionMode) {
+                            Modifier
+                        } else {
+                            Modifier.combinedClickable(
+                                onClick = { expanded = !expanded },
+                                onLongClick = { actionMenuExpanded = true }
+                            )
+                        }
                     )
                     .padding(horizontal = 20.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-            if (selectionMode) {
-                Checkbox(
-                    checked = totalCount > 0 && selectedCount == totalCount,
-                    onCheckedChange = {
-                        onToggleVolumeSelection(volume.chapters.map { it.id })
-                    }
-                )
-            }
-            Column(
-                modifier = Modifier
-                    .weight(5f)
-                    .padding(vertical = 12.dp)
-            ) {
-                Text(
-                    text = volume.volumeTitle,
-                    style = typography.titleMedium,
-                    color = if (isFullyRead) colorScheme.secondary
-                    else colorScheme.onSurface
-                )
-                Text(
-                    text = (if (isFullyRead) stringResource(R.string.info_reading_finished)
-                    else stringResource(R.string.info_reading_progress, readCount, totalCount)) +
-                        " · " + stringResource(
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .then(
+                            if (selectionMode) {
+                                Modifier.clickable {
+                                    onToggleVolumeSelection(volumeChapterIds)
+                                }
+                            } else {
+                                Modifier
+                            }
+                        ),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .weight(5f)
+                            .padding(vertical = 12.dp)
+                    ) {
+                        Text(
+                            text = volume.volumeTitle,
+                            style = typography.titleMedium,
+                            color = if (isFullyRead) colorScheme.secondary
+                            else colorScheme.onSurface
+                        )
+                        val volumeStatsText = (if (isFullyRead) {
+                            stringResource(R.string.info_reading_finished)
+                        } else {
+                            stringResource(R.string.info_reading_progress, readCount, totalCount)
+                        }) + " · " + stringResource(
                             R.string.download_progress_summary,
                             completedDownloadCount,
                             totalCount
-                        ),
-                    style = typography.titleSmall,
-                    fontWeight = FontWeight.Normal,
-                    color = colorScheme.secondary
-                )
-                if (selectionMode && selectedCount > 0) {
-                    Text(
-                        text = stringResource(R.string.download_selected_count, selectedCount),
-                        style = typography.labelMedium,
-                        color = colorScheme.primary
-                    )
-                }
-            }
-            Spacer(Modifier.weight(1f))
-            AnimatedVisibility(
-                visible = selectionMode || !hideReadChapters || !isFullyRead,
-                enter = fadeIn(animationSpec = tween(180)) +
-                        slideInHorizontally(
-                            animationSpec = tween(180),
-                            initialOffsetX = { it / 4 }
-                        ),
-                exit = fadeOut(animationSpec = tween(140)) +
-                        slideOutHorizontally(
-                            animationSpec = tween(140),
-                            targetOffsetX = { it / 4 }
                         )
-            ) {
-                Icon(
-                    modifier = Modifier
-                        .size(16.dp)
-                        .rotate(rotation),
-                    painter = painterResource(id = R.drawable.arrow_forward_ios_24px),
-                    contentDescription = null
-                )
-            }
-                Spacer(Modifier.width(12.dp))
+                        val selectedCountText = if (selectionMode && selectedCount > 0) {
+                            " · " + stringResource(R.string.download_selected_count, selectedCount)
+                        } else {
+                            ""
+                        }
+                        Text(
+                            text = volumeStatsText + selectedCountText,
+                            style = typography.titleSmall,
+                            fontWeight = FontWeight.Normal,
+                            color = colorScheme.secondary
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
+                    if (!selectionMode) {
+                        AnimatedVisibility(
+                            visible = !hideReadChapters || !isFullyRead,
+                            enter = fadeIn(animationSpec = tween(180)) +
+                                    slideInHorizontally(
+                                        animationSpec = tween(180),
+                                        initialOffsetX = { it / 4 }
+                                    ),
+                            exit = fadeOut(animationSpec = tween(140)) +
+                                    slideOutHorizontally(
+                                        animationSpec = tween(140),
+                                        targetOffsetX = { it / 4 }
+                                    )
+                        ) {
+                            Icon(
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .rotate(rotation),
+                                painter = painterResource(id = R.drawable.arrow_forward_ios_24px),
+                                contentDescription = null
+                            )
+                        }
+                    }
+                }
+                if (selectionMode) {
+                    IconButton(onClick = { expanded = !expanded }) {
+                        Icon(
+                            modifier = Modifier
+                                .size(16.dp)
+                                .rotate(rotation),
+                            painter = painterResource(id = R.drawable.arrow_forward_ios_24px),
+                            contentDescription = null
+                        )
+                    }
+                }
             }
             DetailItemActionMenu(
                 expanded = actionMenuExpanded,
@@ -1930,22 +1963,21 @@ private fun ChapterItem(
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (selectionMode && isSelected) colorScheme.secondaryContainer
+                else Color.Transparent
+            )
             .combinedClickable(
                 onClick = if (selectionMode) onToggleSelection else onClick,
                 onLongClick = { if (!selectionMode) actionMenuExpanded = true }
             )
             .padding(vertical = 12.dp)
-            .padding(start = if (selectionMode) 20.dp else 32.dp, end = 20.dp)
+            .padding(start = 32.dp, end = 20.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (selectionMode) {
-                Checkbox(
-                    checked = isSelected,
-                    onCheckedChange = { onToggleSelection() }
-                )
-            }
             Column(
                 modifier = Modifier.weight(1f)
             ) {
