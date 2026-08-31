@@ -332,61 +332,64 @@ fun DetailScreen(
                 isCollapsed = isCollapsed
             )
 
+            // 只对初始加载状态做动画，避免网络刷新时重建详情列表并丢失滚动位置。
             Crossfade(
-                targetState = uiState.bookInformation,
+                targetState = uiState.bookInformation?.component1() == null,
                 animationSpec = tween(300),
                 label = "DetailScreenCrossfade"
-            ) { result ->
-                result?.onOk {
-                    DetailContent(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(colorScheme.surface),
-                        bottomContentPadding = downloadContentBottomPadding,
-                        uiState = uiState,
-                        bookInformation = it,
-                        onClickChapter = onClickChapter,
-                        lazyListState = lazyListState,
-                        cacheBook = { _ -> openDownloadSelection() },
-                        onDownloadChapters = { chapterIds ->
-                            onStartCache(it.id, chapterIds, false)
-                        },
-                        onOpenDownloadSelection = { initialChapterIds ->
-                            openDownloadSelection(initialChapterIds)
-                        },
-                        onMarkChaptersAsRead = onMarkChaptersAsRead,
-                        onMarkReadThrough = onMarkReadThrough,
-                        downloadSelectionMode = downloadSelectionMode,
-                        selectedChapterIds = selectedChapterIds,
-                        onToggleChapterSelection = { chapterId ->
-                            selectedChapterIds = if (chapterId in selectedChapterIds) {
-                                selectedChapterIds - chapterId
-                            } else {
-                                selectedChapterIds + chapterId
-                            }
-                        },
-                        onToggleVolumeSelection = { chapterIds ->
-                            selectedChapterIds = if (chapterIds.all { it in selectedChapterIds }) {
-                                selectedChapterIds - chapterIds.toSet()
-                            } else {
-                                selectedChapterIds + chapterIds
-                            }
-                        },
-                        onRetryChapter = onRetryChapter,
-                        requestAddBookToBookshelf = requestAddBookToBookshelf,
-                        onClickTag = onClickTag,
-                        onClickCover = onClickCover,
-                        onClickShowInfo = { showInfoBottomSheet = true },
-                        onClickWebView = onClickWebView,
-                        onClickUnresolvedBookmark = { showBookmarkMatchDialog = true }
-                    )
-                }?.onErr {
-                    //TODO 错误显示
-                } ?: DetailContentSkeleton(
+            ) { showSkeleton ->
+                if (showSkeleton) {
+                    DetailContentSkeleton(
                         Modifier
                             .fillMaxSize()
                             .background(colorScheme.surface)
                     )
+                } else {
+                    uiState.bookInformation?.component1()?.let { bookInformation ->
+                        DetailContent(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(colorScheme.surface),
+                            bottomContentPadding = downloadContentBottomPadding,
+                            uiState = uiState,
+                            bookInformation = bookInformation,
+                            onClickChapter = onClickChapter,
+                            lazyListState = lazyListState,
+                            cacheBook = { _ -> openDownloadSelection() },
+                            onDownloadChapters = { chapterIds ->
+                                onStartCache(bookInformation.id, chapterIds, false)
+                            },
+                            onOpenDownloadSelection = { initialChapterIds ->
+                                openDownloadSelection(initialChapterIds)
+                            },
+                            onMarkChaptersAsRead = onMarkChaptersAsRead,
+                            onMarkReadThrough = onMarkReadThrough,
+                            downloadSelectionMode = downloadSelectionMode,
+                            selectedChapterIds = selectedChapterIds,
+                            onToggleChapterSelection = { chapterId ->
+                                selectedChapterIds = if (chapterId in selectedChapterIds) {
+                                    selectedChapterIds - chapterId
+                                } else {
+                                    selectedChapterIds + chapterId
+                                }
+                            },
+                            onToggleVolumeSelection = { chapterIds ->
+                                selectedChapterIds = if (chapterIds.all { it in selectedChapterIds }) {
+                                    selectedChapterIds - chapterIds.toSet()
+                                } else {
+                                    selectedChapterIds + chapterIds
+                                }
+                            },
+                            onRetryChapter = onRetryChapter,
+                            requestAddBookToBookshelf = requestAddBookToBookshelf,
+                            onClickTag = onClickTag,
+                            onClickCover = onClickCover,
+                            onClickShowInfo = { showInfoBottomSheet = true },
+                            onClickWebView = onClickWebView,
+                            onClickUnresolvedBookmark = { showBookmarkMatchDialog = true }
+                        )
+                    }
+                }
             }
         }
 
@@ -735,7 +738,7 @@ private fun DetailContent(
         modifier = modifier,
         contentPadding = PaddingValues(bottom = bottomContentPadding)
     ) {
-        if (visible >= 1) item {
+        if (visible >= 1) item(key = "book") {
             BookCardBlock(
                 bookInformation = bookInformation,
                 modifier = Modifier
@@ -748,7 +751,7 @@ private fun DetailContent(
             )
         }
 
-        if (visible >= 2) item {
+        if (visible >= 2) item(key = "tags") {
             TagsBlock(
                 modifier = Modifier.fadeInOnce("tags"),
                 bookInformation = bookInformation,
@@ -756,7 +759,7 @@ private fun DetailContent(
             )
         }
 
-        if (visible >= 3) item {
+        if (visible >= 3) item(key = "operations") {
             QuickOperationsBlock(
                 modifier = Modifier.fadeInOnce("op"),
                 isInBookshelf = uiState.isInBookshelf,
@@ -771,7 +774,7 @@ private fun DetailContent(
             )
         }
 
-        if (visible >= 4 && uiState.isLinovelibSource && uiState.bookmarkUiState.chapterTitle.isNotBlank()) item {
+        if (visible >= 4 && uiState.isLinovelibSource && uiState.bookmarkUiState.chapterTitle.isNotBlank()) item(key = "linovelib-bookmark") {
             LinovelibBookmarkBlock(
                 modifier = Modifier.fadeInOnce("linovelib-bookmark"),
                 bookmarkUiState = uiState.bookmarkUiState,
@@ -784,14 +787,14 @@ private fun DetailContent(
             )
         }
 
-        if (visible >= 4) item {
+        if (visible >= 4) item(key = "intro") {
             IntroBlock(
                 modifier = Modifier.fadeInOnce("intro"),
                 description = bookInformation.description
             )
         }
 
-        if (visible >= 5 && !downloadSelectionMode) item {
+        if (visible >= 5 && !downloadSelectionMode) item(key = "contents") {
             Row(
                 modifier = Modifier
                     .fadeInOnce("contents")
@@ -819,7 +822,7 @@ private fun DetailContent(
                     .map { it.id }
                 items(
                     items = bookVolumes.volumes,
-                    key = { it.volumeId }
+                    key = { "volume:${it.volumeId}" }
                 ) { volume ->
                     VolumeItem(
                         modifier = Modifier.fadeInOnce(volume.volumeId),
@@ -845,7 +848,7 @@ private fun DetailContent(
                 }
             }?.onErr {
                 //TODO 错误显示
-            } ?: item {
+            } ?: item(key = "volumes-loading") {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -857,7 +860,7 @@ private fun DetailContent(
             }
         }
 
-        item {
+        item(key = "bottom-spacer") {
             Spacer(Modifier.height(48.dp))
         }
     }
