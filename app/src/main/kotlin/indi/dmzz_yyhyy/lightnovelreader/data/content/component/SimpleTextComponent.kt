@@ -73,7 +73,8 @@ class SimpleTextComponent(
             fontLineHeight = combinedStyle.fontLineHeight.sp,
             fontWeight = FontWeight(combinedStyle.fontWeight.toInt()),
             fontFamily = rememberReaderFontFamily(fontFamilyUriUserData),
-            color = readerTextColor(combinedStyle.textColor, combinedStyle.textDarkColor)
+            color = readerTextColor(combinedStyle.textColor, combinedStyle.textDarkColor),
+            styleRanges = data.styleRanges
         )
     }
 
@@ -100,15 +101,27 @@ class SimpleTextComponent(
         val fontSize = fontSizeUserData.getOrDefault(15f)
         val fontLineHeight = fontLineHeightUserData.getOrDefault(7f)
         val fontWeigh = fontWeightUserData.getOrDefault(500f)
+        val style = AppTypography.bodyMedium.copy(
+            fontSize = fontSize.sp,
+            lineHeight = (fontLineHeight + fontSize).sp,
+            fontWeight = FontWeight(fontWeigh.toInt()),
+            fontFamily = readerFontFamily(fontFamilyUriUserData),
+        )
+        val rubyLayout = measureRubyText(
+            data.toAnnotatedString(), data.styleRanges, style, textMeasurer,
+            Density(context.resources.displayMetrics.density, context.resources.configuration.fontScale), width
+        )
+        if (rubyLayout.lines.isNotEmpty()) {
+            return rubyLayout.pageRanges(height).mapNotNull { range ->
+                data.slice(range).takeIf { it.text.isNotBlank() }
+                    ?.let { SimpleTextComponent(it, userDataRepositoryApi, context) }
+            }
+        }
         return textMeasurer.measure(
-            text = data.toAnnotatedString(),
-            style = AppTypography.bodyMedium.copy(
-                fontSize = fontSize.sp,
-                lineHeight = (fontLineHeight + fontSize).sp,
-                fontWeight = FontWeight(fontWeigh.toInt()),
-                fontFamily = readerFontFamily(fontFamilyUriUserData),
-            ),
-            constraints = Constraints(maxHeight = height, maxWidth = width),
+            text = rubyLayout.text,
+            style = style,
+            placeholders = rubyLayout.placeholders,
+            constraints = Constraints(maxWidth = width),
         )
             .getSlipData(data, width, height)
             .map { SimpleTextComponent(it, userDataRepositoryApi, context) }
@@ -139,7 +152,7 @@ class SimpleTextComponent(
                         )
                     )
                 )
-                while (isLineOverflow(checkLine)) checkLine--
+                while (checkLine > startLine && isLineOverflow(checkLine)) checkLine--
                 return checkLine
             }
 
@@ -186,7 +199,8 @@ private fun SimpleTextComponentData.slice(range: IntRange): SimpleTextComponentD
             if (overlapStart >= overlapEnd) return@mapNotNull null
             styleRange.copy(
                 start = overlapStart - start,
-                end = overlapEnd - start
+                end = overlapEnd - start,
+                rubyText = styleRange.rubySubstring(overlapStart, overlapEnd)
             )
         }
     )

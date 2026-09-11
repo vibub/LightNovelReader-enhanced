@@ -653,6 +653,21 @@ class LinovelibWebsiteDataSourceTest {
     }
 
     @Test
+    fun toLinovelibSimpleTextComponentDataKeepsRubyAfterPageMergeAndIndent() {
+        val parts = listOf(
+            LinovelibChapterContentParser.Part.Text("前段"),
+            LinovelibChapterContentParser.Part.Text(
+                "阻电扰乱型",
+                listOf(SimpleTextStyleRange(0, 5, rubyText = "Eintagsfliege"))
+            )
+        ).mergeLinovelibPagedTextParts()
+        val data = (parts.single() as LinovelibChapterContentParser.Part.Text).toLinovelibSimpleTextComponentData()
+        val range = data.styleRanges.single()
+        assertEquals("阻电扰乱型", data.text.substring(range.start, range.end))
+        assertEquals("Eintagsfliege", range.rubyText)
+    }
+
+    @Test
     fun toLinovelibSimpleTextComponentDataShiftsStyleRangesAfterParagraphIndent() {
         val data = LinovelibChapterContentParser.Part.Text(
             text = "加粗段\n\n普通段",

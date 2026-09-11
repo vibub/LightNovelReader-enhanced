@@ -51,6 +51,24 @@ internal object LinovelibChapterContentParser {
                     is TextNode -> pendingText.append(node.text())
                     is Element -> when {
                         node.`is`("script, style, noscript") -> Unit
+                        node.`is`("rt, rp") -> Unit
+                        node.`is`("ruby") -> {
+                            var baseStart = pendingText.length
+                            node.childNodes().forEach { child ->
+                                if (child is Element && child.`is`("rt")) {
+                                    val annotation = child.text().cleanText()
+                                    if (annotation.isNotBlank()) {
+                                        pendingText.addStyle(
+                                            baseStart, pendingText.length,
+                                            SimpleTextStyleRange(0, 0, rubyText = annotation)
+                                        )
+                                    }
+                                    baseStart = pendingText.length
+                                } else {
+                                    appendNode(child)
+                                }
+                            }
+                        }
                         node.`is`("br") -> pendingText.append('\n')
                         node.`is`("img") -> {
                             flushText()

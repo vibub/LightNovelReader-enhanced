@@ -53,6 +53,7 @@ data class SimpleTextComponentData(
  * @param italic 是否使用斜体
  * @param underline 是否添加下划线
  * @param strikethrough 是否添加删除线
+ * @param rubyText 显示在该范围正文上方的注音或译名，为 null 时不显示注释
  */
 @Serializable
 data class SimpleTextStyleRange(
@@ -61,7 +62,8 @@ data class SimpleTextStyleRange(
     val fontWeight: Int? = null,
     val italic: Boolean = false,
     val underline: Boolean = false,
-    val strikethrough: Boolean = false
+    val strikethrough: Boolean = false,
+    val rubyText: String? = null
 )
 
 private fun Element.appendStyledText(
@@ -73,6 +75,20 @@ private fun Element.appendStyledText(
         if (text[index] == '\n') {
             addElement("br")
             index++
+            continue
+        }
+        val ruby = styleRanges.firstOrNull { it.start == index && !it.rubyText.isNullOrBlank() }
+        if (ruby != null && ruby.end in (index + 1)..text.length) {
+            addElement("ruby").apply {
+                appendStyledText(
+                    text.substring(index, ruby.end),
+                    styleRanges.filter { it.rubyText == null }.map { range ->
+                        range.copy(start = range.start - index, end = range.end - index)
+                    }
+                )
+                addElement("rt").addText(ruby.rubyText)
+            }
+            index = ruby.end
             continue
         }
         val nextNewLine = text.indexOf('\n', startIndex = index).takeIf { it >= 0 } ?: text.length

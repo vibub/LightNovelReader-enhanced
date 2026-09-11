@@ -10,6 +10,45 @@ import org.junit.Test
 
 class LinovelibChapterContentParserTest {
     @Test
+    fun parseKeepsRubyAboveBaseInsteadOfAppendingAnnotation() {
+        val result = parse("""
+            <div id="TextContent"><p>『不，上校，<ruby>阻电扰乱型<rt>Eintagsfliege</rt></ruby>要降落了！』</p></div>
+        """.trimIndent())
+        assertEquals(
+            listOf(LinovelibChapterContentParser.Part.Text(
+                "『不，上校，阻电扰乱型要降落了！』",
+                listOf(SimpleTextStyleRange(6, 11, rubyText = "Eintagsfliege"))
+            )), result.parts
+        )
+    }
+
+    @Test
+    fun parseKeepsRepeatedRubyAndIgnoresFallbackParentheses() {
+        val result = parse("""
+            <div id="TextContent"><p> <ruby>六<rp>（</rp><rt>一</rt><rp>）</rp>四<rt>二</rt></ruby> </p><p><ruby><b>地图Ｃ</b><rt>坐标</rt></ruby></p></div>
+        """.trimIndent())
+        assertEquals(
+            listOf(LinovelibChapterContentParser.Part.Text(
+                "六四\n\n地图Ｃ",
+                listOf(
+                    SimpleTextStyleRange(0, 1, rubyText = "一"),
+                    SimpleTextStyleRange(1, 2, rubyText = "二"),
+                    SimpleTextStyleRange(4, 7, fontWeight = 700),
+                    SimpleTextStyleRange(4, 7, rubyText = "坐标")
+                )
+            )), result.parts
+        )
+    }
+
+    @Test
+    fun parseKeepsBaseWhenRubyAnnotationIsEmpty() {
+        val result = parse("""
+            <div id="TextContent"><p><ruby>正文<rt> </rt></ruby><ruby>无注音</ruby></p></div>
+        """.trimIndent())
+        assertEquals(listOf(LinovelibChapterContentParser.Part.Text("正文无注音")), result.parts)
+    }
+
+    @Test
     fun parseKeepsDomOrderWhenNoOrderSignal() {
         val result = parse(
             """
