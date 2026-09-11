@@ -76,16 +76,21 @@ class RubyVerticalLayoutTest {
                                 },
                                 constraints = Constraints(maxWidth = width)
                             )
-                            assertEquals("不能增加空行", original.lineCount, ruby.lines.size)
-                            ruby.lines.forEachIndexed { index, line ->
-                                assertEquals(original.getLineStart(index), line.start)
-                                assertEquals(original.getLineEnd(index), line.end)
+                            assertEquals("正文范围不能缺失或重复", text,
+                                ruby.lines.joinToString("") { text.substring(it.start, it.end) })
+                            assertEquals("不能增加空行", (0 until original.lineCount).count {
+                                text.substring(original.getLineStart(it), original.getLineEnd(it)).isBlank()
+                            }, ruby.lines.count { it.text.isBlank() })
+                            ruby.lines.forEach { line ->
+                                val index = original.getLineForOffset(line.start)
                                 val expectedHeight = kotlin.math.ceil(original.getLineBottom(index) - original.getLineTop(index)).toInt()
-                                if (line.runs.isEmpty()) {
+                                if (line.text.isBlank()) {
                                     assertEquals("只抵扣被注释复用的空白", expectedHeight, line.height + line.reclaimedHeight)
-                                    if (!line.text.isBlank()) assertEquals(0, line.reclaimedHeight)
-                                } else if (gap == 60) {
-                                    assertEquals("原行距足够时注释不应继续撑高", expectedHeight, line.height)
+                                } else {
+                                    assertEquals(0, line.reclaimedHeight)
+                                    if (line.runs.isNotEmpty() && gap == 60 && line.layout.lineCount == 1) {
+                                        assertEquals("原行距足够时注释不应继续撑高", expectedHeight, line.height)
+                                    }
                                 }
                                 line.runs.forEachIndexed { runIndex, run ->
                                     val rect = requireNotNull(line.layout.placeholderRects[runIndex])
@@ -97,7 +102,7 @@ class RubyVerticalLayoutTest {
                                             (it.size.height - it.rubyInkBounds().bottom).coerceAtLeast(0f) * run.annotationPlacement.scale
                                     }
                                     val visibleGap = run.baseTop + run.base.rubyInkBounds().top - annotationBottom
-                                    val expectedGap = kotlin.math.ceil(fontSize * 0.06f).toInt()
+                                    val expectedGap = kotlin.math.ceil(fontSize * 0.08f).toInt()
                                     assertTrue("可见字形之间保留小间隙", visibleGap >= expectedGap - 0.01f && visibleGap < expectedGap + 1.01f)
                                     run.annotation.forEach {
                                         assertEquals((fontSize * 0.6f).sp, it.layoutInput.style.fontSize)
@@ -150,6 +155,50 @@ class RubyVerticalLayoutTest {
                     TextStyle(fontSize = 20.sp, lineHeight = 28.sp), measurer, density, 340
                 )
                 if (sliced.lines.isNotEmpty()) assertTrue("分页重测不能溢出", sliced.lines.sumOf { it.height } <= 75)
+            }
+        }
+    }
+
+    @Test
+    fun longBodySharesLayoutsAndWrapsWithinTheRenderedWidth() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val paragraph = "　　毕竟是多个贵族领地提供大规模兵力，只要是同为贵族阶级的人，都会立刻察觉到风吹草动。从部署于圣耶德尔维持治安并「收集情资」的火焰猎豹师团听到那个风声，吉尔维斯感到狐疑。"
+            val fixture = List(30) { paragraph }.joinToString("\n\n") + "\n\n指挥官下达命令。"
+            val start = fixture.indexOf("指挥官")
+            for (density in listOf(Density(1f, 1f), Density(2.625f, 1.15f))) {
+                val measurer = TextMeasurer(createFontFamilyResolver(context), density, LayoutDirection.Ltr)
+                for (width in listOf(181, 339, 827)) {
+                    val ruby = measureRubyText(
+                        AnnotatedString(fixture), listOf(SimpleTextStyleRange(start, start + 3, rubyText = "公主")),
+                        TextStyle(fontSize = 20.sp, lineHeight = 28.sp, letterSpacing = 0.5.sp),
+                        measurer, density, width
+                    )
+                    val blocks = ruby.renderBlocks()
+                    assertEquals(fixture, ruby.lines.joinToString("") { fixture.substring(it.start, it.end) })
+                    assertEquals(ruby.lines, blocks.flatten())
+                    assertTrue("普通正文不能再为每个视觉行创建文本节点", blocks.size < ruby.lines.size)
+                    blocks.filter { it.first().text.isNotBlank() }.forEach { block ->
+                        val first = block.first()
+                        val layout = first.layout
+                        assertTrue("测量与显示均须允许自动换行", layout.layoutInput.softWrap)
+                        assertTrue("文本块不能横向溢出", !layout.didOverflowWidth)
+                        assertTrue("换行后的完整高度必须计入布局", first.topPadding + layout.size.height <= block.sumOf { it.height })
+                        assertTrue(block.all { it.layout === layout })
+                        for (line in 0 until layout.lineCount) {
+                            assertTrue("右侧不能裁字", layout.getLineRight(line) <= width + 1f)
+                        }
+                        // 使用生产 BasicText 的定宽约束再次测量，不能因最小宽度不同改变换行。
+                        val rendered = measurer.measure(
+                            text = layout.layoutInput.text, style = layout.layoutInput.style,
+                            placeholders = layout.layoutInput.placeholders, softWrap = true,
+                            constraints = Constraints(minWidth = width, maxWidth = width)
+                        )
+                        assertEquals(layout.lineCount, rendered.lineCount)
+                        assertEquals(layout.size.height, rendered.size.height)
+                    }
+                    assertEquals(fixture, ruby.pageRanges(600).joinToString("") { fixture.slice(it) })
+                }
             }
         }
     }

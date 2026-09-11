@@ -94,7 +94,8 @@ internal data class RubyTextLine(
     val height: Int,
     val runs: List<RubyTextRun>,
     val extraAbove: Int = 0,
-    val reclaimedHeight: Int = 0
+    val reclaimedHeight: Int = 0,
+    val layoutLine: Int = 0
 )
 
 internal data class RubyTextLayout(
@@ -202,35 +203,97 @@ internal fun measureRubyText(
         constraints = Constraints(maxWidth = maxWidth)
     )
     val runsByLine = runs.groupBy { horizontalLayout.getLineForOffset(it.start) }
-    val lines = (0 until horizontalLayout.lineCount).map { line ->
+    fun displayEnd(line: Int): Int {
         val start = horizontalLayout.getLineStart(line)
         val end = horizontalLayout.getLineEnd(line)
-        val displayEnd = if (end > start && inlineText[end - 1] == '\n') end - 1 else end
-        val lineText = inlineText.subSequence(start, displayEnd)
-        val lineRuns = runsByLine[line].orEmpty()
-        val originalHeight = ceil(horizontalLayout.getLineBottom(line) - horizontalLayout.getLineTop(line)).toInt()
-        val measured = measurer.measure(
-            text = lineText,
-            style = if (lineRuns.isEmpty()) style else baseStyle,
-            placeholders = lineRuns.map {
-                AnnotatedString.Range(it.placeholder, it.start - start, it.end - start)
-            },
-            softWrap = false,
-            constraints = Constraints(maxWidth = maxWidth)
-        )
-        val originalBaseline = horizontalLayout.getLineBaseline(line) - horizontalLayout.getLineTop(line)
-        val topPadding = ceil(originalBaseline - measured.firstBaseline).toInt().coerceAtLeast(0)
-        val extraAbove = if (lineRuns.isEmpty()) 0
-            else ceil(topPadding + measured.firstBaseline - originalBaseline).toInt().coerceAtLeast(0)
-        // 保留下侧原有空间；只有注释把正文基线向下顶开的部分才能抵扣前面的空白。
-        val height = if (lineText.isEmpty() || lineRuns.isEmpty()) originalHeight
-            else maxOf(originalHeight + extraAbove, topPadding + measured.size.height)
-        RubyTextLine(start, end, lineText, measured, topPadding, height, lineRuns, extraAbove)
+        return if (end > start && inlineText[end - 1] == '\n') end - 1 else end
     }
-    val reclaimed = reusableRubySpacing(lines.map { RubyLineSpace(it.height, it.text.isBlank(), it.extraAbove) })
+    fun isBlank(line: Int) = inlineText.text.substring(
+        horizontalLayout.getLineStart(line), displayEnd(line)
+    ).isBlank()
+
+    val lines = buildList {
+        var line = 0
+        while (line < horizontalLayout.lineCount) {
+            val firstLine = line
+            val start = horizontalLayout.getLineStart(line)
+            val lineRuns = runsByLine[line].orEmpty()
+            if (isBlank(line)) {
+                val end = horizontalLayout.getLineEnd(line)
+                val height = ceil(horizontalLayout.getLineBottom(line) - horizontalLayout.getLineTop(line)).toInt()
+                add(RubyTextLine(start, end, inlineText.subSequence(start, displayEnd(line)),
+                    horizontalLayout, 0, height, emptyList(), layoutLine = line))
+                line++
+                continue
+            }
+            // 普通正文整块测量，分页行共享结果；不再为每一视觉行创建一个文本布局。
+            if (lineRuns.isEmpty()) {
+                while (line + 1 < horizontalLayout.lineCount &&
+                    runsByLine[line + 1].isNullOrEmpty() && !isBlank(line + 1)
+                ) line++
+            }
+            val end = horizontalLayout.getLineEnd(line)
+            val blockText = inlineText.subSequence(start, displayEnd(line))
+            val originalHeight = (firstLine..line).sumOf {
+                ceil(horizontalLayout.getLineBottom(it) - horizontalLayout.getLineTop(it)).toInt()
+            }
+            val measured = measurer.measure(
+                text = blockText,
+                style = if (lineRuns.isEmpty()) style else baseStyle,
+                placeholders = lineRuns.map {
+                    AnnotatedString.Range(it.placeholder, it.start - start, it.end - start)
+                },
+                softWrap = true,
+                constraints = Constraints(maxWidth = maxWidth)
+            )
+            val originalBaseline = horizontalLayout.getLineBaseline(firstLine) - horizontalLayout.getLineTop(firstLine)
+            val topPadding = ceil(originalBaseline - measured.firstBaseline).toInt().coerceAtLeast(0)
+            val extraAbove = if (lineRuns.isEmpty()) 0
+                else ceil(topPadding + measured.firstBaseline - originalBaseline).toInt().coerceAtLeast(0)
+            val height = maxOf(originalHeight + extraAbove, topPadding + measured.size.height)
+            if (lineRuns.isNotEmpty()) {
+                // 允许标点等在重新排版后换行，不能靠裁切强行维持原来的单行。
+                add(RubyTextLine(start, end, blockText, measured, topPadding, height, lineRuns, extraAbove))
+            } else {
+                for (index in 0 until measured.lineCount) {
+                    val localStart = measured.getLineStart(index)
+                    val localEnd = measured.getLineEnd(index)
+                    val visibleEnd = if (localEnd > localStart && blockText[localEnd - 1] == '\n') localEnd - 1 else localEnd
+                    val top = if (index == 0) 0 else topPadding + ceil(measured.getLineTop(index)).toInt()
+                    val bottom = if (index == measured.lineCount - 1) height
+                        else topPadding + ceil(measured.getLineTop(index + 1)).toInt()
+                    add(RubyTextLine(
+                        start + localStart,
+                        if (index == measured.lineCount - 1) end else start + localEnd,
+                        blockText.subSequence(localStart, visibleEnd), measured,
+                        if (index == 0) topPadding else 0, bottom - top, emptyList(), layoutLine = index
+                    ))
+                }
+            }
+            line++
+        }
+    }
+    val reclaimed = reusableRubySpacing(lines.map {
+        RubyLineSpace(it.height, it.layout === horizontalLayout && it.text.isBlank(), it.extraAbove)
+    })
     return RubyTextLayout(inlineText, runs, lines.mapIndexed { index, line ->
         line.copy(height = line.height - reclaimed[index], reclaimedHeight = reclaimed[index])
     })
+}
+
+/** 普通正文共享一次布局和一个可选择文本节点，空白仍独立保留以便抵扣注释高度。 */
+internal fun RubyTextLayout.renderBlocks(): List<List<RubyTextLine>> = buildList {
+    var index = 0
+    while (index < lines.size) {
+        val start = index++
+        val first = lines[start]
+        if (first.text.isNotBlank() && first.runs.isEmpty()) {
+            while (index < lines.size && lines[index].runs.isEmpty() &&
+                lines[index].layout === first.layout && lines[index].layoutLine == lines[index - 1].layoutLine + 1
+            ) index++
+        }
+        add(lines.subList(start, index))
+    }
 }
 
 internal fun RubyTextLayout.pageRanges(maxHeight: Int): List<IntRange> = rubyPageRanges(

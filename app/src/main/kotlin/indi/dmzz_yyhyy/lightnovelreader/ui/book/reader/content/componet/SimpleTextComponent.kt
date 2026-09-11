@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import indi.dmzz_yyhyy.lightnovelreader.data.content.component.measureRubyText
+import indi.dmzz_yyhyy.lightnovelreader.data.content.component.renderBlocks
 import io.nightfish.lightnovelreader.api.content.component.SimpleTextStyleRange
 import io.nightfish.lightnovelreader.api.ui.LocalTextLocaleList
 
@@ -96,16 +97,19 @@ fun SimpleTextComponentContent(
                         }
                     }
                 }
+                val blocks = remember(layout) { layout.renderBlocks() }
                 Column(Modifier.fillMaxWidth()) {
-                    layout.lines.forEach { line ->
-                        Box(Modifier.fillMaxWidth().height(with(density) { line.height.toDp() })) {
-                            if (line.text.isNotEmpty()) {
+                    blocks.forEach { block ->
+                        val first = block.first()
+                        val height = block.sumOf { it.height }
+                        Box(Modifier.fillMaxWidth().height(with(density) { height.toDp() })) {
+                            if (first.text.isNotBlank()) {
                                 BasicText(
-                                    modifier = Modifier.fillMaxWidth().offset(y = with(density) { line.topPadding.toDp() }),
-                                    text = line.text,
-                                    style = line.layout.layoutInput.style,
-                                    softWrap = false,
-                                    inlineContent = inlineContent
+                                    modifier = Modifier.fillMaxWidth().offset(y = with(density) { first.topPadding.toDp() }),
+                                    text = first.layout.layoutInput.text,
+                                    style = first.layout.layoutInput.style,
+                                    softWrap = true,
+                                    inlineContent = if (first.runs.isEmpty()) emptyMap() else inlineContent
                                 )
                             }
                         }
