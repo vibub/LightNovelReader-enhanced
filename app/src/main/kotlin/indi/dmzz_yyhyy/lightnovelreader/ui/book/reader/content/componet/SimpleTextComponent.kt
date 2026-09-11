@@ -3,7 +3,6 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.text.BasicText
@@ -28,6 +27,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
+import indi.dmzz_yyhyy.lightnovelreader.data.content.component.TextBlockIndex
 import indi.dmzz_yyhyy.lightnovelreader.data.content.component.measureRubyText
 import indi.dmzz_yyhyy.lightnovelreader.data.content.component.renderBlocks
 import io.nightfish.lightnovelreader.api.content.component.SimpleTextStyleRange
@@ -98,20 +98,19 @@ fun SimpleTextComponentContent(
                     }
                 }
                 val blocks = remember(layout) { layout.renderBlocks() }
-                Column(Modifier.fillMaxWidth()) {
-                    blocks.forEach { block ->
-                        val first = block.first()
-                        val height = block.sumOf { it.height }
-                        Box(Modifier.fillMaxWidth().height(with(density) { height.toDp() })) {
-                            if (first.text.isNotBlank()) {
-                                BasicText(
-                                    modifier = Modifier.fillMaxWidth().offset(y = with(density) { first.topPadding.toDp() }),
-                                    text = first.layout.layoutInput.text,
-                                    style = first.layout.layoutInput.style,
-                                    softWrap = true,
-                                    inlineContent = if (first.runs.isEmpty()) emptyMap() else inlineContent
-                                )
-                            }
+                val heights = remember(blocks) { blocks.map { block -> block.sumOf { it.height } } }
+                val index = remember(heights) { TextBlockIndex(heights) }
+                ReaderTextBlockLayout(index) { blockIndex ->
+                    val first = blocks[blockIndex].first()
+                    Box(Modifier.fillMaxWidth().height(with(density) { heights[blockIndex].toDp() })) {
+                        if (first.text.isNotBlank()) {
+                            BasicText(
+                                modifier = Modifier.fillMaxWidth().offset(y = with(density) { first.topPadding.toDp() }),
+                                text = first.layout.layoutInput.text,
+                                style = first.layout.layoutInput.style,
+                                softWrap = true,
+                                inlineContent = if (first.runs.isEmpty()) emptyMap() else inlineContent
+                            )
                         }
                     }
                 }

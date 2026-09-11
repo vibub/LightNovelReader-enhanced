@@ -24,11 +24,11 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
@@ -37,12 +37,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -60,6 +62,8 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.toChapterEndContext
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentError
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentLoading
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiState
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.LocalReaderTextViewport
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.ReaderTextViewport
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.Loading
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data.MenuOptions
 import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
@@ -114,8 +118,10 @@ fun ScrollContentTextComponent(
     val density = LocalDensity.current
     val screenHeight = LocalResources.current.displayMetrics.heightPixels
     val listState = uiState.lazyListState
-    val scope = rememberCoroutineScope()
     var lazyColumnSize by remember { mutableStateOf(IntSize(0, 0)) }
+    var textViewport by remember(screenHeight) {
+        mutableStateOf(ReaderTextViewport(0f, screenHeight.toFloat()))
+    }
 
     val reachedTopMsg = stringResource(R.string.reader_reached_top)
     val prevChapterLabel = stringResource(R.string.previous_chapter)
@@ -243,10 +249,10 @@ fun ScrollContentTextComponent(
                 .height(with(density) {
                     screenHeight.toDp()
                 })
-                .offset(y = with(density) {
-                    ((uiState.lazyListState.layoutInfo.visibleItemsInfo.getOrNull(0)?.offset
-                        ?: 0) % screenHeight + screenHeight).toDp()
-                }),
+                .offset {
+                    IntOffset(0, (listState.layoutInfo.visibleItemsInfo.firstOrNull()?.offset
+                        ?: 0) % screenHeight + screenHeight)
+                },
             painter = rememberReaderBackgroundPainter(settingState),
             contentDescription = null,
             contentScale = ContentScale.Crop
@@ -257,10 +263,10 @@ fun ScrollContentTextComponent(
                 .height(with(density) {
                     screenHeight.toDp()
                 })
-                .offset(y = with(density) {
-                    ((uiState.lazyListState.layoutInfo.visibleItemsInfo.getOrNull(0)?.offset
-                        ?: 0) % screenHeight).toDp()
-                }),
+                .offset {
+                    IntOffset(0, (listState.layoutInfo.visibleItemsInfo.firstOrNull()?.offset
+                        ?: 0) % screenHeight)
+                },
             painter = rememberReaderBackgroundPainter(settingState),
             contentDescription = null,
             contentScale = ContentScale.Crop
@@ -293,11 +299,13 @@ fun ScrollContentTextComponent(
                     )
                 }
                 .onGloballyPositioned {
-                    scope.launch {
-                        withFrameNanos { }
+                    if (lazyColumnSize != it.size) {
                         uiState.setLazyColumnSize(it.size)
                         lazyColumnSize = it.size
                     }
+                    val bounds = it.boundsInWindow()
+                    val viewport = ReaderTextViewport(bounds.top, bounds.bottom)
+                    if (textViewport != viewport) textViewport = viewport
                 },
             state = listState,
         ) {
@@ -317,14 +325,16 @@ fun ScrollContentTextComponent(
                         ChapterContentLoading()
                     } else {
                         result?.onOk {
-                            TextContent(
-                                modifier = modifier,
-                                settingState = settingState,
-                                content = it,
-                                bookId = bookId,
-                                nextChapterTitle = chapterTitleById[it.nextChapter],
-                                onClickChapterComments = onClickChapterComments
-                            )
+                            CompositionLocalProvider(LocalReaderTextViewport provides textViewport) {
+                                TextContent(
+                                    modifier = Modifier,
+                                    settingState = settingState,
+                                    content = it,
+                                    bookId = bookId,
+                                    nextChapterTitle = chapterTitleById[it.nextChapter],
+                                    onClickChapterComments = onClickChapterComments
+                                )
+                            }
                         }?.onErr { error ->
                             ChapterContentError(error) {
                                 chapterId?.let { uiState.retryChapter(index, it) }
