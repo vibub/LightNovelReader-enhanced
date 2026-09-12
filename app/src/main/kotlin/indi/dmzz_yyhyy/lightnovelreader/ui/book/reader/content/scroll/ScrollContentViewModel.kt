@@ -1,6 +1,5 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.scroll
 
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.unit.IntSize
 import com.github.michaelbull.result.get
@@ -362,7 +361,7 @@ class ScrollContentViewModel(
         resetContentList()
         uiState.readingChapterId = id
         uiState.readingProgress = 0f
-        uiState.lazyListState = LazyListState()
+        uiState.lazyListState = createReaderLazyListState()
         coroutineScope.launch(Dispatchers.IO) {
             val isUsingContinuousScrolling = settingState.isUsingContinuousScrollingUserData.getOrDefault(true)
             if (isUsingContinuousScrolling) {

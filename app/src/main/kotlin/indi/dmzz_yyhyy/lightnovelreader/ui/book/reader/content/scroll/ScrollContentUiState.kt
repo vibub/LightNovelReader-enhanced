@@ -34,7 +34,7 @@ class MutableScrollContentUiSate(
 ) : ScrollContentUiState {
     override var bookId by mutableStateOf("")
     override var readingProgress by mutableFloatStateOf(0f)
-    override var lazyListState: LazyListState by mutableStateOf(LazyListState())
+    override var lazyListState: LazyListState by mutableStateOf(createReaderLazyListState())
     override var readingChapterId: String? by mutableStateOf(null)
     override val contentList = mutableStateListOf<Pair<String, Result<ChapterContentUiState, WebRequestError>>?>(null, null, null)
     override var retryingChapterIds: Set<String> by mutableStateOf(emptySet())
