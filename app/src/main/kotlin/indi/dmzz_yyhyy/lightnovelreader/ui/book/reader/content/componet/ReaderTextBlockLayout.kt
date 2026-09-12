@@ -15,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -30,11 +31,13 @@ internal data class ReaderTextViewport(val top: Float, val bottom: Float) {
 }
 
 internal val LocalReaderTextViewport = compositionLocalOf<ReaderTextViewport?> { null }
+internal val LocalReaderTextScrolling = compositionLocalOf<(() -> Boolean)?> { null }
 
 /** 只组合窗口附近的文本块，但始终报告整段高度，不改变章节滚动进度。 */
 @Composable
 internal fun ReaderTextBlockLayout(
     index: TextBlockIndex,
+    drawBlock: (DrawScope.(Int) -> Unit)? = null,
     content: @Composable (Int) -> Unit
 ) {
     val context = LocalContext.current
@@ -51,6 +54,11 @@ internal fun ReaderTextBlockLayout(
     }
     // 无障碍阅读保留完整语义树；翻页模式及其他调用者未提供窗口时也不裁减节点。
     val viewport = LocalReaderTextViewport.current.takeUnless { accessibilityEnabled }
+    val isScrolling = LocalReaderTextScrolling.current
+    if (viewport != null && isScrolling != null && drawBlock != null) {
+        ReaderDrawnTextBlockLayout(index, viewport, isScrolling, drawBlock, content)
+        return
+    }
     var required by remember(index, viewport) {
         mutableStateOf(
             if (viewport == null) 0 until index.size

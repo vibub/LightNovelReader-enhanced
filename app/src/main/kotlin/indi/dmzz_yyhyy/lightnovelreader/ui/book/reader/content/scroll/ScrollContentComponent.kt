@@ -62,6 +62,7 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.toChapterEndContext
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentError
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentLoading
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiState
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.LocalReaderTextScrolling
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.LocalReaderTextViewport
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.ReaderTextViewport
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.Loading
@@ -118,6 +119,7 @@ fun ScrollContentTextComponent(
     val density = LocalDensity.current
     val screenHeight = LocalResources.current.displayMetrics.heightPixels
     val listState = uiState.lazyListState
+    val isTextScrolling = remember(listState) { { listState.isScrollInProgress } }
     var lazyColumnSize by remember { mutableStateOf(IntSize(0, 0)) }
     var textViewport by remember(screenHeight) {
         mutableStateOf(ReaderTextViewport(0f, screenHeight.toFloat()))
@@ -325,7 +327,10 @@ fun ScrollContentTextComponent(
                         ChapterContentLoading()
                     } else {
                         result?.onOk {
-                            CompositionLocalProvider(LocalReaderTextViewport provides textViewport) {
+                            CompositionLocalProvider(
+                                LocalReaderTextViewport provides textViewport,
+                                LocalReaderTextScrolling provides isTextScrolling
+                            ) {
                                 TextContent(
                                     modifier = Modifier,
                                     settingState = settingState,

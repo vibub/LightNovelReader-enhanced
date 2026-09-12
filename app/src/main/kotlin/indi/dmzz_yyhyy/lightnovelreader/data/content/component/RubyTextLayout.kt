@@ -244,7 +244,8 @@ internal fun measureRubyText(
                     AnnotatedString.Range(it.placeholder, it.start - start, it.end - start)
                 },
                 softWrap = true,
-                constraints = Constraints(maxWidth = maxWidth)
+                // 与 fillMaxWidth 的 BasicText 使用相同约束，直接绘制时也保留 RTL 对齐位置。
+                constraints = Constraints(minWidth = maxWidth, maxWidth = maxWidth)
             )
             val originalBaseline = horizontalLayout.getLineBaseline(firstLine) - horizontalLayout.getLineTop(firstLine)
             val topPadding = ceil(originalBaseline - measured.firstBaseline).toInt().coerceAtLeast(0)
