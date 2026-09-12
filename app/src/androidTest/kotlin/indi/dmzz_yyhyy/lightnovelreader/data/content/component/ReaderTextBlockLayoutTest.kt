@@ -18,6 +18,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -53,8 +54,14 @@ class ReaderTextBlockLayoutTest {
         val composed = mutableSetOf<Int>()
         val positioned = CountDownLatch(1)
         val jumped = CountDownLatch(1)
+        val reversed = CountDownLatch(1)
         var measuredHeight = 0
+        var creations = 0
+        var creationsBeforeReversal = 0
+        var creationsAfterReversal = 0
+        var warmed = false
         var jump: (() -> Unit)? = null
+        var reverse: (() -> Unit)? = null
         try {
             instrumentation.runOnMainSync {
                 activity.setContent {
@@ -63,6 +70,27 @@ class ReaderTextBlockLayoutTest {
                     val scope = rememberCoroutineScope()
                     var viewport by remember { mutableStateOf(ReaderTextViewport(0f, 600f)) }
                     jump = { scope.launch { scroll.scrollTo(index.top(5000)) } }
+                    reverse = {
+                        scope.launch {
+                            val position = index.top(5000)
+                            val expected = index.retainedRange(IntRange.EMPTY, position.toFloat(), position + viewport.height)
+                            var frames = 0
+                            while (!warmed && frames++ < 300) {
+                                withFrameNanos { }
+                                warmed = expected.all { it in composed }
+                            }
+                            if (warmed) {
+                                creationsBeforeReversal = creations
+                                repeat(20) {
+                                    scroll.scrollTo(position + if (it % 2 == 0) 40 else 0)
+                                    withFrameNanos { }
+                                    withFrameNanos { }
+                                }
+                                creationsAfterReversal = creations
+                            }
+                            reversed.countDown()
+                        }
+                    }
                     Box(Modifier.width(300.dp).height(240.dp).onGloballyPositioned {
                         val bounds = it.boundsInWindow()
                         viewport = ReaderTextViewport(bounds.top, bounds.bottom)
@@ -76,6 +104,7 @@ class ReaderTextBlockLayoutTest {
                                     ReaderTextBlockLayout(index) { block ->
                                         DisposableEffect(block) {
                                             composed += block
+                                            creations++
                                             if (block == 5000) jumped.countDown()
                                             onDispose { composed -= block }
                                         }
@@ -101,6 +130,13 @@ class ReaderTextBlockLayoutTest {
                 assertFalse("离屏的章首文本应当被释放", 0 in composed)
                 assertTrue(composed.size in 1..999)
                 assertEquals("滚动前后章节总高度不能变化", index.height, measuredHeight)
+                requireNotNull(reverse).invoke()
+            }
+            assertTrue("等待往返滑动验证完成", reversed.await(15, TimeUnit.SECONDS))
+            instrumentation.runOnMainSync {
+                assertTrue("缓存应当完成分帧预加载", warmed)
+                assertEquals("缓存内往返滑动不应重建文本块", creationsBeforeReversal, creationsAfterReversal)
+                assertEquals(index.height, measuredHeight)
             }
         } finally {
             instrumentation.runOnMainSync { activity.finish() }

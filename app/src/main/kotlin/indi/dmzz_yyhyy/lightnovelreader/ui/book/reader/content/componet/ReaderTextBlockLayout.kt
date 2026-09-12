@@ -6,12 +6,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -19,6 +21,8 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.constrainHeight
 import indi.dmzz_yyhyy.lightnovelreader.data.content.component.TextBlockIndex
+import indi.dmzz_yyhyy.lightnovelreader.data.content.component.prefetchTextBlock
+import indi.dmzz_yyhyy.lightnovelreader.data.content.component.retainTextBlocks
 
 @Immutable
 internal data class ReaderTextViewport(val top: Float, val bottom: Float) {
@@ -47,19 +51,38 @@ internal fun ReaderTextBlockLayout(
     }
     // 无障碍阅读保留完整语义树；翻页模式及其他调用者未提供窗口时也不裁减节点。
     val viewport = LocalReaderTextViewport.current.takeUnless { accessibilityEnabled }
-    var visible by remember(index, viewport) {
+    var required by remember(index, viewport) {
         mutableStateOf(
             if (viewport == null) 0 until index.size
-            else index.visibleRange(0f, viewport.height, viewport.height)
+            else index.visibleRange(0f, viewport.height, viewport.height * 0.25f)
         )
+    }
+    var target by remember(index, viewport) {
+        mutableStateOf(
+            if (viewport == null) 0 until index.size
+            else index.retainedRange(IntRange.EMPTY, 0f, viewport.height)
+        )
+    }
+    var active by remember(index, viewport) { mutableStateOf(required) }
+    LaunchedEffect(index, viewport, target) {
+        if (viewport == null) return@LaunchedEffect
+        while (active != target) {
+            // 避免扩展缓存时在同一帧集中创建、测量一整屏的文本节点。
+            withFrameNanos { }
+            active = prefetchTextBlock(active, required, target)
+        }
     }
     val positionModifier = if (viewport == null) Modifier else Modifier.onGloballyPositioned { coordinates ->
         val origin = coordinates.positionInWindow().y
-        // 上下各预留一屏，避免普通拖动在块边界露出空白。仅跨块时触发重组。
-        val next = index.visibleRange(viewport.top - origin, viewport.bottom - origin, viewport.height)
-        if (next != visible) visible = next
+        val top = viewport.top - origin
+        val bottom = viewport.bottom - origin
+        required = index.visibleRange(top, bottom, viewport.height * 0.25f)
+        val nextTarget = index.retainedRange(target, top, bottom)
+        val nextActive = retainTextBlocks(active, required, nextTarget)
+        if (nextTarget != target) target = nextTarget
+        if (nextActive != active) active = nextActive
     }
-    val range = visible
+    val range = active
     Layout(
         modifier = Modifier.fillMaxWidth().then(positionModifier),
         content = {

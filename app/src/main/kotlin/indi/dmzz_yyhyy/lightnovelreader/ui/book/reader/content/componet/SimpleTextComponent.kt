@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.drawText
@@ -102,7 +103,7 @@ fun SimpleTextComponentContent(
                 val index = remember(heights) { TextBlockIndex(heights) }
                 ReaderTextBlockLayout(index) { blockIndex ->
                     val first = blocks[blockIndex].first()
-                    Box(Modifier.fillMaxWidth().height(with(density) { heights[blockIndex].toDp() })) {
+                    Box(Modifier.fillMaxWidth().height(with(density) { heights[blockIndex].toDp() }).graphicsLayer()) {
                         if (first.text.isNotBlank()) {
                             BasicText(
                                 modifier = Modifier.fillMaxWidth().offset(y = with(density) { first.topPadding.toDp() }),

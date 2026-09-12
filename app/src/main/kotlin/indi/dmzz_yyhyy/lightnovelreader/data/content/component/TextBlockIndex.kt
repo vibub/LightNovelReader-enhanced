@@ -15,6 +15,20 @@ internal class TextBlockIndex(heights: List<Int>) {
 
     fun top(index: Int): Int = offsets[index]
 
+    /** 接近缓存边缘才移动窗口，避免短距离反向滑动反复释放同一批文本块。 */
+    fun retainedRange(current: IntRange, top: Float, bottom: Float): IntRange {
+        val viewportHeight = bottom - top
+        if (!viewportHeight.isFinite() || viewportHeight <= 0f) return IntRange.EMPTY
+        val target = visibleRange(top, bottom, viewportHeight * 2f)
+        if (target.isEmpty()) return target
+        val guard = visibleRange(top, bottom, viewportHeight * 0.5f)
+        if (!current.isEmpty() && current.first >= 0 && current.last < size) {
+            if (!guard.isEmpty() && guard.first >= current.first && guard.last <= current.last) return current
+            if (guard.isEmpty() && target.first <= current.last && current.first <= target.last) return current
+        }
+        return target
+    }
+
     fun visibleRange(top: Float, bottom: Float, overscan: Float = 0f): IntRange {
         require(overscan >= 0f && overscan.isFinite())
         if (size == 0 || height == 0 || !top.isFinite() || !bottom.isFinite() || bottom <= top) {
