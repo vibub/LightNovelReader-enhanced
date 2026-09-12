@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.sp
 import indi.dmzz_yyhyy.lightnovelreader.ui.LocalAppTheme
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.LocalReaderRubyTextCache
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.SimpleTextComponentContent
 import indi.dmzz_yyhyy.lightnovelreader.utils.loadReaderFontFamilySafe
 import indi.dmzz_yyhyy.lightnovelreader.utils.rememberReaderFontFamily
@@ -72,26 +73,11 @@ class SimpleTextComponent(
             fontSize = combinedStyle.fontSize.sp,
             fontLineHeight = combinedStyle.fontLineHeight.sp,
             fontWeight = FontWeight(combinedStyle.fontWeight.toInt()),
-            fontFamily = rememberReaderFontFamily(fontFamilyUriUserData),
-            color = readerTextColor(combinedStyle.textColor, combinedStyle.textDarkColor),
+            fontFamily = LocalReaderRubyTextCache.current?.environment?.style?.fontFamily
+                ?: rememberReaderFontFamily(fontFamilyUriUserData),
+            color = readerContentTextColor(combinedStyle.textColor, combinedStyle.textDarkColor),
             styleRanges = data.styleRanges
         )
-    }
-
-    @Composable
-    private fun readerTextColor(textColor: Color, textDarkColor: Color): Color {
-        val localTheme = LocalAppTheme.current
-        val isDark = localTheme.isDark
-        val onSurface = localTheme.colorScheme.onSurface
-
-        return remember(isDark, textColor, textDarkColor, onSurface) {
-            when {
-                isDark && textDarkColor.isUnspecified -> onSurface
-                !isDark && textColor.isUnspecified -> onSurface
-                isDark -> textDarkColor
-                else -> textColor
-            }
-        }
     }
 
     override suspend fun split(
@@ -176,7 +162,23 @@ class SimpleTextComponent(
     }
 }
 
-private fun SimpleTextComponentData.toAnnotatedString(): AnnotatedString {
+@Composable
+internal fun readerContentTextColor(textColor: Color, textDarkColor: Color): Color {
+    val localTheme = LocalAppTheme.current
+    val isDark = localTheme.isDark
+    val onSurface = localTheme.colorScheme.onSurface
+
+    return remember(isDark, textColor, textDarkColor, onSurface) {
+        when {
+            isDark && textDarkColor.isUnspecified -> onSurface
+            !isDark && textColor.isUnspecified -> onSurface
+            isDark -> textDarkColor
+            else -> textColor
+        }
+    }
+}
+
+internal fun SimpleTextComponentData.toAnnotatedString(): AnnotatedString {
     if (styleRanges.isEmpty()) return AnnotatedString(text)
     return buildAnnotatedString {
         append(text)

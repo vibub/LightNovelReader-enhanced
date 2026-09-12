@@ -62,6 +62,7 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.toChapterEndContext
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentError
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentLoading
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiState
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.LocalReaderRubyTextCache
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.LocalReaderTextScrolling
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.LocalReaderTextViewport
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.ReaderTextViewport
@@ -121,6 +122,7 @@ fun ScrollContentTextComponent(
     val listState = uiState.lazyListState
     val isTextScrolling = remember(listState) { { listState.isScrollInProgress } }
     var lazyColumnSize by remember { mutableStateOf(IntSize(0, 0)) }
+    val rubyTextCache = rememberReaderRubyTextCache(uiState, settingState, lazyColumnSize.width)
     var textViewport by remember(screenHeight) {
         mutableStateOf(ReaderTextViewport(0f, screenHeight.toFloat()))
     }
@@ -328,6 +330,7 @@ fun ScrollContentTextComponent(
                     } else {
                         result?.onOk {
                             CompositionLocalProvider(
+                                LocalReaderRubyTextCache provides rubyTextCache,
                                 LocalReaderTextViewport provides textViewport,
                                 LocalReaderTextScrolling provides isTextScrolling
                             ) {

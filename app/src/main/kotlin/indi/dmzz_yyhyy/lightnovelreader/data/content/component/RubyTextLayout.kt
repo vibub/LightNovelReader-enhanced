@@ -112,8 +112,10 @@ internal fun measureRubyText(
     style: TextStyle,
     measurer: TextMeasurer,
     density: Density,
-    maxWidth: Int
+    maxWidth: Int,
+    checkCancelled: () -> Unit = {}
 ): RubyTextLayout {
+    checkCancelled()
     val runs = mutableListOf<RubyTextRun>()
     val baseStyle = style.copy(lineHeight = TextUnit.Unspecified)
     val annotationStyle = baseStyle.copy(fontSize = style.fontSize * 0.6f, letterSpacing = 0.sp)
@@ -122,6 +124,7 @@ internal fun measureRubyText(
     }
 
     fun addRun(range: SimpleTextStyleRange, start: Int, end: Int) {
+        checkCancelled()
         if (start >= end) return
         val base = measurer.measure(text.subSequence(start, end), baseStyle, softWrap = false)
         val width = base.size.width.coerceAtLeast(1)
@@ -135,6 +138,7 @@ internal fun measureRubyText(
             }
         }
         val annotation = range.rubySubstring(start, end).orEmpty().rubyAnnotationUnits().map { character ->
+            checkCancelled()
             measurer.measure(AnnotatedString(character), annotationStyle, softWrap = false)
         }
         val placement = placeRubyAnnotation(annotation.map { it.size.width }, width, minimumGap)
@@ -215,6 +219,7 @@ internal fun measureRubyText(
     val lines = buildList {
         var line = 0
         while (line < horizontalLayout.lineCount) {
+            checkCancelled()
             val firstLine = line
             val start = horizontalLayout.getLineStart(line)
             val lineRuns = runsByLine[line].orEmpty()

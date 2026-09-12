@@ -10,26 +10,23 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFontFamilyResolver
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.TextUnit
-import androidx.compose.ui.unit.sp
-import indi.dmzz_yyhyy.lightnovelreader.data.content.component.TextBlockIndex
-import indi.dmzz_yyhyy.lightnovelreader.data.content.component.measureRubyText
-import indi.dmzz_yyhyy.lightnovelreader.data.content.component.renderBlocks
 import io.nightfish.lightnovelreader.api.content.component.SimpleTextStyleRange
-import io.nightfish.lightnovelreader.api.ui.LocalTextLocaleList
 
 @Composable
 fun SimpleTextComponentContent(
@@ -42,16 +39,7 @@ fun SimpleTextComponentContent(
     color: Color,
     styleRanges: List<SimpleTextStyleRange> = emptyList()
 ) {
-    val localeList = LocalTextLocaleList.current
-    val style = MaterialTheme.typography.bodyMedium.copy(
-        localeList = localeList,
-        fontWeight = fontWeight,
-        fontSize = fontSize,
-        fontFamily = fontFamily,
-        color = color,
-        textAlign = TextAlign.Start,
-        lineHeight = (fontSize.value + fontLineHeight.value).sp
-    )
+    val style = readerRubyTextStyle(fontSize, fontLineHeight, fontWeight, fontFamily, color)
 
     SelectionContainer {
         if (styleRanges.none { !it.rubyText.isNullOrBlank() }) {
@@ -60,10 +48,20 @@ fun SimpleTextComponentContent(
             BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
                 val density = LocalDensity.current
                 val measurer = rememberTextMeasurer()
-                val width = constraints.maxWidth
-                val layout = remember(text, styleRanges, style, measurer, density, width) {
-                    measureRubyText(text, styleRanges, style, measurer, density, width)
+                val environment = RubyTextEnvironment(
+                    style, Density(density.density, density.fontScale),
+                    LocalLayoutDirection.current, LocalFontFamilyResolver.current, constraints.maxWidth
+                )
+                val key = remember(text, styleRanges) { RubyTextKey(text, styleRanges) }
+                val cache = LocalReaderRubyTextCache.current
+                val cached = cache?.get(key, environment)
+                val staleFonts = cached?.hasStaleFonts == true
+                val prepared = remember(key, environment, measurer, cached, staleFonts) {
+                    // 预排版未完成时仍计算精确高度，不以临时占位改变章节位置和阅读进度。
+                    cached?.takeUnless { staleFonts } ?: prepareRubyText(key, environment, measurer)
                 }
+                SideEffect { cache?.put(key, environment, prepared) }
+                val layout = prepared.layout
                 val inlineContent = remember(layout, color) {
                     layout.runs.associate { run ->
                         run.key to InlineTextContent(run.placeholder) {
@@ -73,9 +71,9 @@ fun SimpleTextComponentContent(
                         }
                     }
                 }
-                val blocks = remember(layout) { layout.renderBlocks() }
-                val heights = remember(blocks) { blocks.map { block -> block.sumOf { it.height } } }
-                val index = remember(heights) { TextBlockIndex(heights) }
+                val blocks = prepared.blocks
+                val heights = prepared.heights
+                val index = prepared.index
                 ReaderTextBlockLayout(
                     index = index,
                     drawBlock = { blockIndex -> drawRubyTextBlock(blocks[blockIndex].first(), color) }
