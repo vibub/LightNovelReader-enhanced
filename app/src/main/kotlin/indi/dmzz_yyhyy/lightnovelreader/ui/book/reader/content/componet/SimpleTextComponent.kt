@@ -61,16 +61,6 @@ fun SimpleTextComponentContent(
                     cached?.takeUnless { staleFonts } ?: prepareRubyText(key, environment, measurer)
                 }
                 SideEffect { cache?.put(key, environment, prepared) }
-                val layout = prepared.layout
-                val inlineContent = remember(layout, color) {
-                    layout.runs.associate { run ->
-                        run.key to InlineTextContent(run.placeholder) {
-                            Canvas(Modifier.fillMaxSize()) {
-                                drawRubyTextRun(run, color, size.width)
-                            }
-                        }
-                    }
-                }
                 val blocks = prepared.blocks
                 val heights = prepared.heights
                 val index = prepared.index
@@ -79,6 +69,16 @@ fun SimpleTextComponentContent(
                     drawBlock = { blockIndex -> drawRubyTextBlock(blocks[blockIndex].first(), color) }
                 ) { blockIndex ->
                     val first = blocks[blockIndex].first()
+                    // 滑动时不需要选择节点，只为实际创建的文本块构建内联注释内容。
+                    val inlineContent = remember(first.runs, color) {
+                        first.runs.associate { run ->
+                            run.key to InlineTextContent(run.placeholder) {
+                                Canvas(Modifier.fillMaxSize()) {
+                                    drawRubyTextRun(run, color, size.width)
+                                }
+                            }
+                        }
+                    }
                     Box(Modifier.fillMaxWidth().height(with(density) { heights[blockIndex].toDp() }).graphicsLayer()) {
                         if (first.text.isNotBlank()) {
                             BasicText(

@@ -19,6 +19,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 
@@ -155,16 +156,12 @@ class ScrollContentViewModel(
     }
 
     private suspend fun ChapterContent.toUiState(): ChapterContentUiState {
-        val components = contentComponentRepository.getContentDataFromJson(content).components
-        preloadChapterImageHeights(id, components)
-        return ChapterContentUiState(
-            id = id,
-            title = title,
-            content = components,
-            sourceContent = content,
-            prevChapter = prevChapter,
-            nextChapter = nextChapter
-        )
+        val existing = uiState.contentList.firstOrNull { it?.first == id }?.second?.get()
+        val prepared = prepareScrollChapter(this, existing) {
+            contentComponentRepository.getContentDataFromJson(it).components
+        }
+        preloadChapterImageHeights(id, prepared.content)
+        return prepared
     }
 
     private fun writeProgressRightNow() {
@@ -469,6 +466,8 @@ class ScrollContentViewModel(
         onLoaded: suspend (ChapterContentUiState) -> Unit = {}
     ) = coroutineScope.launch {
             bookRepository.getChapterContentFlow(chapterId, uiState.bookId)
+                // 重新订阅也会处理整章文本，不能随主线程 collector 一起执行。
+                .flowOn(Dispatchers.IO)
                 .collect { content ->
                     if (!isChapterSlotCurrent(index, chapterId)) return@collect
                     val loadedContent = content.get()?.toUiState()

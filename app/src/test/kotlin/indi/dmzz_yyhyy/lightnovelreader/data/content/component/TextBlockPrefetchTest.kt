@@ -75,6 +75,18 @@ class TextBlockPrefetchTest {
     }
 
     @Test
+    fun overlappingTargetDoesNotFillTheGapBetweenDisjointWindows() {
+        assertEquals(60..80, retainTextBlocks(0..30, 60..80, 20..100))
+        assertEquals(20..40, retainTextBlocks(70..100, 20..40, 0..80))
+    }
+
+    @Test
+    fun adjacentWindowsStillReuseExistingBlocks() {
+        assertEquals(20..50, retainTextBlocks(20..30, 31..50, 10..60))
+        assertEquals(10..40, retainTextBlocks(20..40, 10..19, 0..60))
+    }
+
+    @Test
     fun shiftingTheTargetKeepsExistingBlocksAndDropsOnlyTheFarEnd() {
         assertEquals(30..80, retainTextBlocks(20..80, 50..60, 30..90))
         assertEquals(20..70, retainTextBlocks(20..80, 40..50, 10..70))

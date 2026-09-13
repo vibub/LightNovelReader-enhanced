@@ -1,16 +1,21 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.content.component
 
+import android.content.Intent
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -18,104 +23,125 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.ReaderDrawnTextBlockLayout
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.ReaderTextViewport
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.time.Duration.Companion.milliseconds
 
 @RunWith(AndroidJUnit4::class)
 class ReaderDrawnTextBlockLayoutTest {
-    @get:Rule
-    val compose = createComposeRule()
-
     @Test
-    fun scrollingDrawsNewBlocksWithoutCreatingOrMeasuringSelectableNodes() {
+    fun scrollingFreezesSelectionAndIdlePrefetchIsIncremental() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val activity = instrumentation.startActivitySync(
+            Intent(instrumentation.targetContext, ComponentActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        ) as ComponentActivity
+        val completed = CountDownLatch(1)
+        val failure = AtomicReference<Throwable?>()
         val index = TextBlockIndex(List(10000) { 40 })
-        var scrolling by mutableStateOf(false)
-        var position by mutableIntStateOf(0)
         val composed = mutableSetOf<Int>()
         val drawn = mutableSetOf<Int>()
         var creations = 0
         var measurements = 0
         var measuredHeight = 0
-        compose.setContent {
-            val density = LocalDensity.current
-            val isScrolling = remember { { scrolling } }
-            var viewport by remember { mutableStateOf(ReaderTextViewport(0f, 600f)) }
-            Box(Modifier.fillMaxWidth().height(240.dp).clipToBounds().onGloballyPositioned {
-                val bounds = it.boundsInWindow()
-                viewport = ReaderTextViewport(bounds.top, bounds.bottom)
-            }) {
-                Box(
-                    Modifier.offset { IntOffset(0, -position) }
-                        .wrapContentHeight(Alignment.Top, unbounded = true)
-                        .onGloballyPositioned { measuredHeight = it.size.height }
-                ) {
-                    ReaderDrawnTextBlockLayout(
-                        index = index,
-                        viewport = viewport,
-                        isScrolling = isScrolling,
-                        drawBlock = { drawn += it }
-                    ) { block ->
-                        DisposableEffect(block) {
-                            composed += block
-                            creations++
-                            onDispose { composed -= block }
+        try {
+            instrumentation.runOnMainSync {
+                activity.setContent {
+                    val density = LocalDensity.current
+                    var scrolling by remember { mutableStateOf(true) }
+                    var position by remember { mutableIntStateOf(0) }
+                    val isScrolling = remember { { scrolling } }
+                    var viewport by remember { mutableStateOf(ReaderTextViewport(0f, 600f)) }
+                    Box(Modifier.fillMaxWidth().height(240.dp).clipToBounds().onGloballyPositioned {
+                        val bounds = it.boundsInWindow()
+                        viewport = ReaderTextViewport(bounds.top, bounds.bottom)
+                    }) {
+                        Box(
+                            Modifier.offset { IntOffset(0, -position) }
+                                .wrapContentHeight(Alignment.Top, unbounded = true)
+                                .onGloballyPositioned { measuredHeight = it.size.height }
+                        ) {
+                            ReaderDrawnTextBlockLayout(index, viewport, isScrolling, { drawn += it }) { block ->
+                                DisposableEffect(block) {
+                                    composed += block
+                                    creations++
+                                    onDispose { composed -= block }
+                                }
+                                Box(Modifier.fillMaxWidth().height(with(density) { 40.toDp() }).layout { measurable, constraints ->
+                                    measurements++
+                                    val placeable = measurable.measure(constraints)
+                                    layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+                                })
+                            }
                         }
-                        Box(Modifier.fillMaxWidth().height(with(density) { 40.toDp() }).layout { measurable, constraints ->
-                            measurements++
-                            val placeable = measurable.measure(constraints)
-                            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-                        })
+                    }
+                    LaunchedEffect(Unit) {
+                        suspend fun frames(count: Int) = repeat(count) { withFrameNanos { } }
+                        suspend fun await(condition: () -> Boolean) = withTimeout(10000.milliseconds) {
+                            while (!condition()) withFrameNanos { }
+                        }
+                        try {
+                            await { measuredHeight == index.height }
+                            frames(4)
+                            assertTrue("滚动时只绘制，不创建选择节点", composed.isEmpty())
+                            assertTrue(0 in drawn)
+                            scrolling = false
+                            await { 0 in composed }
+                            val visible = index.visibleRange(0f, viewport.height)
+                            assertTrue("第一批立即恢复全部可见文字的选择", visible.all { it in composed })
+                            assertTrue("第一批不能同时挂载整个屏外缓冲", creations <= visible.count() + 2)
+                            val initialCreations = creations
+                            frames(3)
+                            assertTrue("缓冲按帧补齐而不是一批创建", creations - initialCreations in 1..4)
+                            scrolling = true
+                            frames(2)
+                            val previousCreations = creations
+                            val previousMeasurements = measurements
+                            for (block in listOf(100, 2000, 5000, 4000, 5000)) {
+                                drawn.clear()
+                                position = index.top(block)
+                                frames(4)
+                                assertTrue("快滑时必须直接绘制目标块", block in drawn)
+                                assertEquals("滚动必须取消屏外预加载", previousCreations, creations)
+                                assertEquals("滚动不能重新测量选择节点", previousMeasurements, measurements)
+                                assertEquals(index.height, measuredHeight)
+                            }
+                            scrolling = false
+                            await { 5000 in composed }
+                            assertFalse("远离视口的旧节点应释放", 0 in composed)
+                            val target = index.retainedRange(IntRange.EMPTY, position.toFloat(), position + viewport.height)
+                            await { target.all { it in composed } }
+                            assertTrue("缓存不能扩展成整章", composed.size < 1000)
+                            drawn.clear()
+                            position++
+                            frames(3)
+                            assertTrue("选择节点与直接绘制不能重叠", drawn.none { it in composed })
+                            assertEquals(index.height, measuredHeight)
+                        } catch (error: Throwable) {
+                            failure.set(error)
+                        } finally {
+                            completed.countDown()
+                        }
                     }
                 }
             }
-        }
-        compose.waitForIdle()
-        var previousCreations = 0
-        var previousMeasurements = 0
-        compose.runOnIdle {
-            assertTrue("停稳后保留可见区文字选择", 0 in composed)
-            assertTrue("不能组合整章", composed.size in 1..999)
-            assertEquals(index.height, measuredHeight)
-            previousCreations = creations
-            previousMeasurements = measurements
-            drawn.clear()
-            scrolling = true
-        }
-        for (block in listOf(100, 2000, 5000, 4000, 5000)) {
-            compose.runOnIdle { position = index.top(block) }
-            compose.waitForIdle()
-            compose.runOnIdle {
-                assertTrue("快速跳转必须直接绘制目标块 $block", block in drawn)
-                assertEquals("持续滚动不能创建选择节点", previousCreations, creations)
-                assertEquals("持续滚动不能重新测量选择节点", previousMeasurements, measurements)
-                assertEquals("直接绘制不能改变章节高度", index.height, measuredHeight)
-                drawn.clear()
-            }
-        }
-        compose.runOnIdle { scrolling = false }
-        compose.waitForIdle()
-        compose.runOnIdle {
-            assertTrue("停止后恢复目标位置的文字选择", 5000 in composed)
-            assertFalse("释放之前远离视口的选择节点", 0 in composed)
-            assertTrue(composed.size in 1..999)
-            assertEquals(index.height, measuredHeight)
-            drawn.clear()
-        }
-        // 强制一帧绘制，选择节点覆盖的块不能再绘制一次。
-        compose.runOnIdle { position++ }
-        compose.waitForIdle()
-        compose.runOnIdle {
-            assertTrue("选择节点与直接绘制不能重复绘制同一块", drawn.none { it in composed })
+            assertTrue("等待选择节点调度验证完成", completed.await(30, TimeUnit.SECONDS))
+            failure.get()?.let { throw it }
+        } finally {
+            instrumentation.runOnMainSync { activity.finish() }
         }
     }
 }

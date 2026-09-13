@@ -1,6 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.content.component
 
-/** 立即补齐可见区，保留目标缓存内已创建的块；大跨度跳转不组合中间整段正文。 */
+/** 立即补齐可见区，保留相连的已有缓存；跳转时不批量创建中间的屏外块。 */
 internal fun retainTextBlocks(active: IntRange, required: IntRange, target: IntRange): IntRange {
     if (target.isEmpty()) return IntRange.EMPTY
     val kept = maxOf(active.first, target.first)..minOf(active.last, target.last)
@@ -8,6 +8,7 @@ internal fun retainTextBlocks(active: IntRange, required: IntRange, target: IntR
     val needed = maxOf(required.first, target.first)..minOf(required.last, target.last)
     if (kept.isEmpty()) return needed
     if (needed.isEmpty()) return kept
+    if (kept.last.toLong() + 1 < needed.first || needed.last.toLong() + 1 < kept.first) return needed
     return minOf(kept.first, needed.first)..maxOf(kept.last, needed.last)
 }
 
