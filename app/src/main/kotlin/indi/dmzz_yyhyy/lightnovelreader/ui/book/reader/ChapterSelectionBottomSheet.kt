@@ -141,7 +141,7 @@ fun ChapterSelectionBottomSheet(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(text = volume.volumeTitle, fontWeight = FontWeight.W600, style = typography.titleMedium, color = colorScheme.onSurface)
                                     Text(
                                         text = stringResource(
@@ -152,7 +152,6 @@ fun ChapterSelectionBottomSheet(
                                         style = typography.labelMedium
                                     )
                                 }
-                                Spacer(Modifier.weight(2f))
                                 Icon(
                                     modifier = Modifier
                                         .scale(0.75f)
