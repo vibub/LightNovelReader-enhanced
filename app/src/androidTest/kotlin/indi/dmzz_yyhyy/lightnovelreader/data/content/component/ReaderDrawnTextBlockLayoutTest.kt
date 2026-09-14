@@ -43,7 +43,7 @@ import kotlin.time.Duration.Companion.milliseconds
 @RunWith(AndroidJUnit4::class)
 class ReaderDrawnTextBlockLayoutTest {
     @Test
-    fun scrollingFreezesSelectionAndIdlePrefetchIsIncremental() {
+    fun scrollingFreezesSelectionAndIdleOnlyCreatesVisibleBlocks() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val activity = instrumentation.startActivitySync(
             Intent(instrumentation.targetContext, ComponentActivity::class.java)
@@ -102,10 +102,10 @@ class ReaderDrawnTextBlockLayoutTest {
                             await { 0 in composed }
                             val visible = index.visibleRange(0f, viewport.height)
                             assertTrue("第一批立即恢复全部可见文字的选择", visible.all { it in composed })
-                            assertTrue("第一批不能同时挂载整个屏外缓冲", creations <= visible.count() + 2)
+                            assertEquals("只挂载可见正文的选择节点", visible.count(), creations)
                             val initialCreations = creations
-                            frames(3)
-                            assertTrue("缓冲按帧补齐而不是一批创建", creations - initialCreations in 1..4)
+                            frames(6)
+                            assertEquals("停稳后不再主动补齐屏外节点", initialCreations, creations)
                             scrolling = true
                             frames(2)
                             val previousCreations = creations
@@ -115,16 +115,18 @@ class ReaderDrawnTextBlockLayoutTest {
                                 position = index.top(block)
                                 frames(4)
                                 assertTrue("快滑时必须直接绘制目标块", block in drawn)
-                                assertEquals("滚动必须取消屏外预加载", previousCreations, creations)
+                                assertEquals("滚动不能创建选择节点", previousCreations, creations)
                                 assertEquals("滚动不能重新测量选择节点", previousMeasurements, measurements)
                                 assertEquals(index.height, measuredHeight)
                             }
                             scrolling = false
                             await { 5000 in composed }
                             assertFalse("远离视口的旧节点应释放", 0 in composed)
-                            val target = index.retainedRange(IntRange.EMPTY, position.toFloat(), position + viewport.height)
-                            await { target.all { it in composed } }
-                            assertTrue("缓存不能扩展成整章", composed.size < 1000)
+                            val required = index.visibleRange(position.toFloat(), position + viewport.height)
+                            assertEquals("跳转停稳后也只创建可见节点", required.toSet(), composed.toSet())
+                            val stoppedCreations = creations
+                            frames(6)
+                            assertEquals("持续停稳不产生额外选择节点", stoppedCreations, creations)
                             drawn.clear()
                             position++
                             frames(3)

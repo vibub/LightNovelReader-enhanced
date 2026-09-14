@@ -29,6 +29,11 @@ internal class TextBlockIndex(heights: List<Int>) {
         return target
     }
 
+    /** 只新增可见块；附近缓存仅保留已创建的选择节点，不主动补齐屏外节点。 */
+    fun selectableRange(current: IntRange, top: Float, bottom: Float): IntRange = retainTextBlocks(
+        current, visibleRange(top, bottom), retainedRange(current, top, bottom)
+    )
+
     fun visibleRange(top: Float, bottom: Float, overscan: Float = 0f): IntRange {
         require(overscan >= 0f && overscan.isFinite())
         if (size == 0 || height == 0 || !top.isFinite() || !bottom.isFinite() || bottom <= top) {
