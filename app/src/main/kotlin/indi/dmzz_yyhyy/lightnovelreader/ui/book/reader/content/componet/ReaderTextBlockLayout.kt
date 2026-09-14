@@ -38,8 +38,22 @@ internal val LocalReaderTextScrolling = compositionLocalOf<(() -> Boolean)?> { n
 internal fun ReaderTextBlockLayout(
     index: TextBlockIndex,
     drawBlock: (DrawScope.(Int) -> Unit)? = null,
+    accessibilityEnabled: Boolean = rememberReaderAccessibilityEnabled(),
     content: @Composable (Int) -> Unit
 ) {
+    // 无障碍保留窗口内的原生文字语义，而不是为整章一次性挂载所有文本块。
+    // 只有翻页模式等未提供窗口的调用者才保留全量节点。
+    val viewport = LocalReaderTextViewport.current
+    val isScrolling = LocalReaderTextScrolling.current
+    if (!accessibilityEnabled && viewport != null && isScrolling != null && drawBlock != null) {
+        ReaderDrawnTextBlockLayout(index, viewport, isScrolling, drawBlock, content)
+        return
+    }
+    ReaderWindowedTextBlockLayout(index, viewport, content)
+}
+
+@Composable
+private fun rememberReaderAccessibilityEnabled(): Boolean {
     val context = LocalContext.current
     val accessibilityManager = remember(context) {
         context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager
@@ -52,13 +66,15 @@ internal fun ReaderTextBlockLayout(
         accessibilityManager?.addAccessibilityStateChangeListener(listener)
         onDispose { accessibilityManager?.removeAccessibilityStateChangeListener(listener) }
     }
-    // 无障碍阅读保留完整语义树；翻页模式及其他调用者未提供窗口时也不裁减节点。
-    val viewport = LocalReaderTextViewport.current.takeUnless { accessibilityEnabled }
-    val isScrolling = LocalReaderTextScrolling.current
-    if (viewport != null && isScrolling != null && drawBlock != null) {
-        ReaderDrawnTextBlockLayout(index, viewport, isScrolling, drawBlock, content)
-        return
-    }
+    return accessibilityEnabled
+}
+
+@Composable
+private fun ReaderWindowedTextBlockLayout(
+    index: TextBlockIndex,
+    viewport: ReaderTextViewport?,
+    content: @Composable (Int) -> Unit
+) {
     var required by remember(index, viewport) {
         mutableStateOf(
             if (viewport == null) 0 until index.size
