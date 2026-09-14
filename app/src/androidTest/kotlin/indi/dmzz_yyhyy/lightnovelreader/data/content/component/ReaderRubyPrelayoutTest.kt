@@ -85,7 +85,7 @@ class ReaderRubyPrelayoutTest {
         }
         instrumentation.runOnMainSync {
             val foreground = prepareRubyText(key, environment, environment.newMeasurer())
-            assertEquals(foreground.heights, background.heights)
+            assertEquals(foreground.blocks.map { it.height }, background.blocks.map { it.height })
             assertEquals(foreground.index.height, background.index.height)
             assertEquals(foreground.layout.lines.map { it.start to it.end }, background.layout.lines.map { it.start to it.end })
             foreground.layout.runs.zip(background.layout.runs).forEach { (expected, actual) ->

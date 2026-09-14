@@ -1,10 +1,8 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet
 
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -13,10 +11,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.translate
-import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
-import androidx.compose.ui.unit.constrainHeight
 import indi.dmzz_yyhyy.lightnovelreader.data.content.component.TextBlockIndex
 
 /** 滑动时冻结选择节点，新进入视口的块直接绘制；停稳后再补齐原生文字选择。 */
@@ -39,8 +35,10 @@ internal fun ReaderDrawnTextBlockLayout(
     }
     // 像素级位置只供绘制和停稳监听读取，不驱动组合或测量。
     val range = selectable
-    Layout(
-        modifier = Modifier.fillMaxWidth()
+    ReaderTextBlocks(
+        index = index,
+        range = range,
+        modifier = Modifier
             .onGloballyPositioned {
                 val origin = it.positionInWindow().y
                 window = ReaderTextViewport(viewport.top - origin, viewport.bottom - origin)
@@ -54,15 +52,6 @@ internal fun ReaderDrawnTextBlockLayout(
                     }
                 }
             },
-        content = {
-            for (block in range) key(block) { content(block) }
-        }
-    ) { measurables, constraints ->
-        val placeables = measurables.map { it.measure(constraints.copy(minHeight = 0)) }
-        layout(constraints.maxWidth, constraints.constrainHeight(index.height)) {
-            placeables.forEachIndexed { offset, placeable ->
-                placeable.placeRelative(0, index.top(range.first + offset))
-            }
-        }
-    }
+        content = content
+    )
 }

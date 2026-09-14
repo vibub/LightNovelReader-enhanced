@@ -60,8 +60,7 @@ internal data class RubyTextEnvironment(
 
 internal class PreparedRubyText(val layout: RubyTextLayout) {
     val blocks = layout.renderBlocks()
-    val heights = blocks.map { block -> block.sumOf { it.height } }
-    val index = TextBlockIndex(heights)
+    val index = TextBlockIndex(blocks.map { it.height })
     private val paragraphs = (layout.lines.map { it.layout } +
         layout.runs.flatMap { listOf(it.base) + it.annotation })
         .map { it.multiParagraph }.distinct()

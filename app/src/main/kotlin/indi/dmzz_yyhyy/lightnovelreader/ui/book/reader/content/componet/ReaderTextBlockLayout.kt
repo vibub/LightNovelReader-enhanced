@@ -106,9 +106,19 @@ private fun ReaderWindowedTextBlockLayout(
         if (nextTarget != target) target = nextTarget
         if (nextActive != active) active = nextActive
     }
-    val range = active
+    ReaderTextBlocks(index, active, positionModifier, content)
+}
+
+/** 两种渲染路径共用节点身份、测量和定位，不增加额外布局节点。 */
+@Composable
+internal fun ReaderTextBlocks(
+    index: TextBlockIndex,
+    range: IntRange,
+    modifier: Modifier,
+    content: @Composable (Int) -> Unit
+) {
     Layout(
-        modifier = Modifier.fillMaxWidth().then(positionModifier),
+        modifier = Modifier.fillMaxWidth().then(modifier),
         content = {
             for (block in range) key(block) { content(block) }
         }

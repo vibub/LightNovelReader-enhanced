@@ -176,15 +176,18 @@ class RubyVerticalLayoutTest {
                     )
                     val blocks = ruby.renderBlocks()
                     assertEquals(fixture, ruby.lines.joinToString("") { fixture.substring(it.start, it.end) })
-                    assertEquals(ruby.lines, blocks.flatten())
+                    val expectedBlocks = legacyRenderBlocks(ruby.lines)
+                    assertEquals(ruby.lines, expectedBlocks.flatten())
+                    assertEquals(expectedBlocks.map { it.first() }, blocks.map { it.first })
+                    assertEquals(expectedBlocks.map { block -> block.sumOf { it.height } }, blocks.map { it.height })
                     assertTrue("普通正文不能再为每个视觉行创建文本节点", blocks.size < ruby.lines.size)
-                    blocks.filter { it.first().text.isNotBlank() }.forEach { block ->
-                        val first = block.first()
+                    blocks.zip(expectedBlocks).filter { it.first.first.text.isNotBlank() }.forEach { (block, lines) ->
+                        val first = block.first
                         val layout = first.layout
                         assertTrue("测量与显示均须允许自动换行", layout.layoutInput.softWrap)
                         assertTrue("文本块不能横向溢出", !layout.didOverflowWidth)
-                        assertTrue("换行后的完整高度必须计入布局", first.topPadding + layout.size.height <= block.sumOf { it.height })
-                        assertTrue(block.all { it.layout === layout })
+                        assertTrue("换行后的完整高度必须计入布局", first.topPadding + layout.size.height <= block.height)
+                        assertTrue(lines.all { it.layout === layout })
                         for (line in 0 until layout.lineCount) {
                             assertTrue("右侧不能裁字", layout.getLineRight(line) <= width + 1f)
                         }
@@ -200,6 +203,21 @@ class RubyVerticalLayoutTest {
                     assertEquals(fixture, ruby.pageRanges(600).joinToString("") { fixture.slice(it) })
                 }
             }
+        }
+    }
+
+    // 保留简化前的分组作为对照，验证扁平块的边界、高度和布局实例均未改变。
+    private fun legacyRenderBlocks(lines: List<RubyTextLine>): List<List<RubyTextLine>> = buildList {
+        var index = 0
+        while (index < lines.size) {
+            val start = index++
+            val first = lines[start]
+            if (first.text.isNotBlank() && first.runs.isEmpty()) {
+                while (index < lines.size && lines[index].runs.isEmpty() &&
+                    lines[index].layout === first.layout && lines[index].layoutLine == lines[index - 1].layoutLine + 1
+                ) index++
+            }
+            add(lines.subList(start, index))
         }
     }
 

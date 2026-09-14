@@ -287,18 +287,20 @@ internal fun measureRubyText(
     })
 }
 
+internal data class RubyTextBlock(val first: RubyTextLine, val height: Int)
+
 /** 普通正文共享一次布局和一个可选择文本节点，空白仍独立保留以便抵扣注释高度。 */
-internal fun RubyTextLayout.renderBlocks(): List<List<RubyTextLine>> = buildList {
+internal fun RubyTextLayout.renderBlocks(): List<RubyTextBlock> = buildList {
     var index = 0
     while (index < lines.size) {
-        val start = index++
-        val first = lines[start]
+        val first = lines[index++]
+        var height = first.height
         if (first.text.isNotBlank() && first.runs.isEmpty()) {
             while (index < lines.size && lines[index].runs.isEmpty() &&
                 lines[index].layout === first.layout && lines[index].layoutLine == lines[index - 1].layoutLine + 1
-            ) index++
+            ) height += lines[index++].height
         }
-        add(lines.subList(start, index))
+        add(RubyTextBlock(first, height))
     }
 }
 
