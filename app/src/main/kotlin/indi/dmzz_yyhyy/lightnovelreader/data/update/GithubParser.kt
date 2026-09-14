@@ -147,6 +147,7 @@ object GithubParser {
             val commitDescription = commitDocument
                 .selectFirst("span.extended-commit-description-container, pre.commit-desc")
                 ?.wholeText()
+                ?.trimIndent()
                 ?.trim()
 
             commitTitle?.let {
