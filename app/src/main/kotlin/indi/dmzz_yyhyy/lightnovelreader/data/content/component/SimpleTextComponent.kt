@@ -62,11 +62,13 @@ class SimpleTextComponent(
     )
 
     override val id = SimpleTextComponentData.id
+    internal val preparedText = PreparedTextContent(data)
 
     @Composable
     override fun Content(modifier: Modifier) {
         val combinedStyle = LocalReaderStyle.current
-        val annotatedText = remember(data.text, data.styleRanges) { data.toAnnotatedString() }
+        val annotatedText = if (preparedText.hasRuby) preparedText.text
+            else remember(data.text, data.styleRanges) { data.toAnnotatedString() }
         SimpleTextComponentContent(
             modifier = modifier,
             text = annotatedText,

@@ -13,7 +13,6 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.sp
 import com.github.michaelbull.result.get
 import indi.dmzz_yyhyy.lightnovelreader.data.content.component.SimpleTextComponent
-import indi.dmzz_yyhyy.lightnovelreader.data.content.component.toAnnotatedString
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.ReaderRubyTextCache
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.RubyTextEnvironment
@@ -27,7 +26,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
@@ -64,41 +63,36 @@ internal fun rememberReaderRubyTextCache(
             listOf(2, 0, 1).flatMap { index ->
                 uiState.contentList.getOrNull(index)?.second?.get()?.content.orEmpty()
                     .filterIsInstance<SimpleTextComponent>()
-                    .map { it.data }
-                    .filter { data -> data.styleRanges.any { !it.rubyText.isNullOrBlank() } }
+                    .filter { it.preparedText.hasRuby }
             }
-        }.collectLatest { data ->
-            val keys = withContext(rubyPrelayoutDispatcher) {
-                data.map {
+        }.map { components ->
+            withContext(Dispatchers.Default) {
+                components.map {
                     currentCoroutineContext().ensureActive()
-                    RubyTextKey(it.toAnnotatedString(), it.styleRanges)
+                    RubyTextKey(it.preparedText.text, it.data.styleRanges)
                 }.distinct()
             }
-            // 内容相同的重新订阅不失效，退出三个章节窗口的布局立即释放。
-            cache.retain(keys.toSet())
-            for (key in keys) {
-                val existing = cache.get(key, environment)
-                if (existing != null && !existing.hasStaleFonts) continue
+        }.preloadRetainedText(
+            retain = cache::retain,
+            isPrepared = { key -> cache.get(key, environment)?.hasStaleFonts == false },
+            prepare = { key ->
                 try {
-                    val prepared = withContext(rubyPrelayoutDispatcher) {
+                    withContext(rubyPrelayoutDispatcher) {
                         val context = currentCoroutineContext()
                         prepareRubyText(key, environment, environment.newMeasurer()) {
                             context.ensureActive()
                         }
                     }
-                    // 缓存只在主线程读写；不等待锁，也不在 UI 线程等待后台结果。
-                    // 若用户已经跨章并完成同步布局，保留 UI 正在使用的那个实例。
-                    val current = cache.get(key, environment)
-                    if (current == null || current.hasStaleFonts) {
-                        cache.put(key, environment, prepared)
-                    }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
                     Log.w("ReaderRubyPrelayout", "注释预排版失败，进入章节时使用原有布局路径", error)
+                    null
                 }
-            }
-        }
+            },
+            // 缓存仍只在主线程读写；后台任务仅提交完整排版结果。
+            publish = { key, prepared -> cache.put(key, environment, prepared) }
+        )
     }
     return cache
 }

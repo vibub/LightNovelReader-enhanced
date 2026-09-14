@@ -1,5 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.scroll
 
+import indi.dmzz_yyhyy.lightnovelreader.data.content.component.SimpleTextComponent
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiState
 import io.nightfish.lightnovelreader.api.book.ChapterContent
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
@@ -24,7 +25,12 @@ internal suspend fun prepareScrollChapter(
     ChapterContentUiState(
         id = chapter.id,
         title = chapter.title,
-        content = reusable?.content ?: createComponents(chapter.content),
+        content = reusable?.content ?: createComponents(chapter.content).also { components ->
+            // 章节进入 UI 状态前准备注释正文，后台排版和首次显示共享同一实例。
+            components.filterIsInstance<SimpleTextComponent>().forEach {
+                if (it.preparedText.hasRuby) it.preparedText.text
+            }
+        },
         sourceContent = chapter.content,
         prevChapter = chapter.prevChapter,
         nextChapter = chapter.nextChapter
