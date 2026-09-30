@@ -14,7 +14,6 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiS
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentViewModel
 import indi.dmzz_yyhyy.lightnovelreader.utils.throttleLatest
 import io.nightfish.lightnovelreader.api.book.ChapterContent
-import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
 import io.nightfish.lightnovelreader.api.content.component.ImageComponentData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -145,20 +144,15 @@ class ScrollContentViewModel(
                     val newCurrent = uiState.contentList[if (moveBackward) 0 else 2] ?: return@onOk
                     val content = newCurrent.second.get() ?: return@onOk
                     val oldCurrent = uiState.contentList[1]
-                    val anchorIndex = uiState.lazyListState.firstVisibleItemIndex
-                    val anchorOffset = uiState.lazyListState.firstVisibleItemScrollOffset
                     collectPrevChapterJob?.cancel()
                     collectCurrentChapterJob?.cancel()
                     collectNextChapterJob?.cancel()
-                    // 吸收上游的槽位滚动锚点补偿，但保留本地有界窗口和防提前切章条件。
+                    // 由章节稳定 key 保持可见位置，避免主动定位取消正在进行的惯性滚动。
                     Snapshot.withMutableSnapshot {
                         resetContentList()
                         uiState.contentList[if (moveBackward) 2 else 0] = oldCurrent
                         uiState.contentList[1] = newCurrent
                         uiState.readingChapterId = content.id
-                        uiState.lazyListState.requestScrollToItem(
-                            (anchorIndex + if (moveBackward) 1 else -1).coerceIn(0, 2), anchorOffset
-                        )
                     }
                     if (moveBackward) {
                         collectingNextChapterId = current.id
