@@ -1217,12 +1217,11 @@ abstract class LightNovelReaderDatabase : RoomDatabase() {
                 }
                 val oldByPath = oldEntities.associateBy { it.path }
                 migratedEntities.filter { oldByPath[it.path] != it }.forEach { entity ->
-                    db.insert("user_data", SQLiteDatabase.CONFLICT_REPLACE, ContentValues().apply {
-                        put("path", entity.path)
-                        put("group", entity.group)
-                        put("type", entity.type)
-                        put("value", entity.value)
-                    })
+                    // group 是 SQLite 关键字，显式引用列名，避免 ContentValues 生成未引用的 SQL。
+                    db.execSQL(
+                        "INSERT OR REPLACE INTO user_data (`path`, `group`, `type`, `value`) VALUES (?, ?, ?, ?)",
+                        arrayOf(entity.path, entity.group, entity.type, entity.value)
+                    )
                 }
                 // 章节组件由兼容反序列化层处理，不清空章节/下载缓存或本地书签。
             }
