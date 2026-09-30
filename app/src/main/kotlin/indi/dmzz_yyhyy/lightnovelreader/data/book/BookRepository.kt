@@ -2,7 +2,6 @@ package indi.dmzz_yyhyy.lightnovelreader.data.book
 
 import android.net.Uri
 import android.util.Log
-import androidx.navigation.NavController
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
@@ -148,7 +147,7 @@ class BookRepository @Inject constructor(
     private val downloadSettingsRepository: DownloadSettingsRepository,
     private val downloadTaskRepository: DownloadTaskRepository,
     private val workManager: WorkManager
-): BookRepositoryApi {
+) : BookRepositoryApi {
     companion object {
         private const val TAG = "BookRepository"
         private const val CHAPTER_REMOTE_REFRESH_TTL_MILLIS = 10 * 60 * 1000L
@@ -455,7 +454,10 @@ class BookRepository @Inject constructor(
     override suspend fun getAllUserReadingData(): List<UserReadingData> =
         localBookDataSource.getAllUserReadingData()
 
-    override suspend fun updateUserReadingData(id: String, update: (UserReadingData) -> UserReadingData) {
+    override suspend fun updateUserReadingData(
+        id: String,
+        update: (UserReadingData) -> UserReadingData
+    ) {
         localBookDataSource.updateUserReadingData(id, update)
     }
 
@@ -713,6 +715,6 @@ class BookRepository @Inject constructor(
                 ?.toLegacyCompatibleSourceId()
             ?: webBookDataSource.id.toLegacyCompatibleSourceId()
 
-    override fun progressBookTagClick(tag: String, navController: NavController) =
-        webBookDataSource.progressBookTagClick(tag, navController)
+    override fun progressBookTagClick(tag: String) =
+        webBookDataSource.progressBookTagClick(tag)
 }

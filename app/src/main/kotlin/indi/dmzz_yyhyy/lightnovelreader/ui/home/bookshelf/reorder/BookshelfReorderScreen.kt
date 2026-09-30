@@ -304,7 +304,10 @@ fun BookshelfListReorderContent(
         ) { id ->
             val bookshelf = bookshelfMap[id] ?: return@items
             ReorderableItem(reorderableLazyListState, key = id) { isDragging ->
-                val elevation by animateDpAsState(if (isDragging) 4.dp else 0.dp, label = "bookshelfElevation")
+                val elevation by animateDpAsState(
+                    if (isDragging) 4.dp else 0.dp,
+                    label = "bookshelfElevation"
+                )
 
                 Surface(
                     modifier = Modifier

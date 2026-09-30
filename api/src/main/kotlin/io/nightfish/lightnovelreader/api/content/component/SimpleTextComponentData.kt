@@ -1,6 +1,8 @@
 package io.nightfish.lightnovelreader.api.content.component
 
 import android.content.Context
+import io.nightfish.lightnovelreader.api.content.component.data.AbstractContentComponentData
+import io.nightfish.lightnovelreader.api.content.component.data.TextData
 import io.nightfish.lightnovelreader.api.identifier.ofAppId
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -23,9 +25,17 @@ import org.dom4j.Element
 data class SimpleTextComponentData(
     val text: String,
     val styleRanges: List<SimpleTextStyleRange> = emptyList()
-): AbstractContentComponentData() {
+) : AbstractContentComponentData(), TextData<SimpleTextComponentData> {
     override val id = Companion.id
     override fun toJsonElement(): JsonElement = Json.encodeToJsonElement(this)
+
+    override fun processText(processor: (text: String) -> String): SimpleTextComponentData {
+        val processedText = processor(text)
+        return copy(
+            text = processedText,
+            styleRanges = if (processedText.length == text.length) styleRanges else emptyList()
+        )
+    }
 
     override fun toHtmlElement(context: Context): Element = DocumentHelper.createElement("div").apply {
         appendStyledText(text, styleRanges)

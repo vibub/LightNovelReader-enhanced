@@ -25,7 +25,8 @@ class AddBookToBookshelfDialogViewModel @Inject constructor(
             selectedBookIds.forEach { bookId ->
                 localBookDataSource.getBookInformation(sourceId, bookId)?.let { bookInformation ->
                     bookshelfIds.forEach {
-                        bookshelfRepository.addBookIntoBookShelf(it,
+                        bookshelfRepository.addBookIntoBookShelf(
+                            it,
                             bookInformation
                         )
                     }

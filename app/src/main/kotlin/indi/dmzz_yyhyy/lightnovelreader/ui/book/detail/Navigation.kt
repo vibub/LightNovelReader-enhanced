@@ -12,38 +12,34 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.navigation.NavController
-import androidx.navigation.NavGraphBuilder
-import androidx.navigation.compose.composable
-import androidx.navigation.toRoute
+import indi.dmzz_yyhyy.lightnovelreader.ui.navigation.Navigator
+import indi.dmzz_yyhyy.lightnovelreader.ui.navigation.NavEntryScope
 import androidx.work.WorkInfo
 import com.github.michaelbull.result.map
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import indi.dmzz_yyhyy.lightnovelreader.R
+import indi.dmzz_yyhyy.lightnovelreader.ui.LocalNavigator
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.navigateToBookReaderDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.search.navigateToLinovelibWebBookDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.navigateToImageViewerDialog
 import indi.dmzz_yyhyy.lightnovelreader.ui.dialog.navigateToAddBookToBookshelfDialog
 import indi.dmzz_yyhyy.lightnovelreader.ui.dialog.navigateToMarkAllChaptersAsReadDialog
 import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
-import indi.dmzz_yyhyy.lightnovelreader.utils.isResumed
-import indi.dmzz_yyhyy.lightnovelreader.utils.popBackStackIfResumed
 import indi.dmzz_yyhyy.lightnovelreader.utils.showSnackbar
 import indi.dmzz_yyhyy.lightnovelreader.utils.uriLauncher
 import io.nightfish.lightnovelreader.api.Route
-import io.nightfish.lightnovelreader.api.ui.LocalNavController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.launch
 
 @SuppressLint("LocalContextGetResourceValueCall")
-fun NavGraphBuilder.bookDetailDestination() {
-    composable<Route.Book.Detail> { entry ->
-        val navController = LocalNavController.current
-        val bookId = entry.toRoute<Route.Book.Detail>().bookId
-        val viewModel = hiltViewModel<DetailViewModel>(entry)
+fun NavEntryScope.bookDetailDestination() {
+    entry<Route.Book.Detail> { entry ->
+        val navigator = LocalNavigator.current
+        val bookId = entry.bookId
+        val viewModel = hiltViewModel<DetailViewModel>()
         val context = LocalContext.current
         val coroutineScope = rememberCoroutineScope()
         val exportBookToEPUBLauncher = uriLauncher { uri ->
@@ -51,16 +47,30 @@ fun NavGraphBuilder.bookDetailDestination() {
                 viewModel.uiState.bookInformation
                     ?.map { it.title }
                     ?.onOk { title ->
-                        Toast.makeText(context, context.getString(R.string.export_book_started, title), Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.export_book_started, title),
+                            Toast.LENGTH_SHORT
+                        ).show()
                         viewModel.exportToEpub(uri, bookId, title).collect {
                             if (it != null)
                                 when (it.state) {
                                     WorkInfo.State.SUCCEEDED -> {
-                                        Toast.makeText(context, context.getString(R.string.export_book_success, it), Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.export_book_success, it),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
                                     }
+
                                     WorkInfo.State.FAILED -> {
-                                        Toast.makeText(context, context.getString(R.string.export_book_failed, it), Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.export_book_failed, it),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
                                     }
+
                                     else -> {}
                                 }
                         }
@@ -68,9 +78,8 @@ fun NavGraphBuilder.bookDetailDestination() {
                         Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show()
                     }
             }
-            navController.popBackStack()
+            navigator.popBackStack()
         }
-        viewModel.navController = navController
         val snackbarHostState = LocalSnackbarHost.current
 
         LaunchedEffect(bookId) {
@@ -140,16 +149,21 @@ fun NavGraphBuilder.bookDetailDestination() {
                     ?.map { it.title }
                     ?.onOk { title ->
                         when (settings.exportType) {
-                            ExportType.BOOK -> createDataFile(context, title, exportBookToEPUBLauncher)
+                            ExportType.BOOK -> createDataFile(
+                                context,
+                                title,
+                                exportBookToEPUBLauncher
+                            )
+
                             ExportType.VOLUMES -> selectDirectory(context, exportBookToEPUBLauncher)
                         }
                     }?.onErr {
                         Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show()
                     }
             },
-            onClickBackButton = navController::popBackStackIfResumed,
+            onClickBackButton = { navigator.popBackStack() },
             onClickChapter = {
-                navController.navigateToBookReaderDestination(bookId, it, context)
+                navigator.navigateToBookReaderDestination(bookId, it, context)
             },
             onClickReadFromStart = {
                 viewModel.uiState.bookVolumes
@@ -160,7 +174,7 @@ fun NavGraphBuilder.bookDetailDestination() {
                             lastReadChapterId = null,
                             firstChapterId = firstChapterId
                         )?.let { readingEntry ->
-                            navController.navigateToBookReaderDestination(
+                            navigator.navigateToBookReaderDestination(
                                 bookId = bookId,
                                 chapterId = readingEntry.chapterId,
                                 context = context,
@@ -178,7 +192,7 @@ fun NavGraphBuilder.bookDetailDestination() {
                         lastReadChapterId = lastReadChapterId,
                         firstChapterId = null
                     )?.let { readingEntry ->
-                        navController.navigateToBookReaderDestination(
+                        navigator.navigateToBookReaderDestination(
                             bookId = bookId,
                             chapterId = readingEntry.chapterId,
                             context = context,
@@ -194,7 +208,7 @@ fun NavGraphBuilder.bookDetailDestination() {
                                 lastReadChapterId = lastReadChapterId,
                                 firstChapterId = firstChapterId
                             )?.let { readingEntry ->
-                                navController.navigateToBookReaderDestination(
+                                navigator.navigateToBookReaderDestination(
                                     bookId = bookId,
                                     chapterId = readingEntry.chapterId,
                                     context = context,
@@ -215,11 +229,11 @@ fun NavGraphBuilder.bookDetailDestination() {
             onRetryChapter = { chapterId ->
                 startCache(listOf(chapterId), forceRefresh = true)
             },
-            requestAddBookToBookshelf = navController::navigateToAddBookToBookshelfDialog,
-            onClickTag = viewModel::onClickTag,
-            onClickCover = navController::navigateToImageViewerDialog,
+            requestAddBookToBookshelf = navigator::navigateToAddBookToBookshelfDialog,
+            onClickTag = { viewModel.onClickTag(it)?.let(navigator::navigate) },
+            onClickCover = navigator::navigateToImageViewerDialog,
             onClickMarkAsRead = {
-                navController.navigateToMarkAllChaptersAsReadDialog(bookId)
+                navigator.navigateToMarkAllChaptersAsReadDialog(bookId)
             },
             onMarkChaptersAsRead = { chapterIds ->
                 viewModel.markChaptersAsRead(bookId, chapterIds)
@@ -229,7 +243,7 @@ fun NavGraphBuilder.bookDetailDestination() {
             },
             onClickWebView = if (viewModel.uiState.isLinovelibSource) {
                 {
-                    navController.navigateToLinovelibWebBookDestination(bookId)
+                    navigator.navigateToLinovelibWebBookDestination(bookId)
                 }
             } else {
                 null
@@ -240,9 +254,7 @@ fun NavGraphBuilder.bookDetailDestination() {
         )
     }
 }
-
-fun NavController.navigateToBookDetailDestination(bookId: String) {
-    if (!this.isResumed()) return
+fun Navigator.navigateToBookDetailDestination(bookId: String) {
     navigate(Route.Book.Detail(bookId))
 }
 
@@ -252,7 +264,10 @@ fun createDataFile(
     fileName: String,
     launcher: ManagedActivityResultLauncher<Intent, ActivityResult>
 ) {
-    val initUri = DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", "primary:Documents")
+    val initUri = DocumentsContract.buildDocumentUri(
+        "com.android.externalstorage.documents",
+        "primary:Documents"
+    )
     val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
         addCategory(Intent.CATEGORY_OPENABLE)
         type = "application/epub+zip"
@@ -264,11 +279,13 @@ fun createDataFile(
 }
 
 @Suppress("DuplicatedCode")
-fun selectDirectory(context: Context, launcher: ManagedActivityResultLauncher<Intent, ActivityResult>) {
+fun selectDirectory(
+    context: Context,
+    launcher: ManagedActivityResultLauncher<Intent, ActivityResult>
+) {
     val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             putExtra(DocumentsContract.EXTRA_INITIAL_URI, Intent.ACTION_OPEN_DOCUMENT)
     }
     launcher.launch(Intent.createChooser(intent, context.getString(R.string.select_location)))
 }
-

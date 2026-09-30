@@ -32,13 +32,14 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.UserReadingDataDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookInformationEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.ChapterInformationEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.Mergeable
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.UserDataEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.VolumeEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.storage.StorageUsageRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
 import indi.dmzz_yyhyy.lightnovelreader.utils.ImageUtils
 import indi.dmzz_yyhyy.lightnovelreader.utils.readAppLocalData
 import indi.dmzz_yyhyy.lightnovelreader.utils.toLegacyCompatibleSourceId
-import io.nightfish.lightnovelreader.api.content.component.ImageComponentData
+import io.nightfish.lightnovelreader.api.content.component.data.ImageComponentData
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -349,7 +350,8 @@ class LocalDataManager @Inject constructor(
                 key = { it.bookId to it.volumeId },
                 sourceId = { it.sourceId },
                 copyWithSourceId = { entity, id -> entity.copy(sourceId = id) }
-            )
+            ),
+            userDataEntities = UserDataEntity.migrateLegacyPaths(userDataEntities)
         )
     }
 

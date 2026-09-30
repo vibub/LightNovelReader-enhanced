@@ -2,7 +2,7 @@ name: ReleaseApkBuild
 on:
   workflow_dispatch:
   push:
-    branches: [master, refactoring]
+    branches: [ master, refactoring ]
     paths:
       - app/src/**
       - app/proguard-rules.pro

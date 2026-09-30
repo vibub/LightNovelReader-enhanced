@@ -73,7 +73,9 @@ class UpdateCheckRepository @Inject constructor(
 
     init {
         coroutineScope.launch {
-            if (userDataRepository.booleanUserData(UserDataPath.Settings.App.AutoCheckUpdate.path).getOrDefault(true))
+            if (userDataRepository.booleanUserData(UserDataPath.Settings.App.AutoCheckUpdate.path)
+                    .getOrDefault(true)
+            )
                 check()
         }
     }
@@ -272,13 +274,18 @@ class UpdateCheckRepository @Inject constructor(
                 description = "应用更新下载进度"
                 setShowBadge(false)
             }
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val notificationManager =
+                context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(channel)
         }
     }
 
     private fun showDownloadNotification(progress: Int, versionName: String) {
-        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        if (ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) return
         val notification = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.icon_foreground)
             .setContentTitle("正在下载更新 $versionName")
@@ -292,7 +299,11 @@ class UpdateCheckRepository @Inject constructor(
     }
 
     private fun showDownloadCompleteNotification(apkFile: File) {
-        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        if (ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) return
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", apkFile)
         val installIntent = Intent(Intent.ACTION_VIEW).apply {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -315,7 +326,11 @@ class UpdateCheckRepository @Inject constructor(
     }
 
     private fun showDownloadFailedNotification(reason: String) {
-        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        if (ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) return
         val notification = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.icon_foreground)
             .setContentTitle("更新下载失败")

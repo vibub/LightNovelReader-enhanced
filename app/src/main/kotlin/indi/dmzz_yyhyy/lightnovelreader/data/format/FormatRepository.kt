@@ -7,7 +7,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.FormattingRuleEnt
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.BookVolumes
 import io.nightfish.lightnovelreader.api.book.ChapterContent
-import io.nightfish.lightnovelreader.api.content.component.SimpleTextComponentData
+import io.nightfish.lightnovelreader.api.content.component.data.TextData
 import io.nightfish.lightnovelreader.api.explore.ExploreDisplayBook
 import io.nightfish.lightnovelreader.api.text.ComponentProcessor
 import io.nightfish.lightnovelreader.api.text.TextProcessor
@@ -176,7 +176,7 @@ class FormatRepository @Inject constructor(
             author = processText(bookInformation.id, bookInformation.author),
             description = processText(bookInformation.id, bookInformation.description),
             publishingHouse = processText(bookInformation.id, bookInformation.publishingHouse),
-    )
+        )
 
     override fun processBookVolumes(bookVolumes: BookVolumes): BookVolumes = bookVolumes.copy(
         volumes = bookVolumes.volumes.map { volume ->
@@ -189,14 +189,14 @@ class FormatRepository @Inject constructor(
                 })
         })
 
-    override fun processChapterContent(bookId: String, chapterContent: ChapterContent, componentProcessor: ComponentProcessor): ChapterContent = chapterContent.copy(
+    override fun processChapterContent(
+        bookId: String,
+        chapterContent: ChapterContent,
+        componentProcessor: ComponentProcessor
+    ): ChapterContent = chapterContent.copy(
         content = componentProcessor.apply {
-            process<SimpleTextComponentData> {
-                val processedText = processText(bookId, it.text)
-                it.copy(
-                    text = processedText,
-                    styleRanges = if (processedText.length == it.text.length) it.styleRanges else emptyList()
-                )
+            process { data: TextData<*> ->
+                data.processText { text -> processText(bookId, text) }
             }
         }.get()
     )

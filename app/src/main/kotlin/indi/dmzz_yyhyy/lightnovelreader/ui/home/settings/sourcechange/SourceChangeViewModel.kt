@@ -123,9 +123,12 @@ class SourceChangeViewModel @Inject constructor(
                     runCatching {
                         localDataManager.cleanDatabaseWithoutGlobalUserData(deleteOfflineImages = false)
                     }
-                }.andThen out@ {
-                    val file = if (newWebDataSourceId == "Wenku8".ofId()) localDataManager.localDataDir.resolve("-791439186")
-                    else localDataManager.localDataDir.resolve(newWebDataSourceId.toString())
+                }.andThen out@{
+                    val file =
+                        if (newWebDataSourceId == "Wenku8".ofId()) localDataManager.localDataDir.resolve(
+                            "-791439186"
+                        )
+                        else localDataManager.localDataDir.resolve(newWebDataSourceId.toString())
                     if (!file.exists()) return@out Ok(Unit)
                     runCatching {
                         file
@@ -138,7 +141,8 @@ class SourceChangeViewModel @Inject constructor(
                     }
                 }.andThen {
                     runCatching {
-                        userDataRepository.stringUserData(UserDataPath.Settings.Data.WebDataSourceId.path).set(newWebDataSourceId.toString())
+                        userDataRepository.stringUserData(UserDataPath.Settings.Data.WebDataSourceId.path)
+                            .set(newWebDataSourceId.toString())
                     }
                 }.onErr {
                     viewModelScope.launch(Dispatchers.Main) {

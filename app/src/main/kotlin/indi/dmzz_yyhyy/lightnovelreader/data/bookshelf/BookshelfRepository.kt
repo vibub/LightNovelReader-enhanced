@@ -82,19 +82,19 @@ class BookshelfRepository @Inject constructor(
 
     override fun getBookshelfFlow(id: Int): Flow<Bookshelf?> =
         bookshelfDao.getBookShelfFlow(id).map { bookshelfEntity ->
-                bookshelfEntity ?: return@map null
-                Bookshelf(
-                    id = id,
-                    name = bookshelfEntity.name,
-                    sortType = BookshelfSortType.map(bookshelfEntity.sortType),
-                    sortReversed = bookshelfEntity.sortReversed,
-                    autoCache = bookshelfEntity.autoCache,
-                    systemUpdateReminder = bookshelfEntity.systemUpdateReminder,
-                    allBookIds = bookshelfEntity.allBookIds,
-                    pinnedBookIds = bookshelfEntity.pinnedBookIds,
-                    updatedBookIds = bookshelfEntity.updatedBookIds
-                )
-            }
+            bookshelfEntity ?: return@map null
+            Bookshelf(
+                id = id,
+                name = bookshelfEntity.name,
+                sortType = BookshelfSortType.map(bookshelfEntity.sortType),
+                sortReversed = bookshelfEntity.sortReversed,
+                autoCache = bookshelfEntity.autoCache,
+                systemUpdateReminder = bookshelfEntity.systemUpdateReminder,
+                allBookIds = bookshelfEntity.allBookIds,
+                pinnedBookIds = bookshelfEntity.pinnedBookIds,
+                updatedBookIds = bookshelfEntity.updatedBookIds
+            )
+        }
 
     override suspend fun addBookshelf(bookshelf: Bookshelf) {
         bookshelfDao.insertBookshelf(
@@ -198,10 +198,10 @@ class BookshelfRepository @Inject constructor(
 
     override suspend fun getAllBookshelfBooksMetadata(): List<BookshelfBookMetadata> =
         bookshelfDao.getAllBookshelfBookEntities().map {
-                BookshelfBookMetadata(
-                    it.id, it.lastUpdate, it.bookShelfIds
-                )
-            }
+            BookshelfBookMetadata(
+                it.id, it.lastUpdate, it.bookShelfIds
+            )
+        }
 
     override fun getAllBookshelfBookIdsFlow(): Flow<List<String>> =
         bookshelfDao.getAllBookshelfBookIdsFlow()
@@ -239,7 +239,7 @@ class BookshelfRepository @Inject constructor(
         updateBookshelf(bookshelfId) { oldBookshelf ->
             oldBookshelf.copy(
                 allBookIds = oldBookshelf.allBookIds.toMutableList()
-                .apply { removeAll { it == bookId } },
+                    .apply { removeAll { it == bookId } },
                 pinnedBookIds = oldBookshelf.pinnedBookIds.toMutableList()
                     .apply { removeAll { it == bookId } },
                 updatedBookIds = oldBookshelf.updatedBookIds.toMutableList()

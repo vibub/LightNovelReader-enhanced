@@ -22,7 +22,7 @@ LightNovelReader Enhanced 是 [LightNovelReader](https://github.com/dmzz-yyhyy/L
 
 - 上游倉庫：[dmzz-yyhyy/LightNovelReader](https://github.com/dmzz-yyhyy/LightNovelReader)
 - 增強分支倉庫：[vibub/LightNovelReader-enhanced](https://github.com/vibub/LightNovelReader-enhanced)
-- 長期維護分支仍為 `refactoring`，本分支會繼續吸收上游 `refactoring` 的更新。
+- 長期維護分支仍為 `refactoring`，本分支會繼續吸收上游 `dev/1.3` 的更新。
 - 通用功能、外掛 API 與社群資源基本沿用上游；本倉庫優先處理增強分支相關的建置、更新、Linovelib/Bilinovel 與本地改動問題。
 
 ## 特色
@@ -121,7 +121,8 @@ LightNovelReader 是一個完全免費、開源的專案。
 
 [![Crowdin](https://badges.crowdin.net/lightnovelreader/localized.svg)](https://crowdin.com/project/lightnovelreader)
 
-LightNovelReader 使用 [Crowdin](https://crowdin.com/project/lightnovelreader) 管理翻譯工作。如果你希望協助翻譯或改進現有的譯文，歡迎前往 Crowdin 專案頁面參與貢獻！
+LightNovelReader 使用 [Crowdin](https://crowdin.com/project/lightnovelreader)
+管理在地化工作。如果你希望協助翻譯或改進現有的譯文，歡迎前往 Crowdin 專案頁面參與貢獻！
 
 > 找不到你的語言？歡迎在 [Crowdin](https://crowdin.com/project/lightnovelreader) 申請新增語言！
 

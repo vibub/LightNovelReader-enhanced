@@ -3,7 +3,7 @@
     <string name="language">简体中文 (中国大陆)</string>
     <string name="language_translators">NightFish, yukonisen</string>
     <!-- Navigation Items -->
-    <string name="nav_reading">正在阅读</string>
+    <string name="nav_reading">阅读中</string>
     <string name="nav_bookshelf">书架</string>
     <string name="nav_bookshelf_select_mode">选择 书架 (%d)</string>
     <string name="nav_explore">探索</string>
@@ -207,8 +207,10 @@
     <string name="settings_reader_left_margin">左边距</string>
     <string name="settings_reader_right_margin">右边距</string>
     <string name="display_settings">显示</string>
-    <string name="settings_theme">主题与纸张</string>
-    <string name="settings_theme_desc">设置应用主题和阅读器纸张</string>
+    <string name="settings_theme">App Theme</string>
+    <string name="settings_theme_desc">Adjust the appearance of the app</string>
+    <string name="settings_reader_style">Reader Style</string>
+    <string name="settings_reader_style_desc">Adjust the appearance of the reading page</string>
     <string name="settings_text_formatting">文本格式化</string>
     <string name="settings_text_formatting_desc">根据规则格式化文本内容</string>
     <string name="settings_theme_light_theme">浅色主题</string>
@@ -218,7 +220,6 @@
     <string name="settings_theme_dynamic_colors">系统动态配色</string>
     <string name="settings_theme_dynamic_colors_desc_unavailable">从系统主题应用动态配色 (需要 Android 12+)</string>
     <string name="settings_theme_dynamic_colors_desc">从系统主题应用动态配色</string>
-    <string name="settings_theme_m3e_description">启用 Material 3 Expressive 设计。该功能为实验性内容，仍处于测试阶段</string>
     <string name="settings_formats">格式</string>
     <string name="settings_formats_desc">设置日期或文本格式</string>
     <string name="date_time_formats_settings">日期和时间</string>
@@ -352,8 +353,6 @@
     <string name="appearance_settings">外观</string>
     <string name="control_settings">操作</string>
     <string name="margin_settings">边距</string>
-    <string name="settings_theme_settings">主题设置……</string>
-    <string name="settings_theme_settings_desc">调整阅读器和纸张选项</string>
     <string name="settings_hide_status_bar">隐藏状态栏</string>
     <string name="settings_hide_status_bar_desc">处于沉浸阅读模式时，允许隐藏系统状态栏和导航栏</string>
     <string name="settings_trad_conversion">简繁转换</string>
@@ -786,4 +785,7 @@
     <string name="restart">重启</string>
     <string name="current_web_data_source_not_founded">当前网络数据源不可用，请检查插件与数据源设置</string>
     <string name="never_read">未读</string>
+    <string name="settings_paragraph_spacing">Paragraph Spacing</string>
+    <string name="settings_text_indent">Text Indent</string>
+    <string name="settings_line_height">Line Height</string>
 </resources>

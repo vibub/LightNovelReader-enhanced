@@ -46,44 +46,32 @@ import io.nightfish.lightnovelreader.api.book.BookVolumes
 fun ChapterSelectionBottomSheet(
     sheetState: SheetState,
     selectedVolumeId: String,
-    bookVolumes: BookVolumes,
+    bookVolumes: BookVolumes?,
     readingChapterId: String,
     onDismissRequest: () -> Unit,
     onClickChapter: (chapterId: String) -> Unit,
     onChangeSelectedVolumeId: (volumeId: String) -> Unit
 ) {
     val lazyColumnState = rememberLazyListState()
-
-    var autoScrolled by remember(readingChapterId, bookVolumes) {
-        mutableStateOf(false)
-    }
-
+    var autoScrolled by remember(readingChapterId, bookVolumes) { mutableStateOf(false) }
     LaunchedEffect(sheetState.currentValue, autoScrolled, readingChapterId, bookVolumes) {
-        if (autoScrolled) return@LaunchedEffect
-        if (sheetState.currentValue != SheetValue.Expanded) return@LaunchedEffect
-        if (readingChapterId.isBlank()) return@LaunchedEffect
-
-        val volumes = bookVolumes.volumes
+        if (autoScrolled || sheetState.currentValue != SheetValue.Expanded || readingChapterId.isBlank()) {
+            return@LaunchedEffect
+        }
+        val volumes = bookVolumes?.volumes ?: return@LaunchedEffect
         val volumeIndex = volumes.indexOfFirst { volume ->
             volume.chapters.any { it.id == readingChapterId }
         }
         if (volumeIndex < 0) return@LaunchedEffect
-
-        val volume = volumes[volumeIndex]
-        onChangeSelectedVolumeId(volume.volumeId)
-
+        onChangeSelectedVolumeId(volumes[volumeIndex].volumeId)
         lazyColumnState.scrollToItem(volumeIndex)
         autoScrolled = true
     }
-
     ReaderBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
         titleIcon = {
-            Icon(
-                painter = painterResource(R.drawable.read_more_24px),
-                contentDescription = null
-            )
+            Icon(painterResource(R.drawable.read_more_24px), contentDescription = null)
         },
         title = {
             Text(
@@ -94,82 +82,61 @@ fun ChapterSelectionBottomSheet(
         }
     ) {
         Spacer(Modifier.height(8.dp))
-
-        val isEmpty = bookVolumes.volumes.all { it.chapters.isEmpty() }
-
-        if (isEmpty) {
+        if (bookVolumes == null || bookVolumes.volumes.all { it.chapters.isEmpty() }) {
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp),
+                modifier = Modifier.fillMaxWidth().height(200.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Loading()
             }
         } else {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
+                modifier = Modifier.fillMaxWidth().weight(1f),
                 state = lazyColumnState
             ) {
-                items(
-                    items = bookVolumes.volumes,
-                    key = { it.volumeId }
-                ) { volume ->
+                items(items = bookVolumes.volumes, key = { it.volumeId }) { volume ->
                     val expanded = selectedVolumeId == volume.volumeId
-
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth()
                             .animateContentSize(animationSpec = tween(durationMillis = 200))
                     ) {
                         Box(
-                            modifier = Modifier
-                                .clickable {
-                                    onChangeSelectedVolumeId(
-                                        if (selectedVolumeId == volume.volumeId) ""
-                                        else volume.volumeId
-                                    )
-                                }
-                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                            modifier = Modifier.clickable {
+                                onChangeSelectedVolumeId(if (expanded) "" else volume.volumeId)
+                            }.padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth()
                                     .padding(vertical = 4.dp, horizontal = 6.dp),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(text = volume.volumeTitle, fontWeight = FontWeight.W600, style = typography.titleMedium, color = colorScheme.onSurface)
                                     Text(
-                                        text = stringResource(
-                                            R.string.info_volume_chapters_count,
-                                            volume.chapters.size
-                                        ),
+                                        text = volume.volumeTitle,
+                                        fontWeight = FontWeight.W600,
+                                        style = typography.titleMedium,
+                                        color = colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.info_volume_chapters_count, volume.chapters.size),
                                         color = colorScheme.secondary,
                                         style = typography.labelMedium
                                     )
                                 }
                                 Icon(
-                                    modifier = Modifier
-                                        .scale(0.75f)
-                                        .rotate(if (expanded) -90f else 90f),
+                                    modifier = Modifier.scale(0.75f).rotate(if (expanded) -90f else 90f),
                                     painter = painterResource(R.drawable.arrow_forward_ios_24px),
                                     tint = colorScheme.onSurface,
                                     contentDescription = null
                                 )
                             }
                         }
-
                         if (expanded) {
                             volume.chapters.forEach { chapter ->
                                 val isSelected = readingChapterId == chapter.id
                                 Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(42.dp)
+                                    modifier = Modifier.fillMaxWidth().height(42.dp)
                                         .clickable { onClickChapter(chapter.id) }
                                         .padding(horizontal = 22.dp),
                                     contentAlignment = Alignment.CenterStart

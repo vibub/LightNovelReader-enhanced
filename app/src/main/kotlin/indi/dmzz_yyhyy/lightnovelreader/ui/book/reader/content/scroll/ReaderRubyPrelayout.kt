@@ -42,11 +42,12 @@ internal fun rememberReaderRubyTextCache(
     val density = LocalDensity.current
     val environment = RubyTextEnvironment(
         style = readerRubyTextStyle(
-            readerStyle.fontSize.sp,
-            readerStyle.fontLineHeight.sp,
-            FontWeight(readerStyle.fontWeight.toInt()),
-            rememberReaderFontFamily(settingState.fontFamilyUriUserData),
-            readerContentTextColor(readerStyle.textColor, readerStyle.textDarkColor)
+            readerStyle.fontSize,
+            (readerStyle.fontSize.value * (readerStyle.lineHeight.value - 1f)).sp,
+            readerStyle.fontWeight,
+            rememberReaderFontFamily(settingState.fontUriUserData),
+            readerContentTextColor(readerStyle.textColor, readerStyle.textDarkColor),
+            readerStyle.letterSpacing
         ),
         density = Density(density.density, density.fontScale),
         direction = LocalLayoutDirection.current,

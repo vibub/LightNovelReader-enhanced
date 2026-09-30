@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -38,6 +39,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme.colorScheme
 import androidx.compose.material3.MaterialTheme.typography
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -86,6 +88,7 @@ import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book.LinovelibChapterContentParser
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentComponent
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.scroll.ScrollContentUiState
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.AnimatedText
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.AnimatedTextLine
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.LnrSnackbar
@@ -116,7 +119,7 @@ fun ReaderScreen(
     onClickPrevChapter: () -> Unit,
     onClickNextChapter: () -> Unit,
     onSelectChapterFromReaderCatalog: (chapterId: String) -> Unit,
-    onClickThemeSettings: () -> Unit,
+    onClickReaderStyleSettings: () -> Unit,
     onClickBookmark: () -> Unit,
     onClickWebView: (() -> Unit)? = null,
     avatarHeaders: Map<String, String> = emptyMap(),
@@ -173,6 +176,7 @@ fun ReaderScreen(
                 isImmersive = false
                 onClickBackButton()
             }
+
             MenuOptions.ReaderBackBlockMode.DoublePress -> {
                 val now = System.currentTimeMillis()
                 if (!isImmersive || now - lastBackPressTime < 1500) {
@@ -244,7 +248,9 @@ fun ReaderScreen(
         containerColor = readerBackgroundColor(settingState),
         contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { _ ->
-        if (settingState.enableBackgroundImage) {
+        val hasContentLoopBackground = readingScreenUiState.contentUiState != null &&
+            settingState.backgroundImageDisplayMode == MenuOptions.ReaderBgImageDisplayModeOptions.Loop
+        if (settingState.enableBackgroundImage && !hasContentLoopBackground) {
             val bgPainter = rememberReaderBackgroundPainter(settingState)
             val bgState by remember(bgPainter) {
                 (bgPainter as? AsyncImagePainter)?.state
@@ -296,18 +302,17 @@ fun ReaderScreen(
                 showSettingsBottomSheet = false
             },
             settingState = settingState,
-            onClickThemeSettings = onClickThemeSettings
+            onClickReaderStyleSettings = onClickReaderStyleSettings
         )
     }
 
     AnimatedVisibility(visible = showChapterSelectionBottomSheet) {
         readingScreenUiState.contentUiState?.let { contentUiState ->
-            readingScreenUiState.bookVolumes?.onOk { bookVolumes ->
-                contentUiState.readingChapterId?.let { readingChapterId ->
-                    ChapterSelectionBottomSheet(
+            contentUiState.readingChapterId?.let { readingChapterId ->
+                ChapterSelectionBottomSheet(
                         sheetState = chaptersBottomSheetState,
                         selectedVolumeId = selectedVolumeId,
-                        bookVolumes = bookVolumes,
+                        bookVolumes = readingScreenUiState.bookVolumes?.get(),
                         readingChapterId = readingChapterId,
                         onDismissRequest = {
                             coroutineScope.launch { chaptersBottomSheetState.hide() }
@@ -317,23 +322,26 @@ fun ReaderScreen(
                                     }
                                 }
                             showChapterSelectionBottomSheet = false
-                            selectedVolumeId =
-                                bookVolumes.volumes.firstOrNull { volume ->
+                            selectedVolumeId = readingScreenUiState.bookVolumes?.get()?.volumes
+                                ?.firstOrNull { volume ->
                                     volume.chapters.any {
                                         it.id == readingChapterId
                                     }
-                                }?.volumeId ?: ""
+                                }?.volumeId.orEmpty()
                         },
-                        onClickChapter = onSelectChapterFromReaderCatalog,
+                        onClickChapter = { chapterId ->
+                            onSelectChapterFromReaderCatalog(chapterId)
+                            coroutineScope.launch { chaptersBottomSheetState.hide() }
+                                .invokeOnCompletion {
+                                    if (!chaptersBottomSheetState.isVisible) {
+                                        showChapterSelectionBottomSheet = false
+                                    }
+                                }
+                        },
                         onChangeSelectedVolumeId = {
                             selectedVolumeId = it
                         }
-                    )
-                }
-            }?.onErr {
-                //TODO 错误显示
-            } ?: {
-                //TODO 加载显示
+                )
             }
 
             LaunchedEffect(readingScreenUiState.bookVolumes) {
@@ -368,6 +376,7 @@ fun ReaderScreen(
         )
     }
 }
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -523,7 +532,9 @@ fun Content(
                         if (settingState.autoPadding)
                             PaddingValues(
                                 top = stableSafeTopDp,
-                                bottom = with(density) { WindowInsets.safeContent.getBottom(density).toDp() } + if (isEnableIndicator) 40.dp else 0.dp,
+                                bottom = with(density) {
+                                    WindowInsets.safeContent.getBottom(density).toDp()
+                                } + if (isEnableIndicator) 40.dp else 0.dp,
                                 start = 16.dp,
                                 end = 16.dp
                             )
@@ -573,7 +584,8 @@ fun Content(
                         ?.getOrElse { loadingChapterTitle }
                         ?: loadingChapterTitle,
                     enableReadingChapterProgressIndicator = settingState.enableReadingChapterProgressIndicator,
-                    readingChapterProgress = readingScreenUiState.contentUiState?.readingProgress ?: 0f,
+                    readingChapterProgress = readingScreenUiState.contentUiState?.readingProgress
+                        ?: 0f,
                 )
             }
         }
@@ -617,7 +629,8 @@ private fun TopBar(
     TopAppBar(
         navigationIcon = {
             IconButton(
-                onClick = onClickBackButton) {
+                onClick = onClickBackButton
+            ) {
                 Icon(painterResource(id = R.drawable.arrow_back_24px), "back")
             }
         },
@@ -773,8 +786,10 @@ fun Indicator(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (enableBatteryIndicator) {
-                val batteryManager = LocalContext.current.getSystemService(BATTERY_SERVICE) as BatteryManager
-                val batLevel: Int = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                val batteryManager =
+                    LocalContext.current.getSystemService(BATTERY_SERVICE) as BatteryManager
+                val batLevel: Int =
+                    batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
                 RollingNumber(
                     modifier = Modifier.align(Alignment.CenterVertically),
                     number = batLevel,
@@ -809,7 +824,12 @@ fun Indicator(
             if (enableTimeIndicator) {
                 AnimatedText(
                     modifier = Modifier.align(Alignment.CenterVertically),
-                    text = String.format(Locale.US, "%d:%02d", LocalTime.now().hour, LocalTime.now().minute),
+                    text = String.format(
+                        Locale.US,
+                        "%d:%02d",
+                        LocalTime.now().hour,
+                        LocalTime.now().minute
+                    ),
                     style = typography.bodyLarge.copy(
                         letterSpacing = 1.sp
                     ),

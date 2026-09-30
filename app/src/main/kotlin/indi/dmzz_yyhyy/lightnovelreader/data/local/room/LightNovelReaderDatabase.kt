@@ -29,21 +29,21 @@ import indi.dmzz_yyhyy.lightnovelreader.data.local.room.dao.UserReadingDataDao
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookInformationEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookRecordEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookshelfBookMetadataEntity
-import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.DailyCountEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.BookshelfEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.ChapterContentEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.ChapterDownloadEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.DownloadTaskEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.ChapterInformationEntity
+import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.DailyCountEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.FormattingRuleEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.LinovelibChapterBookmarkEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.UserDataEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.UserReadingDataEntity
 import indi.dmzz_yyhyy.lightnovelreader.data.local.room.entity.VolumeEntity
 import io.nightfish.lightnovelreader.api.book.WordCount
-import io.nightfish.lightnovelreader.api.content.builder.ContentBuilder
+import io.nightfish.lightnovelreader.api.content.builder.buildContent
 import io.nightfish.lightnovelreader.api.content.builder.image
-import io.nightfish.lightnovelreader.api.content.builder.simpleText
+import io.nightfish.lightnovelreader.api.content.builder.paragraph
 
 @Database(
     entities = [
@@ -62,7 +62,7 @@ import io.nightfish.lightnovelreader.api.content.builder.simpleText
         FormattingRuleEntity::class,
         LinovelibChapterBookmarkEntity::class
     ],
-    version = 26,
+    version = 27,
     exportSchema = false
 )
 abstract class LightNovelReaderDatabase : RoomDatabase() {
@@ -113,7 +113,8 @@ abstract class LightNovelReaderDatabase : RoomDatabase() {
                             MIGRATION_22_23,
                             MIGRATION_23_24,
                             MIGRATION_24_25,
-                            MIGRATION_25_26
+                            MIGRATION_25_26,
+                            MIGRATION_26_27
                         )
                         .allowMainThreadQueries()
                         .build()
@@ -284,7 +285,8 @@ abstract class LightNovelReaderDatabase : RoomDatabase() {
                             val contentValues = ContentValues()
                             contentValues.put(
                                 "id",
-                                cursor.getInt(cursor.columnNames.indexOfFirst { it == "id" }).toString()
+                                cursor.getInt(cursor.columnNames.indexOfFirst { it == "id" })
+                                    .toString()
                             )
                             contentValues.put(
                                 "title",
@@ -315,7 +317,12 @@ abstract class LightNovelReaderDatabase : RoomDatabase() {
                             )
                             contentValues.put(
                                 "word_count",
-                                WorldCountConverter.worldCountToString(WordCount(cursor.getInt(cursor.columnNames.indexOfFirst { it == "word_count" })))
+                                WorldCountConverter.worldCountToString(
+                                    WordCount(
+                                        cursor.getInt(
+                                            cursor.columnNames.indexOfFirst { it == "word_count" })
+                                    )
+                                )
                             )
                             contentValues.put(
                                 "publishing_house",
@@ -439,12 +446,31 @@ abstract class LightNovelReaderDatabase : RoomDatabase() {
                             val textContent =
                                 cursor.getString(cursor.columnNames.indexOfFirst { it == "content" })
 
-                            val content = ContentBuilder().apply {
-                                textContent.split("[image]").forEach {
-                                    if (it.trim().startsWith("http")) image(it.toUri())
-                                    else simpleText(it)
+                            val content = buildContent {
+                                textContent.split("[image]").forEach { component ->
+                                    if (component.trim()
+                                            .startsWith("http")
+                                    ) image(component.toUri())
+                                    else component.split("\n")
+                                        .let { text ->
+                                            text.mapIndexedNotNull { index, string ->
+                                                if (string.isNotBlank()) return@mapIndexedNotNull string
+                                                if (text.getOrNull(index - 1)
+                                                        ?.isBlank() == true
+                                                ) return@mapIndexedNotNull string
+                                                if (text.getOrNull(index + 1)
+                                                        ?.isBlank() == true
+                                                ) return@mapIndexedNotNull string
+                                                return@mapIndexedNotNull null
+                                            }
+                                        }
+                                        .forEach {
+                                            paragraph {
+                                                text(it)
+                                            }
+                                        }
                                 }
-                            }.build()
+                            }
                             contentValues.put(
                                 "id",
                                 cursor.getInt(cursor.columnNames.indexOfFirst { it == "id" })
@@ -857,6 +883,7 @@ abstract class LightNovelReaderDatabase : RoomDatabase() {
                             val favoriteBooks = ListConverter.stringToStringList(
                                 statsCursor.getString(favoriteIdx) ?: ""
                             )
+
                             fun ensureRecord(bookId: String) {
                                 val cv = ContentValues()
                                 cv.put("book_id", bookId)
@@ -1163,6 +1190,41 @@ abstract class LightNovelReaderDatabase : RoomDatabase() {
                 db.execSQL("DROP TABLE download_task")
                 db.execSQL("ALTER TABLE download_task_new RENAME TO download_task")
                 db.execSQL("CREATE INDEX index_download_task_state ON download_task(state)")
+            }
+        }
+
+        internal val MIGRATION_26_27 = object : Migration(26, 27) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                val oldEntities = buildList {
+                    db.query("SELECT path, `group`, type, value FROM user_data").use { cursor ->
+                        while (cursor.moveToNext()) {
+                            add(UserDataEntity(
+                                path = cursor.getString(0),
+                                group = cursor.getString(1),
+                                type = cursor.getString(2),
+                                value = cursor.getString(3)
+                            ))
+                        }
+                    }
+                }
+                val migratedEntities = UserDataEntity.migrateLegacyPaths(
+                    oldEntities,
+                    preserveLegacyDefaults = true
+                )
+                val migratedPaths = migratedEntities.mapTo(mutableSetOf()) { it.path }
+                oldEntities.filter { it.path !in migratedPaths }.forEach { entity ->
+                    db.execSQL("DELETE FROM user_data WHERE path = ?", arrayOf(entity.path))
+                }
+                val oldByPath = oldEntities.associateBy { it.path }
+                migratedEntities.filter { oldByPath[it.path] != it }.forEach { entity ->
+                    db.insert("user_data", SQLiteDatabase.CONFLICT_REPLACE, ContentValues().apply {
+                        put("path", entity.path)
+                        put("group", entity.group)
+                        put("type", entity.type)
+                        put("value", entity.value)
+                    })
+                }
+                // 章节组件由兼容反序列化层处理，不清空章节/下载缓存或本地书签。
             }
         }
     }

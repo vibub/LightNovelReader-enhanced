@@ -12,7 +12,7 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ChapterContentUiS
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.ContentUiState
 import io.nightfish.lightnovelreader.api.error.WebRequestError
 
-interface ScrollContentUiState: ContentUiState {
+interface ScrollContentUiState : ContentUiState {
     val lazyListState: LazyListState
     val contentList: List<Pair<String, Result<ChapterContentUiState, WebRequestError>>?>
     val retryingChapterIds: Set<String>

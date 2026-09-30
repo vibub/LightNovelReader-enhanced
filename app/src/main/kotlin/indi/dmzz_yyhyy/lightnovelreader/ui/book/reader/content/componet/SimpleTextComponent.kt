@@ -37,9 +37,10 @@ fun SimpleTextComponentContent(
     fontWeight: FontWeight,
     fontFamily: FontFamily?,
     color: Color,
-    styleRanges: List<SimpleTextStyleRange> = emptyList()
+    styleRanges: List<SimpleTextStyleRange> = emptyList(),
+    letterSpacing: TextUnit = androidx.compose.ui.unit.TextUnit.Unspecified
 ) {
-    val style = readerRubyTextStyle(fontSize, fontLineHeight, fontWeight, fontFamily, color)
+    val style = readerRubyTextStyle(fontSize, fontLineHeight, fontWeight, fontFamily, color, letterSpacing)
 
     SelectionContainer {
         if (styleRanges.none { !it.rubyText.isNullOrBlank() }) {

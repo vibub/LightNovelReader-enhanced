@@ -155,7 +155,9 @@ fun ExploreHomeScreen(
                     }
 
                     AnimatedVisibility(
-                        modifier = Modifier.navigationBarsPadding().bottomBarPadding(),
+                        modifier = Modifier
+                            .navigationBarsPadding()
+                            .bottomBarPadding(),
                         visible = showEmptyPage,
                         enter = fadeIn(),
                         exit = fadeOut()
@@ -424,7 +426,7 @@ private fun ExploreRowSection(
                             0.97f to Color.White,
                             0.99f to Color.Transparent
                         )
-                )
+                    )
                     .padding(bottom = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 state = lazyRowState,

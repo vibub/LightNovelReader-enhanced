@@ -22,7 +22,7 @@ The main goal of this branch is to preserve the upstream experience while improv
 
 - Upstream repository: [dmzz-yyhyy/LightNovelReader](https://github.com/dmzz-yyhyy/LightNovelReader)
 - Enhanced fork repository: [vibub/LightNovelReader-enhanced](https://github.com/vibub/LightNovelReader-enhanced)
-- The long-term maintenance branch is still `refactoring`, and this branch will continue to absorb updates from upstream `refactoring`.
+- The long-term maintenance branch is still `refactoring`, and this branch will continue to absorb updates from upstream `dev/1.3`.
 - Common features, the plugin API, and community resources generally follow upstream; this repository prioritizes enhanced-fork issues around builds, updates, Linovelib/Bilinovel, and local changes.
 
 ## Features
@@ -31,7 +31,8 @@ The main goal of this branch is to preserve the upstream experience while improv
 - Modern UI with Jetpack Compose, compatible with Android 7.0 and above
 - Caching - support for caching book content and offline-first reading
 - Explore - discover new books, recommendation lists, tag categories, keyword search...
-- Multi-source support - easily switch between data sources, including manga. Data is independent between sources
+- Multi-source support - easily switch between data sources, including manga. Data is independent
+  between sources
 - Bookshelf - bookshelf management with custom shelves, favorites, and update notifications
 - EPUB export functionality for your favorite novels
 - Plugin system - support for custom data sources and plugin extensions
@@ -121,7 +122,9 @@ All contributions go toward continuous development, new features, possible futur
 
 [![Crowdin](https://badges.crowdin.net/lightnovelreader/localized.svg)](https://crowdin.com/project/lightnovelreader)
 
-LightNovelReader uses [Crowdin](https://crowdin.com/project/lightnovelreader) to manage translations. Want to help localize the app into your language? Head over to the Crowdin project to contribute!
+LightNovelReader uses [Crowdin](https://crowdin.com/project/lightnovelreader) to manage
+translations. Want to help localize the app into your language? Head over to the Crowdin project to
+contribute!
 
 > Don't see your language? Request it on [Crowdin](https://crowdin.com/project/lightnovelreader)!
 

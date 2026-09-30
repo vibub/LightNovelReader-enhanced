@@ -87,15 +87,18 @@ object GithubParser {
         try {
             Jsoup.connect(host).timeout(1500).get()
             return host
-        } catch (_: Exception) { }
+        } catch (_: Exception) {
+        }
         try {
             Jsoup.connect(RAW_HOST).timeout(1500).get()
             return RAW_HOST
-        } catch (_: Exception) { }
+        } catch (_: Exception) {
+        }
         try {
             Jsoup.connect(PROXY_HOST).timeout(1500).get()
             return PROXY_HOST
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+        }
         try {
             fetchTextFromCandidates(
                 listOf(
@@ -121,7 +124,7 @@ object GithubParser {
         override val downloadUrl: String,
         override val downloadUrls: List<String> = listOf(downloadUrl),
         override val downloadFileProgress: ((File, File) -> Unit)? = null
-    ): Release
+    ) : Release
 
     private fun normalizeGithubUrl(href: String): String =
         when {

@@ -31,7 +31,8 @@ internal fun readerRubyTextStyle(
     fontLineHeight: TextUnit,
     fontWeight: FontWeight,
     fontFamily: FontFamily?,
-    color: Color
+    color: Color,
+    letterSpacing: TextUnit = 0.2.sp
 ): TextStyle = MaterialTheme.typography.bodyMedium.copy(
     localeList = LocalTextLocaleList.current,
     fontWeight = fontWeight,
@@ -39,7 +40,8 @@ internal fun readerRubyTextStyle(
     fontFamily = fontFamily,
     color = color,
     textAlign = TextAlign.Start,
-    lineHeight = (fontSize.value + fontLineHeight.value).sp
+    lineHeight = (fontSize.value + fontLineHeight.value).sp,
+    letterSpacing = letterSpacing
 )
 
 internal data class RubyTextKey(

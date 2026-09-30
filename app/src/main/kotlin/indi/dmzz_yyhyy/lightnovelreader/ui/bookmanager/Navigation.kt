@@ -5,19 +5,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation.NavController
-import androidx.navigation.NavGraphBuilder
-import androidx.navigation.compose.composable
+import indi.dmzz_yyhyy.lightnovelreader.ui.navigation.Navigator
+import indi.dmzz_yyhyy.lightnovelreader.ui.navigation.NavEntryScope
 import indi.dmzz_yyhyy.lightnovelreader.R
+import indi.dmzz_yyhyy.lightnovelreader.ui.LocalNavigator
 import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
-import indi.dmzz_yyhyy.lightnovelreader.utils.isResumed
-import indi.dmzz_yyhyy.lightnovelreader.utils.popBackStackIfResumed
 import io.nightfish.lightnovelreader.api.Route
-import io.nightfish.lightnovelreader.api.ui.LocalNavController
 
-fun NavGraphBuilder.bookManager() {
-    composable<Route.BookManager> {
-        val navController = LocalNavController.current
+fun NavEntryScope.bookManagerDestination() {
+    entry<Route.BookManager> {
+        val navigator = LocalNavigator.current
         val snackbarHostState = LocalSnackbarHost.current
         val viewModel = hiltViewModel<BookManagerViewModel>()
         val uiState = viewModel.localBookManagerUiState
@@ -32,13 +29,13 @@ fun NavGraphBuilder.bookManager() {
             }
         }
         uiState.openStorageOverview = {
-            navController.navigate(Route.StorageManager)
+            navigator.navigate(Route.StorageManager)
         }
         uiState.openBookDetailScreen = { id ->
-            navController.navigate(Route.Book.Detail(id))
+            navigator.navigate(Route.Book.Detail(id))
         }
         BookManagerScreen(
-            onClickBack = navController::popBackStackIfResumed,
+            onClickBack = navigator::popBackStack,
             downloadItemList = downloadItemList,
             uiState = uiState,
             onClickCancel = viewModel::onClickCancel,
@@ -49,7 +46,6 @@ fun NavGraphBuilder.bookManager() {
     }
 }
 
-fun NavController.navigateToDownloadManager() {
-    if (!this.isResumed()) return
+fun Navigator.navigateToDownloadManager() {
     navigate(Route.BookManager)
 }

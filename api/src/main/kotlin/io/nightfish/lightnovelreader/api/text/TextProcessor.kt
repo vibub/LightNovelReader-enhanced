@@ -3,7 +3,7 @@ package io.nightfish.lightnovelreader.api.text
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.BookVolumes
 import io.nightfish.lightnovelreader.api.book.ChapterContent
-import io.nightfish.lightnovelreader.api.content.component.SimpleTextComponentData
+import io.nightfish.lightnovelreader.api.content.component.data.TextData
 import io.nightfish.lightnovelreader.api.explore.ExploreDisplayBook
 
 /**
@@ -63,13 +63,14 @@ interface TextProcessor {
      *
      * @since Api 2
      */
-    fun processBookInformation(bookInformation: BookInformation): BookInformation = bookInformation.copy(
-        title = processText(bookInformation.title),
-        subtitle = processText(bookInformation.subtitle),
-        author = processText(bookInformation.author),
-        description = processText(bookInformation.description),
-        publishingHouse = processText(bookInformation.publishingHouse)
-    )
+    fun processBookInformation(bookInformation: BookInformation): BookInformation =
+        bookInformation.copy(
+            title = processText(bookInformation.title),
+            subtitle = processText(bookInformation.subtitle),
+            author = processText(bookInformation.author),
+            description = processText(bookInformation.description),
+            publishingHouse = processText(bookInformation.publishingHouse)
+        )
 
     /**
      * 对书本卷目录中的文本字段进行处理
@@ -104,14 +105,14 @@ interface TextProcessor {
      *
      * @since Api 2
      */
-    fun processChapterContent(bookId: String, chapterContent: ChapterContent, componentProcessor: ComponentProcessor): ChapterContent = chapterContent.copy(
+    fun processChapterContent(
+        bookId: String,
+        chapterContent: ChapterContent,
+        componentProcessor: ComponentProcessor
+    ): ChapterContent = chapterContent.copy(
         content = componentProcessor.apply {
-            process<SimpleTextComponentData> {
-                val processedText = processText(it.text)
-                it.copy(
-                    text = processedText,
-                    styleRanges = if (processedText.length == it.text.length) it.styleRanges else emptyList()
-                )
+            process { data: TextData<*> ->
+                data.processText(::processText)
             }
         }.get()
     )
@@ -126,8 +127,9 @@ interface TextProcessor {
      *
      * @since Api 2
      */
-    fun processExploreBooksRow(exploreDisplayBook: ExploreDisplayBook): ExploreDisplayBook = exploreDisplayBook.copy(
-        title = this.processText(exploreDisplayBook.title),
-        author = this.processText(exploreDisplayBook.author),
-    )
+    fun processExploreBooksRow(exploreDisplayBook: ExploreDisplayBook): ExploreDisplayBook =
+        exploreDisplayBook.copy(
+            title = this.processText(exploreDisplayBook.title),
+            author = this.processText(exploreDisplayBook.author),
+        )
 }

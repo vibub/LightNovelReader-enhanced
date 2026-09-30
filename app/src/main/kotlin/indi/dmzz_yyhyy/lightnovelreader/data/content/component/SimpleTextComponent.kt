@@ -29,6 +29,7 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.LocalRea
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.SimpleTextComponentContent
 import indi.dmzz_yyhyy.lightnovelreader.utils.loadReaderFontFamilySafe
 import indi.dmzz_yyhyy.lightnovelreader.utils.rememberReaderFontFamily
+import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponentRender
 import io.nightfish.lightnovelreader.api.content.component.AbstractDivisibleContentComponent
 import io.nightfish.lightnovelreader.api.content.component.SimpleTextComponentData
 import io.nightfish.lightnovelreader.api.content.component.SimpleTextStyleRange
@@ -38,16 +39,28 @@ import io.nightfish.lightnovelreader.api.userdata.UriUserData
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
 import io.nightfish.lightnovelreader.api.userdata.UserDataRepositoryApi
 
+class SimpleTextComponentRender(
+    private val userDataRepositoryApi: UserDataRepositoryApi,
+    private val context: Context
+) : AbstractContentComponentRender<SimpleTextComponentData>() {
+    override val id = SimpleTextComponentData.id
+
+    @Composable
+    override fun Content(modifier: Modifier, data: SimpleTextComponentData) {
+        SimpleTextComponent(data, userDataRepositoryApi, context).Content(modifier)
+    }
+}
+
 class SimpleTextComponent(
     data: SimpleTextComponentData,
     val userDataRepositoryApi: UserDataRepositoryApi,
     val context: Context
-): AbstractDivisibleContentComponent<SimpleTextComponent, SimpleTextComponentData>(data) {
+) : AbstractDivisibleContentComponent<SimpleTextComponent, SimpleTextComponentData>(data) {
 
     val fontSizeUserData = userDataRepositoryApi.floatUserData(UserDataPath.Reader.FontSize.path)
-    val fontLineHeightUserData = userDataRepositoryApi.floatUserData(UserDataPath.Reader.FontLineHeight.path)
+    val fontLineHeightUserData = userDataRepositoryApi.floatUserData(UserDataPath.Reader.LineHeight.path)
     val fontWeightUserData = userDataRepositoryApi.floatUserData(UserDataPath.Reader.FontWeigh.path)
-    val fontFamilyUriUserData = userDataRepositoryApi.uriUserData(UserDataPath.Reader.FontFamilyUri.path)
+    val fontFamilyUriUserData = userDataRepositoryApi.uriUserData(UserDataPath.Reader.FontUri.path)
     val textMeasurer = TextMeasurer(
         createFontFamilyResolver(context),
         Density(
@@ -72,13 +85,14 @@ class SimpleTextComponent(
         SimpleTextComponentContent(
             modifier = modifier,
             text = annotatedText,
-            fontSize = combinedStyle.fontSize.sp,
-            fontLineHeight = combinedStyle.fontLineHeight.sp,
-            fontWeight = FontWeight(combinedStyle.fontWeight.toInt()),
+            fontSize = combinedStyle.fontSize,
+            fontLineHeight = (combinedStyle.fontSize.value * (combinedStyle.lineHeight.value - 1f)).sp,
+            fontWeight = combinedStyle.fontWeight,
             fontFamily = LocalReaderRubyTextCache.current?.environment?.style?.fontFamily
                 ?: rememberReaderFontFamily(fontFamilyUriUserData),
             color = readerContentTextColor(combinedStyle.textColor, combinedStyle.textDarkColor),
-            styleRanges = data.styleRanges
+            styleRanges = data.styleRanges,
+            letterSpacing = combinedStyle.letterSpacing
         )
     }
 
@@ -86,15 +100,21 @@ class SimpleTextComponent(
         height: Int,
         width: Int
     ): List<SimpleTextComponent> {
-        val fontSize = fontSizeUserData.getOrDefault(15f)
-        val fontLineHeight = fontLineHeightUserData.getOrDefault(7f)
-        val fontWeigh = fontWeightUserData.getOrDefault(500f)
+        val fontSize = fontSizeUserData.getOrDefault(16f)
+        val lineHeight = fontLineHeightUserData.getOrDefault(1.4f)
+        val fontWeigh = fontWeightUserData.getOrDefault(400f)
         val style = AppTypography.bodyMedium.copy(
             fontSize = fontSize.sp,
-            lineHeight = (fontLineHeight + fontSize).sp,
+            lineHeight = (lineHeight * fontSize).sp,
+            letterSpacing = userDataRepositoryApi.floatUserData(UserDataPath.Reader.LetterSpacing.path).getOrDefault(0.2f).sp,
             fontWeight = FontWeight(fontWeigh.toInt()),
             fontFamily = readerFontFamily(fontFamilyUriUserData),
         )
+        return split(height, width, style)
+    }
+
+    suspend fun split(height: Int, width: Int, style: androidx.compose.ui.text.TextStyle): List<SimpleTextComponent> {
+        if (height <= 0 || width <= 0) return listOf(this)
         val rubyLayout = measureRubyText(
             data.toAnnotatedString(), data.styleRanges, style, textMeasurer,
             Density(context.resources.displayMetrics.density, context.resources.configuration.fontScale), width

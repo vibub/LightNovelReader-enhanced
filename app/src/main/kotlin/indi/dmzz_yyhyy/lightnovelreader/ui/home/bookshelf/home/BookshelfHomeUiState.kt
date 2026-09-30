@@ -6,11 +6,12 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.google.android.material.bottomsheet.BottomSheetBehavior.State
+import com.github.michaelbull.result.Result
+import androidx.compose.runtime.Stable
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.bookshelf.BookshelfUiState
 import io.nightfish.lightnovelreader.api.bookshelf.BookshelfSortType
 
-@State
+@Stable
 interface BookshelfHomeUiState {
     val bookshelfList: List<BookshelfUiState>
     val selectedBookshelfId: Int

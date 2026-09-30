@@ -22,7 +22,7 @@ LightNovelReader Enhanced — это усиленный форк [LightNovelRead
 
 - Upstream-репозиторий: [dmzz-yyhyy/LightNovelReader](https://github.com/dmzz-yyhyy/LightNovelReader)
 - Репозиторий enhanced-форка: [vibub/LightNovelReader-enhanced](https://github.com/vibub/LightNovelReader-enhanced)
-- Долгосрочная ветка сопровождения по-прежнему `refactoring`; эта ветка продолжит получать изменения из upstream `refactoring`.
+- Долгосрочная ветка сопровождения по-прежнему `refactoring`; эта ветка продолжит получать изменения из upstream `dev/1.3`.
 - Общие функции, plugin API и ресурсы сообщества в основном следуют upstream; этот репозиторий в первую очередь занимается сборками, обновлениями, Linovelib/Bilinovel и локальными изменениями enhanced-форка.
 
 ## Особенности

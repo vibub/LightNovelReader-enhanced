@@ -39,7 +39,7 @@ class ComponentProcessorMetadataTest {
             content = content
         )
 
-        processor.process<SimpleTextComponentData> {
+        processor.process<SimpleTextComponentData, SimpleTextComponentData> {
             SimpleTextComponentData("${it.text}已处理")
         }
 

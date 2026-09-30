@@ -1,7 +1,7 @@
 package io.nightfish.lightnovelreader.api.text
 
-import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponentData
 import io.nightfish.lightnovelreader.api.content.component.ComponentDataJsonElementSerializer
+import io.nightfish.lightnovelreader.api.content.component.data.AbstractContentComponentData
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -31,12 +31,15 @@ class ComponentProcessor(
      * 对指定类型的所有组件数据应用变换
      * 不匹配类型的组件将原样保留
      *
-     * @param T 需要处理的组件数据类型
+     * @param Input 需要处理的组件数据类型
+     * @param Output 处理后的组件数据类型
      * @param block 接收原组件数据并返回变换后数据的函数
      *
      * @since Api 2
      */
-    inline fun <reified T: AbstractContentComponentData> process(crossinline block: (T) -> T) {
+    inline fun <reified Input, Output : AbstractContentComponentData> process(
+        crossinline block: (Input) -> Output
+    ) {
         val originalContent = content
         content = buildJsonObject {
             originalContent.forEach { (key, value) ->
@@ -48,24 +51,25 @@ class ComponentProcessor(
                     ?.mapNotNull { it.jsonObject }
                     ?.forEach {
                         val id = it["id"]?.jsonPrimitive?.content
-                            ?: return@forEach
-                        val data = it["data"]?.jsonObject
-                            ?: return@forEach
-                        if (dataKClassMap[id] != T::class) {
-                            addJsonObject {
-                                put("id", id)
-                                put("data", data)
-                            }
+                        val lookupId = id?.let { value -> if (":" in value) value else "lightnovelreader:$value" }
+                        val data = it["data"] as? JsonObject
+                        val serializer = lookupId?.let(serializerMap::get)
+                        if (data == null || serializer == null) {
+                            add(it)
                             return@forEach
                         }
-                        val serializer = serializerMap[id]
-                            ?: return@forEach
-                        addJsonObject {
-                            put("id", id)
-                            put(
-                                "data",
-                                block(serializer.fromJsonElement(data) as T).toJsonElement()
-                            )
+                        when (val component = serializer.fromJsonElement(data)) {
+                            is Input -> {
+                                val processed = block(component)
+                                addJsonObject {
+                                    it.forEach { (key, value) ->
+                                        if (key != "id" && key != "data") put(key, value)
+                                    }
+                                    put("id", processed.id.toString())
+                                    put("data", processed.toJsonElement())
+                                }
+                            }
+                            else -> add(it)
                         }
                     }
             }

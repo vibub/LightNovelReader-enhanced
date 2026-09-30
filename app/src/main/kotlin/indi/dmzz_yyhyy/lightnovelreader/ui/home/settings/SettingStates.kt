@@ -16,6 +16,7 @@ class SettingState(
     val appLocaleKeyUserData = userDataRepository.stringUserData(UserDataPath.Settings.Display.AppLocale.path)
     val statisticsUserData = userDataRepository.booleanUserData(UserDataPath.Settings.App.Statistics.path)
     val updateChannelKeyUserData = userDataRepository.stringUserData(UserDataPath.Settings.App.UpdateChannel.path)
+    val distributionPlatformKeyUserData = userDataRepository.stringUserData(UserDataPath.Settings.App.DistributionPlatform.path)
     val logLevelKeyUserData = userDataRepository.stringUserData(UserDataPath.Settings.Data.LogLevel.path)
     val isUseProxyUserData = userDataRepository.booleanUserData(UserDataPath.Settings.Data.IsUseProxy.path)
     val downloadNetworkPolicyUserData = userDataRepository.stringUserData(
@@ -28,11 +29,16 @@ class SettingState(
         UserDataPath.Settings.Data.DownloadMinimumFreeStorageMb.path
     )
     val enableSimplifiedTraditionalTransformUserData = userDataRepository.booleanUserData(
-        UserDataPath.Reader.EnableSimplifiedTraditionalTransform.path)
-    val dateFormatUserData = userDataRepository.stringUserData(UserDataPath.Settings.Display.DateStyle.path)
-    val dateShowYearUserData = userDataRepository.booleanUserData(UserDataPath.Settings.Display.DateShowYear.path)
-    val dateOrderUserData = userDataRepository.stringUserData(UserDataPath.Settings.Display.DateOrder.path)
-    val useRelativeTimeUserData = userDataRepository.booleanUserData(UserDataPath.Settings.Display.RelativeTimeStyle.path)
+        UserDataPath.Reader.EnableSimplifiedTraditionalTransform.path
+    )
+    val dateFormatUserData =
+        userDataRepository.stringUserData(UserDataPath.Settings.Display.DateStyle.path)
+    val dateShowYearUserData =
+        userDataRepository.booleanUserData(UserDataPath.Settings.Display.DateShowYear.path)
+    val dateOrderUserData =
+        userDataRepository.stringUserData(UserDataPath.Settings.Display.DateOrder.path)
+    val useRelativeTimeUserData =
+        userDataRepository.booleanUserData(UserDataPath.Settings.Display.RelativeTimeStyle.path)
 
     val checkUpdate by checkUpdateUserData.asState(true)
     val appLocaleKey by appLocaleKeyUserData.asState("none")

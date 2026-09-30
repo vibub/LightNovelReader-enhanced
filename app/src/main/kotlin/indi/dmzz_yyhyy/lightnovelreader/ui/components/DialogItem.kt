@@ -32,7 +32,8 @@ fun ListItem(
             )
         },
         colors = colors,
-        headlineContent = {
+        elevation = ListItemDefaults.elevation(),
+        content = {
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,

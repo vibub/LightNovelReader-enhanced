@@ -40,10 +40,19 @@ class SimpleContentBuilder {
     }
 
     fun text(content: String) {
-        var result = Regex("&#([0-8]|1[1-2]|1[4-9]|2[0-9]|3[0-1]);").replace(content, "")
-        result = Regex("&#x(0[0-8BCEF]|1[0-9A-F]|7F|8[0-9A-F]|9[0-9A-F]|A[0-9A-F]|B[0-9A-F]|C[0-9A-F]|D[0-9A-F]|E[0-9A-F]|F[0-9A-F]);", RegexOption.IGNORE_CASE)
-            .replace(result, "")
-        contentElement.addText(result)
+        // addText 会转义文本；过滤实际非法 XML 1.0 字符，而不是删除看似实体的合法原文。
+        val result = buildString {
+            content.codePoints().forEach { codePoint ->
+                if (codePoint == 9 || codePoint == 10 || codePoint == 13 ||
+                    codePoint in 0x20..0xD7FF || codePoint in 0xE000..0xFFFD ||
+                    codePoint in 0x10000..0x10FFFF
+                ) appendCodePoint(codePoint)
+            }
+        }
+        result.replace("\r\n", "\n").replace('\r', '\n').split('\n').forEachIndexed { index, line ->
+            if (index > 0) br()
+            contentElement.addText(line)
+        }
     }
 
     /**

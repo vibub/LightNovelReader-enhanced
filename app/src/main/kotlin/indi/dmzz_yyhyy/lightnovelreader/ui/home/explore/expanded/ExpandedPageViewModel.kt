@@ -41,7 +41,8 @@ class ExpandedPageViewModel @Inject constructor(
 
     fun init(expandedPageDataSourceId: String) {
         if (exploreRepository.explorePageProvider !is ExplorePageProvider.DefaultExplorePageProvider) return
-        val explorePageProvider = exploreRepository.explorePageProvider as ExplorePageProvider.DefaultExplorePageProvider
+        val explorePageProvider =
+            exploreRepository.explorePageProvider as ExplorePageProvider.DefaultExplorePageProvider
         if (expandedPageDataSourceId == lastExpandedPageDataSourceId) return
         lastExpandedPageDataSourceId = expandedPageDataSourceId
 
