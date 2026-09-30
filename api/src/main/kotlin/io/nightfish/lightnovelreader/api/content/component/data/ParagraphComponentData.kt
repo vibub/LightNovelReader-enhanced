@@ -43,6 +43,11 @@ data class ParagraphComponentData(
 ): AbstractContentComponentData(), TextData<ParagraphComponentData>, Divisible<ParagraphComponentData> {
     override val id: Identifier = Companion.id
 
+    /** 是否包含原段落末尾；分页续段仅在末尾保留段后间距，不写入章节缓存。 */
+    @Transient
+    var endsParagraph: Boolean = true
+        private set
+
     fun toAnnotatedString(
         readerStyle: ReaderStyle,
         baseStyle: TextStyle,
@@ -58,7 +63,7 @@ data class ParagraphComponentData(
                 it.merge(
                     ParagraphStyle(
                         textIndent = TextIndent(
-                            firstLine = 0.sp,
+                            firstLine = it.textIndent?.restLine ?: 0.sp,
                             restLine = it.textIndent?.restLine ?: 0.sp
                         )
                     )
@@ -170,7 +175,7 @@ data class ParagraphComponentData(
                     ),
                     index = index + partIndex,
                     split = true,
-                )
+                ).also { it.endsParagraph = partIndex == 1 && endsParagraph }
             }
     }
 

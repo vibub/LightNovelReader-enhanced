@@ -11,10 +11,14 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
+import indi.dmzz_yyhyy.lightnovelreader.data.content.component.ReaderParagraphSpacing
+import indi.dmzz_yyhyy.lightnovelreader.data.content.component.ReaderTextParagraph
+import indi.dmzz_yyhyy.lightnovelreader.data.content.component.measureReaderText
 import indi.dmzz_yyhyy.lightnovelreader.data.content.component.RetainedLayoutCache
 import indi.dmzz_yyhyy.lightnovelreader.data.content.component.RubyTextLayout
 import indi.dmzz_yyhyy.lightnovelreader.data.content.component.TextBlockIndex
@@ -22,6 +26,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.content.component.measureRubyText
 import indi.dmzz_yyhyy.lightnovelreader.data.content.component.renderBlocks
 import io.nightfish.lightnovelreader.api.content.component.SimpleTextStyleRange
 import io.nightfish.lightnovelreader.api.ui.LocalTextLocaleList
+import io.nightfish.lightnovelreader.api.ui.ReaderStyle
 
 internal val LocalReaderRubyTextCache = compositionLocalOf<ReaderRubyTextCache?> { null }
 
@@ -32,7 +37,9 @@ internal fun readerRubyTextStyle(
     fontWeight: FontWeight,
     fontFamily: FontFamily?,
     color: Color,
-    letterSpacing: TextUnit = 0.2.sp
+    letterSpacing: TextUnit = 0.2.sp,
+    textIndent: TextIndent = TextIndent.None,
+    lineHeight: TextUnit = (fontSize.value + fontLineHeight.value).sp
 ): TextStyle = MaterialTheme.typography.bodyMedium.copy(
     localeList = LocalTextLocaleList.current,
     fontWeight = fontWeight,
@@ -40,13 +47,22 @@ internal fun readerRubyTextStyle(
     fontFamily = fontFamily,
     color = color,
     textAlign = TextAlign.Start,
-    lineHeight = (fontSize.value + fontLineHeight.value).sp,
-    letterSpacing = letterSpacing
+    lineHeight = lineHeight,
+    letterSpacing = letterSpacing,
+    textIndent = textIndent
 )
+
+@Composable
+internal fun readerRubyTextStyle(readerStyle: ReaderStyle, fontFamily: FontFamily?, color: Color): TextStyle =
+    readerRubyTextStyle(
+        readerStyle.fontSize, 0.sp, readerStyle.fontWeight, fontFamily, color,
+        readerStyle.letterSpacing, readerStyle.textIndent, readerStyle.lineHeight
+    )
 
 internal data class RubyTextKey(
     val text: AnnotatedString,
-    val ranges: List<SimpleTextStyleRange>
+    val ranges: List<SimpleTextStyleRange>,
+    val paragraphs: List<ReaderTextParagraph>? = null
 )
 
 internal data class RubyTextEnvironment(
@@ -54,7 +70,8 @@ internal data class RubyTextEnvironment(
     val density: Density,
     val direction: LayoutDirection,
     val resolver: FontFamily.Resolver,
-    val width: Int
+    val width: Int,
+    val paragraphSpacing: ReaderParagraphSpacing = ReaderParagraphSpacing()
 ) {
     // 不与主线程共享 TextMeasurer 的可变布局缓存。
     fun newMeasurer() = TextMeasurer(resolver, density, direction)
@@ -93,7 +110,10 @@ internal fun prepareRubyText(
 ): PreparedRubyText {
     Trace.beginSection("Reader:rubyLayout")
     try {
-        val layout = measureRubyText(
+        val layout = if (key.paragraphs != null) measureReaderText(
+            key.text, key.ranges, key.paragraphs, environment.style, environment.paragraphSpacing,
+            measurer, environment.density, environment.width, checkCancelled
+        ) else measureRubyText(
             key.text, key.ranges, environment.style, measurer,
             environment.density, environment.width, checkCancelled
         )

@@ -8,6 +8,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.TextUnit
@@ -95,16 +96,15 @@ internal data class RubyTextLine(
     val runs: List<RubyTextRun>,
     val extraAbove: Int = 0,
     val reclaimedHeight: Int = 0,
-    val layoutLine: Int = 0
+    val layoutLine: Int = 0,
+    val paragraphGapReclaimed: Int = 0
 )
 
 internal data class RubyTextLayout(
     val text: AnnotatedString,
     val runs: List<RubyTextRun>,
     val lines: List<RubyTextLine> = emptyList()
-) {
-    val placeholders get() = runs.map { AnnotatedString.Range(it.placeholder, it.start, it.end) }
-}
+)
 
 internal fun measureRubyText(
     text: AnnotatedString,
@@ -117,7 +117,7 @@ internal fun measureRubyText(
 ): RubyTextLayout {
     checkCancelled()
     val runs = mutableListOf<RubyTextRun>()
-    val baseStyle = style.copy(lineHeight = TextUnit.Unspecified)
+    val baseStyle = style.copy(lineHeight = TextUnit.Unspecified, textIndent = TextIndent.None)
     val annotationStyle = baseStyle.copy(fontSize = style.fontSize * 0.6f, letterSpacing = 0.sp)
     val minimumGap by lazy {
         measurer.measure(AnnotatedString(" "), annotationStyle, softWrap = false).size.width.toFloat()
@@ -126,7 +126,8 @@ internal fun measureRubyText(
     fun addRun(range: SimpleTextStyleRange, start: Int, end: Int) {
         checkCancelled()
         if (start >= end) return
-        val base = measurer.measure(text.subSequence(start, end), baseStyle, softWrap = false)
+        val baseText = text.subSequence(start, end)
+        val base = measurer.measure(AnnotatedString(baseText.text, baseText.spanStyles), baseStyle, softWrap = false)
         val width = base.size.width.coerceAtLeast(1)
         if (width > maxWidth && end - start > 1) {
             var middle = (start + end) / 2
@@ -182,15 +183,21 @@ internal fun measureRubyText(
             previousEnd = range.end
         }
     }
-    if (runs.isEmpty()) return RubyTextLayout(text, emptyList())
-    val inlineText = buildAnnotatedString {
+    // 普通正文也按可绘制块分组；不能让空白首行后的短块重新绘制整段布局。
+    val inlineText = if (runs.isEmpty()) text else buildAnnotatedString {
+        fun appendSpanText(start: Int, end: Int) {
+            val part = text.subSequence(start, end)
+            append(AnnotatedString(part.text, part.spanStyles))
+        }
         var offset = 0
         runs.forEach { run ->
-            append(text.subSequence(offset, run.start))
+            appendSpanText(offset, run.start)
             appendInlineContent(run.key, text.text.substring(run.start, run.end))
             offset = run.end
         }
-        append(text.subSequence(offset, text.length))
+        appendSpanText(offset, text.length)
+        // 段落样式一次性复制，不能因内联注释将同一段落拆成多个样式区间。
+        text.paragraphStyles.forEach { addStyle(it.item, it.start, it.end) }
     }
     val horizontalLayout = measurer.measure(
         text = inlineText,
@@ -204,7 +211,7 @@ internal fun measureRubyText(
                 ), run.start, run.end
             )
         },
-        constraints = Constraints(maxWidth = maxWidth)
+        constraints = Constraints(minWidth = maxWidth, maxWidth = maxWidth)
     )
     val runsByLine = runs.groupBy { horizontalLayout.getLineForOffset(it.start) }
     fun displayEnd(line: Int): Int {
@@ -238,13 +245,20 @@ internal fun measureRubyText(
                 ) line++
             }
             val end = horizontalLayout.getLineEnd(line)
-            val blockText = inlineText.subSequence(start, displayEnd(line))
-            val originalHeight = (firstLine..line).sumOf {
+            val indent = style.textIndent
+            val blockText = inlineText.subSequence(start, displayEnd(line)).let {
+                if (start > 0 && indent != null) it.withContinuationIndent(indent) else it
+            }
+            val entirePlainBlock = lineRuns.isEmpty() && start == 0 && displayEnd(line) == inlineText.length
+            val originalHeight = if (entirePlainBlock) horizontalLayout.size.height else (firstLine..line).sumOf {
                 ceil(horizontalLayout.getLineBottom(it) - horizontalLayout.getLineTop(it)).toInt()
             }
-            val measured = measurer.measure(
+            // 整段正文复用首次测量和完整高度，避免逐行取整继续撑大段距。
+            val measured = if (entirePlainBlock) {
+                horizontalLayout
+            } else measurer.measure(
                 text = blockText,
-                style = if (lineRuns.isEmpty()) style else baseStyle,
+                style = if (lineRuns.isEmpty()) style else style.copy(lineHeight = TextUnit.Unspecified),
                 placeholders = lineRuns.map {
                     AnnotatedString.Range(it.placeholder, it.start - start, it.end - start)
                 },
@@ -305,7 +319,8 @@ internal fun RubyTextLayout.renderBlocks(): List<RubyTextBlock> = buildList {
 }
 
 internal fun RubyTextLayout.pageRanges(maxHeight: Int): List<IntRange> = rubyPageRanges(
-    lines.map { RubyPageLine(it.start, it.end, it.height, it.text.isBlank(), it.reclaimedHeight) },
+    // 段间借出的留白保守计入分页，避免分页后缺少前段时重测溢出。
+    lines.map { RubyPageLine(it.start, it.end, it.height + it.paragraphGapReclaimed, it.text.isBlank(), it.reclaimedHeight) },
     maxHeight
 )
 

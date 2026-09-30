@@ -8,11 +8,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFontFamilyResolver
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.sp
 import com.github.michaelbull.result.get
 import indi.dmzz_yyhyy.lightnovelreader.data.content.component.SimpleTextComponent
+import indi.dmzz_yyhyy.lightnovelreader.data.content.component.paragraphSpacing
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.ReaderRubyTextCache
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.RubyTextEnvironment
@@ -42,17 +41,15 @@ internal fun rememberReaderRubyTextCache(
     val density = LocalDensity.current
     val environment = RubyTextEnvironment(
         style = readerRubyTextStyle(
-            readerStyle.fontSize,
-            (readerStyle.fontSize.value * (readerStyle.lineHeight.value - 1f)).sp,
-            readerStyle.fontWeight,
+            readerStyle,
             rememberReaderFontFamily(settingState.fontUriUserData),
-            readerContentTextColor(readerStyle.textColor, readerStyle.textDarkColor),
-            readerStyle.letterSpacing
+            readerContentTextColor(readerStyle.textColor, readerStyle.textDarkColor)
         ),
         density = Density(density.density, density.fontScale),
         direction = LocalLayoutDirection.current,
         resolver = LocalFontFamilyResolver.current,
-        width = width
+        width = width,
+        paragraphSpacing = readerStyle.paragraphSpacing()
     )
     val cache = remember(uiState.bookId, environment) { ReaderRubyTextCache(environment) }
     LaunchedEffect(cache, uiState.lazyListState) {
@@ -64,13 +61,12 @@ internal fun rememberReaderRubyTextCache(
             listOf(2, 0, 1).flatMap { index ->
                 uiState.contentList.getOrNull(index)?.second?.get()?.content.orEmpty()
                     .filterIsInstance<SimpleTextComponent>()
-                    .filter { it.preparedText.hasRuby }
             }
         }.map { components ->
             withContext(Dispatchers.Default) {
                 components.map {
                     currentCoroutineContext().ensureActive()
-                    RubyTextKey(it.preparedText.text, it.data.styleRanges)
+                    RubyTextKey(it.preparedText.text, it.data.styleRanges, it.preparedText.paragraphs)
                 }.distinct()
             }
         }.preloadRetainedText(

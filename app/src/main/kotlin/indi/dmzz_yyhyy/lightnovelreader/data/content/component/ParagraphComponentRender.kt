@@ -21,6 +21,7 @@ class ParagraphComponentRender: AbstractContentComponentRender<ParagraphComponen
     ) {
         val density = LocalDensity.current
         val readerStyle = LocalReaderStyle.current
+        val padding = readerStyle.paragraphSpacing().padding(density, data.index == 1, data.endsParagraph)
 
         Text(
             data.toAnnotatedString(
@@ -32,10 +33,10 @@ class ParagraphComponentRender: AbstractContentComponentRender<ParagraphComponen
             style = MaterialTheme.typography.bodyMedium,
             modifier = modifier.padding(
                 bottom = with(density) {
-                    readerStyle.spacingAfterParagraph.toDp()
+                    padding.after.toDp()
                 },
                 top = with(density) {
-                    readerStyle.spacingBeforeParagraph.toDp()
+                    padding.before.toDp()
                 }
             )
         )

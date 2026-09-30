@@ -23,15 +23,19 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.createFontFamilyResolver
+import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.SimpleTextComponentContent
+import io.nightfish.lightnovelreader.api.content.component.SimpleTextComponentData
 import io.nightfish.lightnovelreader.api.content.component.SimpleTextStyleRange
+import io.nightfish.lightnovelreader.api.ui.ReaderStyle
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -201,6 +205,39 @@ class RubyVerticalLayoutTest {
                         assertEquals(layout.size.height, rendered.size.height)
                     }
                     assertEquals(fixture, ruby.pageRanges(600).joinToString("") { fixture.slice(it) })
+
+                    // 统一段距后，空白分隔不能让整段布局落入较短的可选择文本块。
+                    val readerStyle = ReaderStyle(fontSize = 20.sp, lineHeight = 1.4.em,
+                        textIndent = TextIndent(2.em), spacingBeforeParagraph = 4.sp,
+                        spacingAfterParagraph = 16.sp)
+                    val style = TextStyle(fontSize = readerStyle.fontSize, lineHeight = readerStyle.lineHeight,
+                        textIndent = readerStyle.textIndent)
+                    val sources = listOf("\n$paragraph", "\n\n$paragraph",
+                        "$paragraph\n\n \n$paragraph", "$paragraph\n　　\n$paragraph")
+                    for (source in sources) {
+                        val start = source.lastIndexOf("贵族")
+                        for (ranges in listOf(emptyList(), listOf(SimpleTextStyleRange(start, start + 2, rubyText = "注释")))) {
+                            val data = SimpleTextComponentData(source, ranges)
+                            val prepared = PreparedTextContent(data)
+                            val unified = measureReaderText(prepared.text, ranges, prepared.paragraphs,
+                                style, readerStyle.paragraphSpacing(), measurer, density, width)
+                            assertEquals("保留空白分隔的原文坐标", source,
+                                unified.lines.joinToString("") { source.substring(it.start, it.end) })
+                            unified.renderBlocks().filter { it.first.text.isNotBlank() }.forEach { block ->
+                                val first = block.first
+                                val layout = first.layout
+                                assertTrue("绘制完整正文所需高度不能超过文本块", first.topPadding + layout.size.height <= block.height)
+                                val rendered = measurer.measure(layout.layoutInput.text, layout.layoutInput.style,
+                                    placeholders = layout.layoutInput.placeholders,
+                                    constraints = Constraints(minWidth = width, maxWidth = width,
+                                        maxHeight = block.height - first.topPadding))
+                                assertEquals("真实文本块约束不能改变折行", layout.lineCount, rendered.lineCount)
+                                assertEquals("真实文本块约束不能裁掉正文高度", layout.size.height, rendered.size.height)
+                            }
+                            assertEquals("统一分页不能丢失原文", source,
+                                unified.pageRanges(600).joinToString("") { source.slice(it) })
+                        }
+                    }
                 }
             }
         }

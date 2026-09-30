@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import indi.dmzz_yyhyy.lightnovelreader.data.content.RenderContentComponent
 import indi.dmzz_yyhyy.lightnovelreader.data.content.component.SimpleTextComponent
+import indi.dmzz_yyhyy.lightnovelreader.data.content.component.paragraphSpacing
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponent
 import io.nightfish.lightnovelreader.api.content.component.AbstractDivisibleContentComponent
 import io.nightfish.lightnovelreader.api.content.component.data.AbstractContentComponentData
@@ -19,7 +20,6 @@ import io.nightfish.lightnovelreader.api.content.component.data.ParagraphCompone
 import io.nightfish.lightnovelreader.api.ui.ReaderStyle
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlin.math.ceil
 
 private class ParagraphPage(
     private val components: List<AbstractContentComponent<*>>
@@ -48,10 +48,7 @@ internal suspend fun paginateReaderComponents(
     val pages = mutableListOf<AbstractContentComponent<*>>()
     val paragraphPage = mutableListOf<AbstractContentComponent<*>>()
     var occupiedHeight = 0
-    val paragraphPadding = with(density) {
-        ceil(readerStyle.spacingBeforeParagraph.toPx()).toInt() +
-            ceil(readerStyle.spacingAfterParagraph.toPx()).toInt()
-    }
+    val paragraphSpacing = readerStyle.paragraphSpacing()
     fun flushParagraphs() {
         if (paragraphPage.isEmpty()) return
         pages += ParagraphPage(paragraphPage.toList())
@@ -63,7 +60,7 @@ internal suspend fun paginateReaderComponents(
             data.toAnnotatedString(readerStyle, baseStyle, data.index != 1),
             style = baseStyle,
             constraints = Constraints(maxWidth = width)
-        ).size.height + paragraphPadding
+        ).size.height + paragraphSpacing.padding(density, data.index == 1, data.endsParagraph).height
 
     for (component in components) {
         currentCoroutineContext().ensureActive()
@@ -81,9 +78,15 @@ internal suspend fun paginateReaderComponents(
                     occupiedHeight += measuredHeight
                     continue
                 }
-                val fragments = if (remaining > paragraphPadding) {
-                    data.split(remaining - paragraphPadding, width, context, readerStyle, baseStyle)
+                val before = paragraphSpacing.padding(density, data.index == 1, endsParagraph = false).before
+                var fragments = if (remaining > before) {
+                    data.split(remaining - before, width, context, readerStyle, baseStyle)
                 } else emptyList()
+                val after = paragraphSpacing.padding(density, startsParagraph = false, data.endsParagraph).after
+                if (fragments.size == 1 && after > 0 && remaining > before + after) {
+                    // 正文刚好能放下但段后间距溢出时，为末段留出空间后再分割。
+                    fragments = data.split(remaining - before - after, width, context, readerStyle, baseStyle)
+                }
                 if (fragments.size > 1 && paragraphHeight(fragments.first()) <= remaining) {
                     paragraphPage += component.bind(fragments.first())
                     flushParagraphs()
@@ -100,7 +103,7 @@ internal suspend fun paginateReaderComponents(
         } else {
             flushParagraphs()
             when {
-                component is SimpleTextComponent -> pages.addAll(component.split(height, width, textStyle))
+                component is SimpleTextComponent -> pages.addAll(component.split(height, width, textStyle, readerStyle, measurer, density))
                 component is AbstractDivisibleContentComponent<*, *> -> pages.addAll(component.split(height, width))
                 component is RenderContentComponent && component.data is Divisible<*> -> {
                     val pending = ArrayDeque<AbstractContentComponentData>()

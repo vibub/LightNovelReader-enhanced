@@ -7,12 +7,11 @@ import android.view.View
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.isUnspecified
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -20,13 +19,15 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.createFontFamilyResolver
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import indi.dmzz_yyhyy.lightnovelreader.ui.LocalAppTheme
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.LocalReaderRubyTextCache
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.SimpleTextComponentContent
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.readerRubyTextStyle
 import indi.dmzz_yyhyy.lightnovelreader.utils.loadReaderFontFamilySafe
 import indi.dmzz_yyhyy.lightnovelreader.utils.rememberReaderFontFamily
 import io.nightfish.lightnovelreader.api.content.component.AbstractContentComponentRender
@@ -34,6 +35,9 @@ import io.nightfish.lightnovelreader.api.content.component.AbstractDivisibleCont
 import io.nightfish.lightnovelreader.api.content.component.SimpleTextComponentData
 import io.nightfish.lightnovelreader.api.content.component.SimpleTextStyleRange
 import io.nightfish.lightnovelreader.api.ui.LocalReaderStyle
+import io.nightfish.lightnovelreader.api.ui.ReaderStyle
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import io.nightfish.lightnovelreader.api.ui.theme.AppTypography
 import io.nightfish.lightnovelreader.api.userdata.UriUserData
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
@@ -54,45 +58,51 @@ class SimpleTextComponentRender(
 class SimpleTextComponent(
     data: SimpleTextComponentData,
     val userDataRepositoryApi: UserDataRepositoryApi,
-    val context: Context
+    val context: Context,
+    private val startsParagraph: Boolean = true,
+    private val endsParagraph: Boolean = true
 ) : AbstractDivisibleContentComponent<SimpleTextComponent, SimpleTextComponentData>(data) {
 
     val fontSizeUserData = userDataRepositoryApi.floatUserData(UserDataPath.Reader.FontSize.path)
     val fontLineHeightUserData = userDataRepositoryApi.floatUserData(UserDataPath.Reader.LineHeight.path)
     val fontWeightUserData = userDataRepositoryApi.floatUserData(UserDataPath.Reader.FontWeigh.path)
     val fontFamilyUriUserData = userDataRepositoryApi.uriUserData(UserDataPath.Reader.FontUri.path)
-    val textMeasurer = TextMeasurer(
-        createFontFamilyResolver(context),
-        Density(
-            context.resources.configuration.densityDpi.toFloat() / DisplayMetrics.DENSITY_DEFAULT,
-            context.resources.configuration.fontScale,
-        ),
-        if (context.resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_LTR) {
-            LayoutDirection.Ltr
-        } else {
-            LayoutDirection.Rtl
-        }
-    )
+    val textMeasurer by lazy {
+        TextMeasurer(
+            createFontFamilyResolver(context),
+            Density(
+                context.resources.configuration.densityDpi.toFloat() / DisplayMetrics.DENSITY_DEFAULT,
+                context.resources.configuration.fontScale,
+            ),
+            if (context.resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_LTR) {
+                LayoutDirection.Ltr
+            } else {
+                LayoutDirection.Rtl
+            }
+        )
+    }
 
     override val id = SimpleTextComponentData.id
-    internal val preparedText = PreparedTextContent(data)
+    internal val preparedText = PreparedTextContent(data, startsParagraph, endsParagraph)
 
     @Composable
     override fun Content(modifier: Modifier) {
         val combinedStyle = LocalReaderStyle.current
-        val annotatedText = if (preparedText.hasRuby) preparedText.text
-            else remember(data.text, data.styleRanges) { data.toAnnotatedString() }
+        val color = readerContentTextColor(combinedStyle.textColor, combinedStyle.textDarkColor)
+        val style = readerRubyTextStyle(
+            combinedStyle,
+            LocalReaderRubyTextCache.current?.environment?.style?.fontFamily
+                ?: rememberReaderFontFamily(fontFamilyUriUserData),
+            color
+        )
         SimpleTextComponentContent(
             modifier = modifier,
-            text = annotatedText,
-            fontSize = combinedStyle.fontSize,
-            fontLineHeight = (combinedStyle.fontSize.value * (combinedStyle.lineHeight.value - 1f)).sp,
-            fontWeight = combinedStyle.fontWeight,
-            fontFamily = LocalReaderRubyTextCache.current?.environment?.style?.fontFamily
-                ?: rememberReaderFontFamily(fontFamilyUriUserData),
-            color = readerContentTextColor(combinedStyle.textColor, combinedStyle.textDarkColor),
+            text = preparedText.text,
+            style = style,
+            color = color,
             styleRanges = data.styleRanges,
-            letterSpacing = combinedStyle.letterSpacing
+            paragraphs = preparedText.paragraphs,
+            paragraphSpacing = combinedStyle.paragraphSpacing()
         )
     }
 
@@ -103,36 +113,51 @@ class SimpleTextComponent(
         val fontSize = fontSizeUserData.getOrDefault(16f)
         val lineHeight = fontLineHeightUserData.getOrDefault(1.4f)
         val fontWeigh = fontWeightUserData.getOrDefault(400f)
-        val style = AppTypography.bodyMedium.copy(
+        val readerStyle = ReaderStyle(
             fontSize = fontSize.sp,
-            lineHeight = (lineHeight * fontSize).sp,
-            letterSpacing = userDataRepositoryApi.floatUserData(UserDataPath.Reader.LetterSpacing.path).getOrDefault(0.2f).sp,
+            lineHeight = lineHeight.em,
             fontWeight = FontWeight(fontWeigh.toInt()),
-            fontFamily = readerFontFamily(fontFamilyUriUserData),
+            letterSpacing = userDataRepositoryApi.floatUserData(UserDataPath.Reader.LetterSpacing.path).getOrDefault(0.2f).sp,
+            spacingBeforeParagraph = userDataRepositoryApi.floatUserData(UserDataPath.Reader.SpacingBeforeParagraph.path).getOrDefault(0f).sp,
+            spacingAfterParagraph = userDataRepositoryApi.floatUserData(UserDataPath.Reader.SpacingAfterParagraph.path).getOrDefault(16f).sp,
+            textIndent = TextIndent(userDataRepositoryApi.floatUserData(UserDataPath.Reader.FirstLineTextIndent.path).getOrDefault(2f).em)
         )
-        return split(height, width, style)
+        val style = AppTypography.bodyMedium.copy(
+            fontSize = readerStyle.fontSize,
+            lineHeight = readerStyle.lineHeight,
+            letterSpacing = readerStyle.letterSpacing,
+            fontWeight = readerStyle.fontWeight,
+            fontFamily = readerFontFamily(fontFamilyUriUserData),
+            textIndent = readerStyle.textIndent
+        )
+        return split(height, width, style, readerStyle)
     }
 
-    suspend fun split(height: Int, width: Int, style: androidx.compose.ui.text.TextStyle): List<SimpleTextComponent> {
+    suspend fun split(
+        height: Int,
+        width: Int,
+        style: TextStyle,
+        readerStyle: ReaderStyle = ReaderStyle(),
+        measurer: TextMeasurer = textMeasurer,
+        density: Density = Density(context.resources.displayMetrics.density, context.resources.configuration.fontScale)
+    ): List<SimpleTextComponent> {
         if (height <= 0 || width <= 0) return listOf(this)
-        val rubyLayout = measureRubyText(
-            data.toAnnotatedString(), data.styleRanges, style, textMeasurer,
-            Density(context.resources.displayMetrics.density, context.resources.configuration.fontScale), width
-        )
-        if (rubyLayout.lines.isNotEmpty()) {
-            return rubyLayout.pageRanges(height).mapNotNull { range ->
-                data.slice(range).takeIf { it.text.isNotBlank() }
-                    ?.let { SimpleTextComponent(it, userDataRepositoryApi, context) }
+        val coroutineContext = currentCoroutineContext()
+        val layout = measureReaderText(
+            preparedText.text, data.styleRanges, preparedText.paragraphs,
+            style, readerStyle.paragraphSpacing(), measurer, density, width
+        ) { coroutineContext.ensureActive() }
+        val paragraphStarts = preparedText.paragraphs.filter { it.startsParagraph }.mapTo(mutableSetOf()) { it.start }
+        val paragraphEnds = preparedText.paragraphs.filter { it.endsParagraph }.mapTo(mutableSetOf()) { it.end }
+        return layout.pageRanges(height).mapNotNull { range ->
+            coroutineContext.ensureActive()
+            data.slice(range).takeIf { it.text.isNotBlank() }?.let {
+                SimpleTextComponent(it, userDataRepositoryApi, context,
+                    startsParagraph = range.first in paragraphStarts,
+                    endsParagraph = range.last + 1 in paragraphEnds
+                )
             }
         }
-        return textMeasurer.measure(
-            text = rubyLayout.text,
-            style = style,
-            placeholders = rubyLayout.placeholders,
-            constraints = Constraints(maxWidth = width),
-        )
-            .getSlipData(data, width, height)
-            .map { SimpleTextComponent(it, userDataRepositoryApi, context) }
     }
 
     private suspend fun readerFontFamily(fontFamilyUriUserData: UriUserData): FontFamily? {
@@ -140,48 +165,6 @@ class SimpleTextComponent(
         return loadReaderFontFamilySafe(uri)
     }
 
-    private fun TextLayoutResult.getSlipData(
-        data: SimpleTextComponentData,
-        width: Int,
-        height: Int
-    ): List<SimpleTextComponentData> {
-        val result = mutableListOf<IntRange>()
-        var lastLine = 0
-        fun getNotOverflowRange(startLine: Int): IntRange {
-            fun getNotOverflowLine(): Int {
-                val startHeight = getLineTop(startLine)
-                fun isLineOverflow(line: Int): Boolean = getLineBottom(line) > height + startHeight
-
-                var checkLine = getLineForOffset(
-                    getOffsetForPosition(
-                        Offset(
-                            width.toFloat(),
-                            startHeight + height
-                        )
-                    )
-                )
-                while (checkLine > startLine && isLineOverflow(checkLine)) checkLine--
-                return checkLine
-            }
-
-            val startTextOffset = getLineStart(startLine)
-            lastLine = getNotOverflowLine()
-            val endTextOffset = getLineEnd(lastLine)
-            lastLine++
-            return startTextOffset..<endTextOffset
-        }
-        while (lastLine < lineCount) {
-            result += getNotOverflowRange(lastLine)
-        }
-        return result.mapIndexedNotNull { index, range ->
-            val text = data.text.slice(range)
-            when (index) {
-                0 if text.isBlank() -> null
-                result.lastIndex if text.isBlank() -> null
-                else -> data.slice(range)
-            }
-        }
-    }
 }
 
 @Composable

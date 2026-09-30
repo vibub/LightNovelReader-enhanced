@@ -21,6 +21,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFontFamilyResolver
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import indi.dmzz_yyhyy.lightnovelreader.data.content.component.ReaderParagraphSpacing
+import indi.dmzz_yyhyy.lightnovelreader.data.content.component.ReaderTextParagraph
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -38,12 +41,24 @@ fun SimpleTextComponentContent(
     fontFamily: FontFamily?,
     color: Color,
     styleRanges: List<SimpleTextStyleRange> = emptyList(),
-    letterSpacing: TextUnit = androidx.compose.ui.unit.TextUnit.Unspecified
+    letterSpacing: TextUnit = TextUnit.Unspecified
 ) {
     val style = readerRubyTextStyle(fontSize, fontLineHeight, fontWeight, fontFamily, color, letterSpacing)
+    SimpleTextComponentContent(modifier, text, style, color, styleRanges)
+}
 
+@Composable
+internal fun SimpleTextComponentContent(
+    modifier: Modifier,
+    text: AnnotatedString,
+    style: TextStyle,
+    color: Color,
+    styleRanges: List<SimpleTextStyleRange>,
+    paragraphs: List<ReaderTextParagraph>? = null,
+    paragraphSpacing: ReaderParagraphSpacing = ReaderParagraphSpacing()
+) {
     SelectionContainer {
-        if (styleRanges.none { !it.rubyText.isNullOrBlank() }) {
+        if (paragraphs == null && styleRanges.none { !it.rubyText.isNullOrBlank() }) {
             Text(modifier = modifier.fillMaxWidth(), text = text, style = style)
         } else {
             BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
@@ -51,9 +66,9 @@ fun SimpleTextComponentContent(
                 val measurer = rememberTextMeasurer()
                 val environment = RubyTextEnvironment(
                     style, Density(density.density, density.fontScale),
-                    LocalLayoutDirection.current, LocalFontFamilyResolver.current, constraints.maxWidth
+                    LocalLayoutDirection.current, LocalFontFamilyResolver.current, constraints.maxWidth, paragraphSpacing
                 )
-                val key = remember(text, styleRanges) { RubyTextKey(text, styleRanges) }
+                val key = remember(text, styleRanges, paragraphs) { RubyTextKey(text, styleRanges, paragraphs) }
                 val cache = LocalReaderRubyTextCache.current
                 val cached = cache?.get(key, environment)
                 val staleFonts = cached?.hasStaleFonts == true

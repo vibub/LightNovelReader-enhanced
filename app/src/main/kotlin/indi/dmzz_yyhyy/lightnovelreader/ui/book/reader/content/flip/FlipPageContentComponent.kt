@@ -82,7 +82,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.absoluteValue
-import androidx.compose.ui.unit.sp
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun FlipPageContentComponent(
@@ -127,12 +127,9 @@ private fun SimpleFlipPageTextComponent(
     val readerStyle = LocalReaderStyle.current
     val baseStyle = MaterialTheme.typography.bodyMedium
     val textStyle = readerRubyTextStyle(
-        readerStyle.fontSize,
-        (readerStyle.fontSize.value * (readerStyle.lineHeight.value - 1f)).sp,
-        readerStyle.fontWeight,
+        readerStyle,
         rememberReaderFontFamily(settingState.fontUriUserData),
-        readerContentTextColor(readerStyle.textColor, readerStyle.textDarkColor),
-        readerStyle.letterSpacing
+        readerContentTextColor(readerStyle.textColor, readerStyle.textDarkColor)
     )
     val measurer = rememberTextMeasurer()
     val focusRequester = remember { FocusRequester() }
@@ -240,7 +237,7 @@ private fun SimpleFlipPageTextComponent(
                                         volumeJob?.cancel()
                                         volumeJob = scope.launch {
                                             while (isActive) {
-                                                delay(intervalMs)
+                                                delay(intervalMs.milliseconds)
                                                 turnPage(direction)
                                             }
                                         }
