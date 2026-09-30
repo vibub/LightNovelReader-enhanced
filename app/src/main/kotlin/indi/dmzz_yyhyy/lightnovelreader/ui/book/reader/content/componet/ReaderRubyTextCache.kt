@@ -63,7 +63,16 @@ internal data class RubyTextKey(
     val text: AnnotatedString,
     val ranges: List<SimpleTextStyleRange>,
     val paragraphs: List<ReaderTextParagraph>? = null
-)
+) {
+    // 正文和范围随组件保留，缓存查询不应每次遍历整章的注释与段落。
+    private val cachedHash by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        var result = text.hashCode()
+        result = 31 * result + ranges.hashCode()
+        31 * result + (paragraphs?.hashCode() ?: 0)
+    }
+
+    override fun hashCode(): Int = cachedHash
+}
 
 internal data class RubyTextEnvironment(
     val style: TextStyle,

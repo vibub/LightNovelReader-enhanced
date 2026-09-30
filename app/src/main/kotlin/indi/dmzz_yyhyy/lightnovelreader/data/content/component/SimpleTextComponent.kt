@@ -102,7 +102,8 @@ class SimpleTextComponent(
             color = color,
             styleRanges = data.styleRanges,
             paragraphs = preparedText.paragraphs,
-            paragraphSpacing = combinedStyle.paragraphSpacing()
+            paragraphSpacing = combinedStyle.paragraphSpacing(),
+            preparedKey = preparedText.layoutKey
         )
     }
 

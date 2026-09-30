@@ -1,5 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.data.content.component
 
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.RubyTextKey
 import io.nightfish.lightnovelreader.api.content.component.SimpleTextComponentData
 
 /** 与章节组件一同保留，不因退出组合或切换排版环境而重复转换正文。 */
@@ -13,5 +14,8 @@ internal class PreparedTextContent(
     val text by lazy(LazyThreadSafetyMode.PUBLICATION) { data.toAnnotatedString() }
     val paragraphs by lazy(LazyThreadSafetyMode.PUBLICATION) {
         readerTextParagraphs(data.text, startsParagraph, endsParagraph)
+    }
+    val layoutKey by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        RubyTextKey(text, data.styleRanges, paragraphs).also { it.hashCode() }
     }
 }

@@ -55,7 +55,8 @@ internal fun SimpleTextComponentContent(
     color: Color,
     styleRanges: List<SimpleTextStyleRange>,
     paragraphs: List<ReaderTextParagraph>? = null,
-    paragraphSpacing: ReaderParagraphSpacing = ReaderParagraphSpacing()
+    paragraphSpacing: ReaderParagraphSpacing = ReaderParagraphSpacing(),
+    preparedKey: RubyTextKey? = null
 ) {
     SelectionContainer {
         if (paragraphs == null && styleRanges.none { !it.rubyText.isNullOrBlank() }) {
@@ -68,7 +69,7 @@ internal fun SimpleTextComponentContent(
                     style, Density(density.density, density.fontScale),
                     LocalLayoutDirection.current, LocalFontFamilyResolver.current, constraints.maxWidth, paragraphSpacing
                 )
-                val key = remember(text, styleRanges, paragraphs) { RubyTextKey(text, styleRanges, paragraphs) }
+                val key = preparedKey ?: remember(text, styleRanges, paragraphs) { RubyTextKey(text, styleRanges, paragraphs) }
                 val cache = LocalReaderRubyTextCache.current
                 val cached = cache?.get(key, environment)
                 val staleFonts = cached?.hasStaleFonts == true

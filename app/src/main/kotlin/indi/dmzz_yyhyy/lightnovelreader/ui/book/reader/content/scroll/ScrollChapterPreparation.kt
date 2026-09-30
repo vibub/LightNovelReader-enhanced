@@ -26,9 +26,9 @@ internal suspend fun prepareScrollChapter(
         id = chapter.id,
         title = chapter.title,
         content = reusable?.content ?: createComponents(chapter.content).also { components ->
-            // 章节进入 UI 状态前准备注释正文，后台排版和首次显示共享同一实例。
+            // 在后台准备正文、段落及缓存 key，首次显示和预排版不再重复遍历整章。
             components.filterIsInstance<SimpleTextComponent>().forEach {
-                if (it.preparedText.hasRuby) it.preparedText.text
+                it.preparedText.layoutKey
             }
         },
         sourceContent = chapter.content,

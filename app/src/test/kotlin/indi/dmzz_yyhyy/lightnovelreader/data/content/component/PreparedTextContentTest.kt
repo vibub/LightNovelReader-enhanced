@@ -4,6 +4,7 @@ import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.RubyTextKey
 import io.nightfish.lightnovelreader.api.content.component.SimpleTextComponentData
 import io.nightfish.lightnovelreader.api.ui.ReaderStyle
 import io.nightfish.lightnovelreader.api.content.component.SimpleTextStyleRange
@@ -16,16 +17,41 @@ import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.roundToInt
 
 class PreparedTextContentTest {
     @Test
     fun backgroundPreparationAndForegroundShareText() = runBlocking {
-        val data = SimpleTextComponentData("原词正文", listOf(SimpleTextStyleRange(0, 2, rubyText = "注释")))
+        val rangeHashCalls = AtomicInteger()
+        val ranges = object : AbstractList<SimpleTextStyleRange>() {
+            override val size = 1
+            override fun get(index: Int) = SimpleTextStyleRange(0, 2, rubyText = "注释")
+            override fun hashCode(): Int {
+                rangeHashCalls.incrementAndGet()
+                return super.hashCode()
+            }
+        }
+        val data = SimpleTextComponentData("原词正文", ranges)
         val prepared = PreparedTextContent(data)
-        val background = withContext(Dispatchers.Default) { prepared.text }
+        val background = withContext(Dispatchers.Default) { prepared.layoutKey }
         assertTrue(prepared.hasRuby)
-        repeat(10) { assertSame(background, prepared.text) }
+        assertSame(background.text, prepared.text)
+        assertSame(background.paragraphs, prepared.paragraphs)
+        val cache = RetainedLayoutCache<RubyTextKey, Any>()
+        val layout = Any()
+        cache.retain(setOf(background))
+        cache.put(background, layout)
+        val copiedKey = background.copy()
+        assertEquals(background, copiedKey)
+        assertEquals(background.hashCode(), copiedKey.hashCode())
+        assertSame(layout, cache[copiedKey])
+        val callsAfterPreparation = rangeHashCalls.get()
+        repeat(10) {
+            assertSame(background, prepared.layoutKey)
+            assertSame(layout, cache[prepared.layoutKey])
+        }
+        assertEquals("前台查询不能重新遍历样式范围计算 hash", callsAfterPreparation, rangeHashCalls.get())
         assertEquals(data.toAnnotatedString(), prepared.text)
         assertEquals("原词正文", prepared.text.text)
     }

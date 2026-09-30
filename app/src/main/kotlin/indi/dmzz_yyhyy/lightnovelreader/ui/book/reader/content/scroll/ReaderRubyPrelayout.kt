@@ -15,7 +15,6 @@ import indi.dmzz_yyhyy.lightnovelreader.data.content.component.paragraphSpacing
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.ReaderRubyTextCache
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.RubyTextEnvironment
-import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.RubyTextKey
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.prepareRubyText
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.readerRubyTextStyle
 import indi.dmzz_yyhyy.lightnovelreader.data.content.component.readerContentTextColor
@@ -66,7 +65,7 @@ internal fun rememberReaderRubyTextCache(
             withContext(Dispatchers.Default) {
                 components.map {
                     currentCoroutineContext().ensureActive()
-                    RubyTextKey(it.preparedText.text, it.data.styleRanges, it.preparedText.paragraphs)
+                    it.preparedText.layoutKey
                 }.distinct()
             }
         }.preloadRetainedText(
