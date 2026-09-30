@@ -812,7 +812,14 @@
     <string name="chapter_comments_unknown_user">Unknown user</string>
     <string name="chapter_comments_avatar_description">Avatar of %1$s</string>
     <string name="chapter_comments_quote">%1$s: %2$s</string>
-    <string name="settings_paragraph_spacing">Paragraph Spacing</string>
-    <string name="settings_text_indent">Text Indent</string>
+    <string name="settings_paragraph_spacing">Spacing After Paragraphs</string>
+    <string name="settings_text_indent">First-Line Indent</string>
     <string name="settings_line_height">Line Height</string>
+    <string name="settings_letter_spacing">Letter Spacing</string>
+    <string name="settings_paragraph_spacing_before">Spacing Before Paragraphs</string>
+    <string name="reader_paper_background_downloading">Downloading the paper background…</string>
+    <string name="reader_style_preview_1">LNR was created by its author to find comfort in the quiet hours of the night.</string>
+    <string name="reader_style_preview_2">We stay awake at night, holding on to every moment of our own and searching for a place where our hearts can rest.</string>
+    <string name="reader_style_preview_3">We may not know what trials each of us faces during the day, but we all enjoy the song that lasts through the night.</string>
+    <string name="reader_style_preview_4">LightNovelReader is a gift for everyone who loves novels.</string>
 </resources>

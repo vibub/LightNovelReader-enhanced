@@ -18,6 +18,8 @@ class SettingState(
     val fontSizeUserData = userDataRepository.floatUserData(UserDataPath.Reader.FontSize.path)
     val lineHeightUserData = userDataRepository.floatUserData(UserDataPath.Reader.LineHeight.path)
     val fontWeighUserData = userDataRepository.floatUserData(UserDataPath.Reader.FontWeigh.path)
+    val letterSpacingUserData = userDataRepository.floatUserData(UserDataPath.Reader.LetterSpacing.path)
+    val spacingBeforeParagraphUserData = userDataRepository.floatUserData(UserDataPath.Reader.SpacingBeforeParagraph.path)
     val spacingAfterParagraphUserData = userDataRepository.floatUserData(UserDataPath.Reader.SpacingAfterParagraph.path)
     val firstLineTextIndentUserData = userDataRepository.floatUserData(UserDataPath.Reader.FirstLineTextIndent.path)
     val keepScreenOnUserData =
@@ -74,6 +76,8 @@ class SettingState(
     val fontSize by fontSizeUserData.safeAsState(readerStyle.fontSize.value)
     val lineHeight by lineHeightUserData.safeAsState(readerStyle.lineHeight.value)
     val fontWeigh by fontWeighUserData.safeAsState(readerStyle.fontWeight.weight.toFloat())
+    val letterSpacing by letterSpacingUserData.safeAsState(readerStyle.letterSpacing.value)
+    val spacingBeforeParagraph by spacingBeforeParagraphUserData.safeAsState(readerStyle.spacingBeforeParagraph.value)
     val spacingAfterParagraph by spacingAfterParagraphUserData.safeAsState(readerStyle.spacingAfterParagraph.value)
     val firstLineTextIndent by firstLineTextIndentUserData.safeAsState(readerStyle.textIndent.firstLine.value)
     val keepScreenOn by keepScreenOnUserData.safeAsState(false)

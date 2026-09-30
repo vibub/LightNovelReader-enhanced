@@ -209,8 +209,8 @@
     <string name="display_settings">显示</string>
     <string name="settings_theme">App Theme</string>
     <string name="settings_theme_desc">Adjust the appearance of the app</string>
-    <string name="settings_reader_style">Reader Style</string>
-    <string name="settings_reader_style_desc">Adjust the appearance of the reading page</string>
+    <string name="settings_reader_style">阅读样式</string>
+    <string name="settings_reader_style_desc">调整阅读页面的外观</string>
     <string name="settings_text_formatting">文本格式化</string>
     <string name="settings_text_formatting_desc">根据规则格式化文本内容</string>
     <string name="settings_theme_light_theme">浅色主题</string>
@@ -785,7 +785,14 @@
     <string name="restart">重启</string>
     <string name="current_web_data_source_not_founded">当前网络数据源不可用，请检查插件与数据源设置</string>
     <string name="never_read">未读</string>
-    <string name="settings_paragraph_spacing">Paragraph Spacing</string>
-    <string name="settings_text_indent">Text Indent</string>
-    <string name="settings_line_height">Line Height</string>
+    <string name="settings_paragraph_spacing">段后间距</string>
+    <string name="settings_text_indent">首行缩进</string>
+    <string name="settings_line_height">行高</string>
+    <string name="settings_letter_spacing">字间距</string>
+    <string name="settings_paragraph_spacing_before">段前间距</string>
+    <string name="reader_paper_background_downloading">正在下载纸张背景…</string>
+    <string name="reader_style_preview_1">LNR是一款作者为了能在每个深夜得到安慰所开发出的软件。</string>
+    <string name="reader_style_preview_2">我们总是在夜晚保持清醒，拼命地抓住每一寸属于自己的时间，寻找每一个能寄托心灵的空间。</string>
+    <string name="reader_style_preview_3">我们不清楚各自在白昼受到怎样的灼烧，但我们同样享受那首彻夜之歌。</string>
+    <string name="reader_style_preview_4">LightNovelReader是送给所有小说爱好者的礼物。</string>
 </resources>

@@ -125,6 +125,7 @@ fun ReaderThemeSettingsList(
     ) {
         val context = LocalContext.current
         val snackbarHostState = LocalSnackbarHost.current
+        val downloadingMessage = stringResource(R.string.reader_paper_background_downloading)
 
         var lastEnabled by remember { mutableStateOf(settingState.enableBackgroundImage) }
 
@@ -139,7 +140,7 @@ fun ReaderThemeSettingsList(
                 val diskHit = loader.diskCache?.openSnapshot(key)?.use { true } ?: false
 
                 if (!memHit && !diskHit) {
-                    snackbarHostState.showSnackbar("正在下载纸张背景…")
+                    snackbarHostState.showSnackbar(downloadingMessage)
 
                     loader.enqueue(
                         ImageRequest.Builder(context)
@@ -326,99 +327,30 @@ fun ReaderTextSettings(
             val readerStyle = LocalReaderStyle.current
             val isDark = LocalAppTheme.current.isDark
             val density = LocalDensity.current
+            val previewParagraphs = listOf(
+                stringResource(R.string.reader_style_preview_1),
+                stringResource(R.string.reader_style_preview_2),
+                stringResource(R.string.reader_style_preview_3),
+                stringResource(R.string.reader_style_preview_4)
+            )
             Column {
-                Text(
-                    buildAnnotatedString {
-                        withStyle(
-                            readerStyle.toParagraphStyle()
-                        ) {
-                            withStyle(
-                                readerStyle.toSpanStyle(isDark)
-                            ) {
-                                append("LNR是一款作者为了能在每个深夜得到安慰所开发出的软件。")
+                previewParagraphs.forEach { paragraph ->
+                    Text(
+                        buildAnnotatedString {
+                            withStyle(readerStyle.toParagraphStyle()) {
+                                withStyle(readerStyle.toSpanStyle(isDark)) {
+                                    append(paragraph)
+                                }
                             }
-                        }
-                    },
-                    modifier = Modifier
-                        .padding(horizontal = 18.dp)
-                        .padding(
-                            bottom = with(density) {
-                                readerStyle.spacingAfterParagraph.toDp()
-                            },
-                            top = with(density) {
-                                readerStyle.spacingBeforeParagraph.toDp()
-                            }
-                        )
-                )
-                Text(
-                    buildAnnotatedString {
-                        withStyle(
-                            readerStyle.toParagraphStyle()
-                        ) {
-                            withStyle(
-                                readerStyle.toSpanStyle(isDark)
-                            ) {
-                                append("我们总是在夜晚保持清醒，拼命的抓住每一寸属于自己的时间，寻找每一个能寄托心灵的空间。")
-                            }
-                        }
-                    },
-                    modifier = Modifier
-                        .padding(horizontal = 18.dp)
-                        .padding(
-                            bottom = with(density) {
-                                readerStyle.spacingAfterParagraph.toDp()
-                            },
-                            top = with(density) {
-                                readerStyle.spacingBeforeParagraph.toDp()
-                            }
-                        )
-                )
-                Text(
-                    buildAnnotatedString {
-                        withStyle(
-                            readerStyle.toParagraphStyle()
-                        ) {
-                            withStyle(
-                                readerStyle.toSpanStyle(isDark)
-                            ) {
-                                append("我们不清楚各自在白昼受到怎样的灼烧，但我们同样享受那首彻夜之歌。")
-                            }
-                        }
-                    },
-                    modifier = Modifier
-                        .padding(horizontal = 18.dp)
-                        .padding(
-                            bottom = with(density) {
-                                readerStyle.spacingAfterParagraph.toDp()
-                            },
-                            top = with(density) {
-                                readerStyle.spacingBeforeParagraph.toDp()
-                            }
-                        )
-                )
-                Text(
-                    buildAnnotatedString {
-                        withStyle(
-                            readerStyle.toParagraphStyle()
-                        ) {
-                            withStyle(
-                                readerStyle.toSpanStyle(isDark)
-                            ) {
-                                append("LightNovelReader是送给所有小说爱好者的礼物。")
-                            }
-                        }
-                    },
-                    modifier = Modifier
-                        .padding(horizontal = 18.dp)
-                        .padding(
-                            bottom = with(density) {
-                                readerStyle.spacingAfterParagraph.toDp()
-                            },
-                            top = with(density) {
-                                readerStyle.spacingBeforeParagraph.toDp()
-                            }
-                        )
-                )
+                        },
+                        modifier = Modifier
+                            .padding(horizontal = 18.dp)
+                            .padding(
+                                bottom = with(density) { readerStyle.spacingAfterParagraph.toDp() },
+                                top = with(density) { readerStyle.spacingBeforeParagraph.toDp() }
+                            )
+                    )
+                }
             }
         }
     }
@@ -447,6 +379,17 @@ fun ReaderTextSettings(
 
         SettingsSliderEntry(
             modifier = Modifier.background(colorScheme.surfaceContainer),
+            painter = painterResource(R.drawable.text_fields_24px),
+            title = stringResource(R.string.settings_letter_spacing),
+            unit = "sp",
+            valueRange = -2f..8f,
+            value = settingState.letterSpacing,
+            valueFormat = { (it * 10).roundToInt().toFloat() / 10 },
+            floatUserData = settingState.letterSpacingUserData,
+        )
+
+        SettingsSliderEntry(
+            modifier = Modifier.background(colorScheme.surfaceContainer),
             painter = painterResource(R.drawable.format_line_spacing_24px),
             title = stringResource(R.string.settings_line_height),
             unit = "em",
@@ -454,6 +397,16 @@ fun ReaderTextSettings(
             value = settingState.lineHeight,
             valueFormat = { (it * 10).roundToInt().toFloat() / 10 },
             floatUserData = settingState.lineHeightUserData,
+        )
+
+        SettingsSliderEntry(
+            modifier = Modifier.background(colorScheme.surfaceContainer),
+            painter = painterResource(R.drawable.format_line_spacing_24px),
+            title = stringResource(R.string.settings_paragraph_spacing_before),
+            unit = "sp",
+            valueRange = 0f..64f,
+            value = settingState.spacingBeforeParagraph,
+            floatUserData = settingState.spacingBeforeParagraphUserData,
         )
 
         SettingsSliderEntry(

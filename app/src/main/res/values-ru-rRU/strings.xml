@@ -104,7 +104,7 @@
     <string name="reader_reached_bottom">You have reached the bottom</string>
     <string name="reader_reached_start">This is the beginning.</string>
     <string name="reader_reached_end">You\'ve reached the end…</string>
-    <string name="font_file_error">Font file is incorrect or corrupted, please check and import again</string>
+    <string name="font_file_error">Файл шрифта некорректен или повреждён. Проверьте его и импортируйте снова.</string>
     <string name="settings_data_source_pending_title">Switch to %s</string>
     <string name="settings_data_source_pending_desc">
         The operation will clear cached data and restart the app. Your current data can be restored when switching back to \"%s\".
@@ -182,8 +182,8 @@
     <string name="display_settings">Отображение</string>
     <string name="settings_theme">App Theme</string>
     <string name="settings_theme_desc">Adjust the appearance of the app</string>
-    <string name="settings_reader_style">Reader Style</string>
-    <string name="settings_reader_style_desc">Adjust the appearance of the reading page</string>
+    <string name="settings_reader_style">Оформление чтения</string>
+    <string name="settings_reader_style_desc">Настройте внешний вид страницы чтения</string>
     <string name="settings_text_formatting">Форматирование текста</string>
     <string name="settings_text_formatting_desc">Форматирование текстового содержимого на основе правил</string>
     <string name="settings_theme_light_theme">Светлая тема</string>
@@ -744,7 +744,14 @@
     <string name="restart">Restart</string>
     <string name="current_web_data_source_not_founded">Did not found the current web data source, please check you plugin and data source settings</string>
     <string name="never_read">Never read</string>
-    <string name="settings_paragraph_spacing">Paragraph Spacing</string>
-    <string name="settings_text_indent">Text Indent</string>
-    <string name="settings_line_height">Line Height</string>
+    <string name="settings_paragraph_spacing">Интервал после абзаца</string>
+    <string name="settings_text_indent">Отступ первой строки</string>
+    <string name="settings_line_height">Высота строки</string>
+    <string name="settings_letter_spacing">Межбуквенный интервал</string>
+    <string name="settings_paragraph_spacing_before">Интервал перед абзацем</string>
+    <string name="reader_paper_background_downloading">Загрузка бумажного фона…</string>
+    <string name="reader_style_preview_1">LNR — приложение, созданное автором, чтобы находить утешение каждую ночь.</string>
+    <string name="reader_style_preview_2">По ночам мы не спим, стараясь удержать каждое мгновение личного времени и найти место, где душа сможет отдохнуть.</string>
+    <string name="reader_style_preview_3">Мы не знаем, какие испытания выпадают нам днём, но вместе наслаждаемся песней, звучащей всю ночь.</string>
+    <string name="reader_style_preview_4">LightNovelReader — подарок всем любителям романов.</string>
 </resources>

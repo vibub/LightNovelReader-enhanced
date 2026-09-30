@@ -50,6 +50,7 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -60,6 +61,7 @@ import com.github.michaelbull.result.map
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import indi.dmzz_yyhyy.lightnovelreader.R
+import indi.dmzz_yyhyy.lightnovelreader.data.content.component.readerContentTextColor
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ChapterEndContext
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.ReaderChapterEnd
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.SettingState
@@ -71,13 +73,14 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.LocalRea
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.LocalReaderTextScrolling
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.LocalReaderTextViewport
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.ReaderTextViewport
+import indi.dmzz_yyhyy.lightnovelreader.ui.book.reader.content.componet.readerRubyTextStyle
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.Loading
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data.MenuOptions
 import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
-import indi.dmzz_yyhyy.lightnovelreader.utils.readerTextColor
 import indi.dmzz_yyhyy.lightnovelreader.utils.rememberReaderBackgroundPainter
 import indi.dmzz_yyhyy.lightnovelreader.utils.rememberReaderFontFamily
 import indi.dmzz_yyhyy.lightnovelreader.utils.showSnackbar
+import io.nightfish.lightnovelreader.api.ui.LocalReaderStyle
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -296,8 +299,14 @@ private fun TextContent(
 ) {
     val density = LocalDensity.current
     val screenHeight = LocalResources.current.displayMetrics.heightPixels
-    val textColor = readerTextColor(settingState)
-    val fontFamily = rememberReaderFontFamily(settingState.fontUriUserData)
+    val readerStyle = LocalReaderStyle.current
+    val textColor = readerContentTextColor(readerStyle.textColor, readerStyle.textDarkColor)
+    val textStyle = readerRubyTextStyle(
+        readerStyle,
+        LocalReaderRubyTextCache.current?.environment?.style?.fontFamily
+            ?: rememberReaderFontFamily(settingState.fontUriUserData),
+        textColor
+    ).copy(textAlign = TextAlign.Center, textIndent = TextIndent.None)
     Column(modifier.defaultMinSize(minHeight = with(density) { screenHeight.toDp() })) {
         val match = Regex("^(第[一二三四五六七八九十]+卷)\\s+(.*)").find(content.title)
         Column(
@@ -306,19 +315,21 @@ private fun TextContent(
         ) {
             if (match != null) {
                 Text(
-                    text = match.groupValues[1], textAlign = TextAlign.Center,
-                    fontSize = (settingState.fontSize + 2).sp, fontWeight = FontWeight.Medium,
-                    fontFamily = fontFamily, color = textColor, modifier = Modifier.fillMaxWidth()
+                    text = match.groupValues[1],
+                    style = textStyle.copy(
+                        fontSize = (readerStyle.fontSize.value + 2).sp,
+                        fontWeight = FontWeight.Medium
+                    ),
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
             Text(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                 text = match?.groupValues?.get(2) ?: content.title,
-                textAlign = TextAlign.Center,
-                fontSize = (settingState.fontSize + 6).sp,
-                lineHeight = ((settingState.fontSize + 6) * settingState.lineHeight).sp,
-                fontWeight = FontWeight((settingState.fontWeigh.toInt() + 100).coerceIn(1, 1000)),
-                fontFamily = fontFamily, color = textColor
+                style = textStyle.copy(
+                    fontSize = (readerStyle.fontSize.value + 6).sp,
+                    fontWeight = FontWeight((readerStyle.fontWeight.weight + 100).coerceIn(1, 1000))
+                )
             )
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 HorizontalDivider(modifier = Modifier.width(48.dp), color = textColor)
