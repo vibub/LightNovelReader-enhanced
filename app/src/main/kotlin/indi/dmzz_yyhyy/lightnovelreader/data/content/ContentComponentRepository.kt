@@ -64,11 +64,20 @@ class ContentComponentRepository @Inject constructor(
         val context = injector.injectMap[android.content.Context::class.java] as android.content.Context
         val userData = injector.injectMap[io.nightfish.lightnovelreader.api.userdata.UserDataRepositoryApi::class.java]
             as io.nightfish.lightnovelreader.api.userdata.UserDataRepositoryApi
-        return ReaderContentData(getContentDataListFromJson(jsonObject).map { data ->
+        val dataList = getContentDataListFromJson(jsonObject)
+        return ReaderContentData(dataList.mapIndexed { index, data ->
             if (data is SimpleTextComponentData) {
                 indi.dmzz_yyhyy.lightnovelreader.data.content.component.SimpleTextComponent(data, userData, context)
             } else {
-                RenderContentComponent(data, this)
+                val previous = dataList.getOrNull(index - 1)
+                val next = dataList.getOrNull(index + 1)
+                RenderContentComponent(
+                    data, this,
+                    hasParagraphBefore = previous is SimpleTextComponentData ||
+                        (previous is ParagraphComponentData && previous.endsParagraph),
+                    hasParagraphAfter = next is SimpleTextComponentData ||
+                        (next is ParagraphComponentData && next.index == 1)
+                )
             }
         })
     }

@@ -16,6 +16,7 @@ import io.nightfish.lightnovelreader.api.content.component.AbstractContentCompon
 import io.nightfish.lightnovelreader.api.content.component.AbstractDivisibleContentComponent
 import io.nightfish.lightnovelreader.api.content.component.data.AbstractContentComponentData
 import io.nightfish.lightnovelreader.api.content.component.data.Divisible
+import io.nightfish.lightnovelreader.api.content.component.data.ImageComponentData
 import io.nightfish.lightnovelreader.api.content.component.data.ParagraphComponentData
 import io.nightfish.lightnovelreader.api.ui.ReaderStyle
 import kotlinx.coroutines.currentCoroutineContext
@@ -120,6 +121,9 @@ internal suspend fun paginateReaderComponents(
                         }
                     }
                 }
+                // 图片独占一页时没有相邻正文，不能抵扣其他页面的段距。
+                component is RenderContentComponent && component.data is ImageComponentData ->
+                    pages += component.bind(component.data)
                 else -> pages += component
             }
         }
