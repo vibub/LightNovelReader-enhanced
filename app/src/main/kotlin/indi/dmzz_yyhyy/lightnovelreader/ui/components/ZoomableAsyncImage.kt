@@ -8,11 +8,11 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
@@ -172,34 +172,56 @@ fun ZoomableImage(
     placeholderHeight: Dp = 200.dp,
     header: Map<String, String>
 ) {
+    val screenWidthPx = LocalResources.current.displayMetrics.widthPixels.coerceAtLeast(1)
+    BoxWithConstraints(modifier = modifier) {
+        val imageWidthPx = constraints.maxWidth
+            .takeIf { constraints.hasBoundedWidth && it > 0 }
+            ?: screenWidthPx
+        ZoomableImageContent(imageUri, onViewImage, placeholderHeight, header, imageWidthPx, screenWidthPx)
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun ZoomableImageContent(
+    imageUri: Uri,
+    onViewImage: () -> Unit,
+    placeholderHeight: Dp,
+    header: Map<String, String>,
+    imageWidthPx: Int,
+    preloadWidthPx: Int
+) {
     val context = LocalContext.current
     val density = LocalDensity.current
-    val screenWidthPx = LocalResources.current.displayMetrics.widthPixels.coerceAtLeast(1)
     val imageUriString = remember(imageUri) { imageUri.toString() }
     var retryKey by remember { mutableIntStateOf(0) }
     var lastError by remember { mutableStateOf<String?>(null) }
     val imageTransPostProcessingViewModel = hiltViewModel<ImageTransPostProcessingViewModel>()
-    val cachedImageHeightPx = remember(imageUriString, screenWidthPx) {
-        ReaderImageHeightCache.get(imageUriString, screenWidthPx)
+    val cachedImageHeightPx = remember(imageUriString, imageWidthPx, preloadWidthPx) {
+        ReaderImageHeightCache.get(imageUriString, imageWidthPx)
+            ?: ReaderImageHeightCache.get(imageUriString, preloadWidthPx)?.let { height ->
+                // 首次预加载可能还没有正文宽度，将屏幕宽度下的高度换算为当前宽度。
+                scaledReaderImageHeightPx(imageWidthPx, preloadWidthPx, height)
+            }
     }
     val reservedImageHeight = cachedImageHeightPx
         ?.takeIf { it > 0 }
         ?.let { with(density) { it.toDp() } }
         ?: placeholderHeight
     val reservedImageHeightPx = with(density) { reservedImageHeight.roundToPx() }
-    val lastMeasuredHeightPx = remember(imageUriString, reservedImageHeightPx) {
+    val lastMeasuredHeightPx = remember(imageUriString, imageWidthPx, reservedImageHeightPx) {
         intArrayOf(cachedImageHeightPx ?: reservedImageHeightPx)
     }
 
-    Box(modifier = modifier) {
+    Box {
         key(retryKey) {
-            val imageRequest = remember(imageUri, header, retryKey, screenWidthPx) {
+            val imageRequest = remember(imageUri, header, retryKey, imageWidthPx) {
                 val transformations = imageTransPostProcessingViewModel
                     .imageTransPostProcessingManager
                     .getCoil3Transformations(ImagePostProcessingPipeline.imageComponent, imageUri)
                 ImageRequest.Builder(context)
                     .data(imageUri)
-                    .size(Size(screenWidthPx, Dimension.Undefined))
+                    .size(Size(imageWidthPx, Dimension.Undefined))
                     .transformations(transformations)
                     .crossfade(false)
                     .memoryCachePolicy(CachePolicy.ENABLED)
@@ -274,19 +296,19 @@ fun ZoomableImage(
                 }
 
                 is AsyncImagePainter.State.Success -> {
-                    val successPainter = (state as AsyncImagePainter.State.Success).painter
-                    val reservedHeightModifier = if (cachedImageHeightPx != null) {
-                        Modifier.height(reservedImageHeight)
-                    } else {
-                        Modifier.heightIn(min = reservedImageHeight)
-                    }
+                    val success = state as AsyncImagePainter.State.Success
+                    val imageHeightPx = scaledReaderImageHeightPx(
+                        imageWidthPx, success.result.image.width, success.result.image.height
+                    )
+                    val imageHeight = imageHeightPx?.let { with(density) { it.toDp() } }
+                        ?: reservedImageHeight
                     Image(
-                        painter = successPainter,
+                        painter = success.painter,
                         contentDescription = null,
                         contentScale = ContentScale.FillWidth,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .then(reservedHeightModifier)
+                            .height(imageHeight)
                             .align(Alignment.Center)
                             .pointerInput(onViewImage) {
                                 awaitPointerEventScope {
@@ -351,18 +373,16 @@ fun ZoomableImage(
                                 }
                             }
                             .onGloballyPositioned {
-                                val heightPx = it.size.height
-                                if (heightPx <= 0 || lastMeasuredHeightPx[0] == heightPx) {
+                                // 缓存按宽度推算的图片高度，不能写入被翻页视口约束后的容器高度。
+                                val heightPx = imageHeightPx ?: it.size.height
+                                if (heightPx <= 0) return@onGloballyPositioned
+                                val previousCachedHeight = ReaderImageHeightCache.get(imageUriString, imageWidthPx)
+                                if (lastMeasuredHeightPx[0] == heightPx && previousCachedHeight == heightPx) {
                                     return@onGloballyPositioned
-                                }
-                                val previousCachedHeight = if (DEBUG_READER_IMAGE) {
-                                    ReaderImageHeightCache.get(imageUriString, screenWidthPx)
-                                } else {
-                                    null
                                 }
                                 val previousHeightPx = lastMeasuredHeightPx[0]
                                 lastMeasuredHeightPx[0] = heightPx
-                                ReaderImageHeightCache.put(imageUriString, screenWidthPx, heightPx)
+                                ReaderImageHeightCache.put(imageUriString, imageWidthPx, heightPx)
                                 debugImageLog {
                                     "successContentSize uri=${imageUri.shortForLog()} retry=$retryKey " +
                                         "new=${it.size.width}x${it.size.height} placeholder=$placeholderHeight " +
