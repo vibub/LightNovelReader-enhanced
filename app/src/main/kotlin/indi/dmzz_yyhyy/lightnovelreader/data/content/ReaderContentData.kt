@@ -22,7 +22,9 @@ class RenderContentComponent(
     data: AbstractContentComponentData,
     private val render: ComponentRender,
     private val hasParagraphBefore: Boolean = false,
-    private val hasParagraphAfter: Boolean = false
+    private val hasParagraphAfter: Boolean = false,
+    private val hasImageBefore: Boolean = false,
+    private val hasImageAfter: Boolean = false
 ) : AbstractContentComponent<AbstractContentComponentData>(data) {
     @Composable
     override fun Content(modifier: Modifier) {
@@ -38,11 +40,13 @@ class RenderContentComponent(
             render.Component(modifier, data.copy(
                 topPaddingDp = readerImagePaddingDp(
                     data.topPaddingDp, ImageComponentData.DEFAULT_TOP_PADDING_DP,
-                    if (hasParagraphBefore) spacing.after else 0, density
+                    if (hasParagraphBefore) spacing.after else 0, density,
+                    hasAdjacentImage = hasImageBefore
                 ),
                 bottomPaddingDp = readerImagePaddingDp(
                     data.bottomPaddingDp, ImageComponentData.DEFAULT_BOTTOM_PADDING_DP,
-                    if (hasParagraphAfter) spacing.before else 0, density
+                    if (hasParagraphAfter) spacing.before else 0, density,
+                    hasAdjacentImage = hasImageAfter
                 )
             ))
         } else {
@@ -54,14 +58,15 @@ class RenderContentComponent(
         RenderContentComponent(data, render)
 }
 
-/** 默认图文留白以 12dp 为目标，借用相邻正文段距；零间距和非默认值保持原样。 */
+/** 默认图文留白借用正文段距，连续图片内部不留白；零间距和非默认值保持原样。 */
 private fun readerImagePaddingDp(
     paddingDp: Int,
     defaultPaddingDp: Int,
     paragraphPaddingPx: Int,
-    density: Density
-): Int = if (paddingDp == defaultPaddingDp) {
-    with(density) { (12.dp - paragraphPaddingPx.toDp()).value.roundToInt().coerceAtLeast(0) }
-} else {
-    paddingDp
+    density: Density,
+    hasAdjacentImage: Boolean
+): Int = when {
+    paddingDp != defaultPaddingDp -> paddingDp
+    hasAdjacentImage -> 0
+    else -> with(density) { (12.dp - paragraphPaddingPx.toDp()).value.roundToInt().coerceAtLeast(0) }
 }

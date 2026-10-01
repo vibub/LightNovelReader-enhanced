@@ -76,7 +76,9 @@ class ContentComponentRepository @Inject constructor(
                     hasParagraphBefore = previous is SimpleTextComponentData ||
                         (previous is ParagraphComponentData && previous.endsParagraph),
                     hasParagraphAfter = next is SimpleTextComponentData ||
-                        (next is ParagraphComponentData && next.index == 1)
+                        (next is ParagraphComponentData && next.index == 1),
+                    hasImageBefore = previous is ImageComponentData,
+                    hasImageAfter = next is ImageComponentData
                 )
             }
         })
