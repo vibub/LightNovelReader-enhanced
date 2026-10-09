@@ -123,7 +123,6 @@
     <string name="local_book_clear_index">删除 卷和章节目录</string>
     <string name="local_book_clear_content">删除 章节内容</string>
     <string name="local_book_clear_reading">删除 阅读记录</string>
-    <string name="local_book_clear_confirm_title">确认删除</string>
     <string name="local_book_clear_confirm_content">如果你继续，选中的内容将会被删除且会释放 %1$s 的存储空间。\n你可以之后重新导入或者下载内容。\n操作不可撤回。</string>
     <string name="confirm_exit">确认退出？</string>
     <string name="hint_unsaved_changes_will_be_lost">如果现在退出，您未保存的更改将会丢失。</string>
@@ -207,8 +206,8 @@
     <string name="settings_reader_left_margin">左边距</string>
     <string name="settings_reader_right_margin">右边距</string>
     <string name="display_settings">显示</string>
-    <string name="settings_theme">App Theme</string>
-    <string name="settings_theme_desc">Adjust the appearance of the app</string>
+    <string name="settings_theme">应用主题</string>
+    <string name="settings_theme_desc">调整应用程序的外观</string>
     <string name="settings_reader_style">阅读样式</string>
     <string name="settings_reader_style_desc">调整阅读页面的外观</string>
     <string name="settings_text_formatting">文本格式化</string>
@@ -297,7 +296,9 @@
     <string name="book_manager_clear_orphaned_title">删除孤立数据</string>
     <string name="book_manager_clear_orphaned_content">删除未关联到任何本地书本的章节数据？</string>
     <string name="book_manager_group_index_only">书本内容未缓存（ %1$d ）</string>
-    <string name="book_manager_cleared_items">已删除 %1$d 个项目</string>
+    <plurals name="book_manager_cleared_items">
+        <item quantity="other">已删除 %1$d 个项目</item>
+    </plurals>
     <string name="storage_manager_title">存储管理</string>
     <string name="storage_manager_empty_description">没有可分析的本地缓存。</string>
     <string name="storage_manager_used">已使用</string>
@@ -364,7 +365,12 @@
     <string name="detail_contents">目录</string>
     <string name="detail_title">详情</string>
     <string name="detail_info_word_count_content">%1$s 字</string>
-    <string name="detail_info_stats_count_content">共计 %1$d 卷，%2$d 章</string>
+    <plurals name="n_volumes">
+        <item quantity="other">%d 卷</item>
+    </plurals>
+    <plurals name="detail_info_stats_count_content">
+        <item quantity="other">共计 %1$s，%2$d 章</item>
+    </plurals>
     <string name="local_book_info_title">书籍缓存详情</string>
     <string name="local_book_info_book_information">书籍信息</string>
     <string name="local_book_info_volume_index">卷目录</string>
@@ -411,7 +417,9 @@
     <string name="bookshelf_adjust_order">调整排序</string>
     <string name="bookshelf_adjust_bookshelf_order">调整书架排序</string>
     <string name="bookshelf_adjust_order_locked">被当前排序模式锁定</string>
-    <string name="bookshelf_book_count">共 %d 本</string>
+    <plurals name="bookshelf_book_count">
+        <item quantity="other">共 %d 本</item>
+    </plurals>
     <string name="share_bookshelf">分享书架</string>
     <string name="import_and_export">导入和导出……</string>
     <string name="export_to_lnr_file">导出为 .lnr 文件</string>
@@ -425,7 +433,9 @@
     <string name="collapse">收起</string>
     <string name="info_reading_finished">已读完</string>
     <string name="info_reading_progress">已读 %1$d/%2$d</string>
-    <string name="info_volume_chapters_count">共 %d 章</string>
+    <plurals name="info_volume_chapters_count">
+        <item quantity="other">共 %d 章</item>
+    </plurals>
     <string name="bookshelf_group_title_updated">已更新 (%s)</string>
     <string name="bookshelf_group_title_pinned">已固定 (%s)</string>
     <string name="bookshelf_group_title_all">全部 (%s)</string>
@@ -462,7 +472,9 @@
     <string name="activity_etc"> 等 %d 本书</string>
     <string name="activity_reading_time">阅读时长</string>
     <string name="activity_read">读过</string>
-    <string name="n_books">%d 本书</string>
+    <plurals name="n_books">
+        <item quantity="other">%d 本书</item>
+    </plurals>
     <string name="time_distribution">时间分布</string>
     <string name="reading_details">阅读详情</string>
     <string name="to">至</string>
@@ -492,12 +504,20 @@
     <string name="completed">已完成</string>
     <string name="clear_all">全部清除</string>
     <string name="global_formatting_rules">全局规则</string>
-    <string name="n_rules">%d 个规则</string>
+    <plurals name="n_rules">
+        <item quantity="other">%d 条规则</item>
+    </plurals>
     <string name="rule_name">名称</string>
     <string name="rule_match">匹配内容</string>
     <string name="rule_replacement">替换为</string>
     <string name="rule_is_regex">使用正则匹配</string>
     <string name="edit_rule">编辑规则</string>
+    <string name="load_failed">加载失败</string>
+    <string name="error_book_title">未知内容</string>
+    <string name="error_book_info">载入信息失败</string>
+    <string name="error_book_volumes_unavailable_generic">章节不可用</string>
+    <string name="error_chapter_content_generic">章节内容不可用</string>
+    <string name="error_data_source_generic">数据源返回了一个错误</string>
     <!-- Dialogs -->
     <string name="dialog_about_version">版本</string>
     <string name="dialog_delete_bookshelf">删除书架</string>
@@ -608,7 +628,9 @@
     <string name="plugin_unknown_name">未知</string>
     <string name="plugin_disabled_title">插件已被禁用</string>
     <string name="plugin_disabled_body">在加载该插件过程中发生错误，导致应用异常终止。\n\n出于稳定性考虑，该插件已被自动禁用。您可在插件管理界面手动重新启用。</string>
-    <string name="plugin_signature_count">包含 %1$d 个签名</string>
+    <plurals name="plugin_signature_count">
+        <item quantity="other">包含 %1$d 个签名</item>
+    </plurals>
     <string name="plugin_signature_validity">有效期 %1$s ～ %2$s</string>
     <string name="plugin_signature_subject">主题</string>
     <string name="plugin_signature_issuer">颁发者</string>

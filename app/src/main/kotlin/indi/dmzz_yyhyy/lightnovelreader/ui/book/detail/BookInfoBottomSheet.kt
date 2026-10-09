@@ -6,7 +6,10 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -30,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.book.get
+import indi.dmzz_yyhyy.lightnovelreader.data.book.volumeChapterCountText
 import indi.dmzz_yyhyy.lightnovelreader.utils.dateFormatter
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.BookVolumes
@@ -39,7 +43,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun BookInfoBottomSheet(
     bookInformation: BookInformation,
-    bookVolumes: BookVolumes,
+    bookVolumes: BookVolumes? = null,
     sheetState: SheetState,
     onDismissRequest: () -> Unit,
 ) {
@@ -118,6 +122,7 @@ fun BookInfoBottomSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 18.dp, vertical = 8.dp)
+                .navigationBarsPadding()
         ) {
             InfoItem(
                 title = stringResource(R.string.detail_info_title),
@@ -177,20 +182,22 @@ fun BookInfoBottomSheet(
                 icon = painterResource(R.drawable.tag_24px)
             )
 
+
             InfoItem(
                 title = stringResource(R.string.detail_info_stats),
-                content = stringResource(
-                    R.string.detail_info_word_count_content,
-                    bookInformation.wordCount.get()
-                ) + "\n" + stringResource(
-                    R.string.detail_info_stats_count_content,
-                    bookVolumes.volumes.count(),
-                    bookVolumes.volumes.sumOf { it.chapters.size }
-                ),
+                content = if (bookVolumes != null) {
+                    val chapterCount = bookVolumes.volumes.sumOf { it.chapters.size }
+                    "${bookInformation.wordCount.get()}\n" +
+                        volumeChapterCountText(bookVolumes.volumes.size, chapterCount)
+                } else {
+                    stringResource(R.string.error_book_volumes_unavailable_generic)
+                },
                 titleStyle = titleStyle,
                 contentStyle = contentStyle,
                 icon = painterResource(R.drawable.text_fields_24px)
             )
+
+            Spacer(Modifier.height(18.dp))
         }
     }
 }

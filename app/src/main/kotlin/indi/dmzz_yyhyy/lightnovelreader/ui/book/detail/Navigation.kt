@@ -250,7 +250,9 @@ fun NavEntryScope.bookDetailDestination() {
             },
             onMatchLinovelibBookmark = { chapterId ->
                 viewModel.matchLinovelibBookmark(bookId, chapterId)
-            }
+            },
+            onRetryBookInformation = viewModel::retryBookInformation,
+            onRetryBookVolumes = viewModel::retryBookVolumes
         )
     }
 }

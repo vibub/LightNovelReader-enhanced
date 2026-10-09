@@ -1,19 +1,11 @@
 package indi.dmzz_yyhyy.lightnovelreader.utils.network
 
-import kotlin.random.Random
+import android.os.Build
 
 object UserAgentGenerator {
-
-    private val androidVersions = listOf(
-        "7.0", "7.1.1", "8.0.0", "8.1.0",
-        "9", "10", "11", "12", "13", "14"
-    )
-
-    private val deviceModels = listOf(
-        "Pixel 4", "Pixel 5", "Pixel 6", "Pixel 7",
-        "SM-G991B", "SM-G996B", "SM-S908B",
-        "M2102J20SG", "2201123G"
-    )
+    private const val APPLE_WEBKIT_VERSION = "537.36"
+    private const val SAFARI_VERSION = "537.36"
+    private const val CHROME_MAJOR_VERSION = 153
 
     private val desktopPlatforms = listOf(
         "Windows NT 10.0; Win64; x64",
@@ -21,39 +13,31 @@ object UserAgentGenerator {
         "X11; Linux x86_64"
     )
 
-    private val chromeMajorVersions = (100..140).toList()
-
-    fun generate(): String {
-        val androidVersion = androidVersions.random()
-        val model = deviceModels.random()
-        val buildId = randomBuildId()
-
-        val chromeMajor = chromeMajorVersions.random()
-        val chromeMinor = Random.nextInt(0, 4000)
-        val chromeBuild = Random.nextInt(0, 200)
-        val chromePatch = Random.nextInt(0, 150)
-
-        return "Mozilla/5.0 (Linux; Android $androidVersion; $model Build/$buildId) " +
-                "AppleWebKit/537.36 (KHTML, like Gecko) " +
-                "Chrome/$chromeMajor.0.$chromeMinor.$chromeBuild Mobile Safari/537.$chromePatch"
+    private val cachedUserAgent by lazy {
+        buildUserAgent(
+            androidVersion = Build.VERSION.RELEASE.orEmpty().ifBlank { "10" },
+            model = Build.MODEL.orEmpty().ifBlank { "K" },
+            chromeMajorVersion = CHROME_MAJOR_VERSION,
+        )
     }
 
-    fun generateDesktop(): String {
-        val platform = desktopPlatforms.random()
-        val chromeMajor = chromeMajorVersions.random()
-        val chromeMinor = Random.nextInt(0, 4000)
-        val chromeBuild = Random.nextInt(0, 200)
-
-        return "Mozilla/5.0 ($platform) " +
-                "AppleWebKit/537.36 (KHTML, like Gecko) " +
-                "Chrome/$chromeMajor.0.$chromeMinor.$chromeBuild Safari/537.36"
+    private val cachedDesktopUserAgent by lazy {
+        "Mozilla/5.0 (${desktopPlatforms.random()}) " +
+                "AppleWebKit/$APPLE_WEBKIT_VERSION (KHTML, like Gecko) " +
+                "Chrome/$CHROME_MAJOR_VERSION.0.0.0 Safari/$SAFARI_VERSION"
     }
 
-    private fun randomBuildId(): String {
-        val chars = ('A'..'Z') + ('0'..'9')
-        val length = listOf(6, 7, 8, 10).random()
-        return (1..length).map { chars.random() }
-            .joinToString("")
-    }
+    fun generate(): String = cachedUserAgent
+
+    fun generateDesktop(): String = cachedDesktopUserAgent
+
+    internal fun buildUserAgent(
+        androidVersion: String,
+        model: String,
+        chromeMajorVersion: Int,
+    ): String =
+        "Mozilla/5.0 (Linux; Android $androidVersion; $model) " +
+                "AppleWebKit/$APPLE_WEBKIT_VERSION (KHTML, like Gecko) " +
+                "Chrome/$chromeMajorVersion.0.0.0 Mobile Safari/$SAFARI_VERSION"
 
 }

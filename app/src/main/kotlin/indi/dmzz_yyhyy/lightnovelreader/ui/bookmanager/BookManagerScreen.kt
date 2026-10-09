@@ -68,6 +68,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadItemSnapshot
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadItemState
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadType
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.Cover
+import indi.dmzz_yyhyy.lightnovelreader.ui.components.BookInformationErrorCover
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.EmptyPage
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.settings.data.MenuOptions
 import indi.dmzz_yyhyy.lightnovelreader.utils.formTime
@@ -481,7 +482,6 @@ private fun Card(
     result?.onOk { bookInformation ->
         val isRunning = downloadItem.state == DownloadItemState.RUNNING
         val isPaused = downloadItem.state == DownloadItemState.PAUSED
-        val isFailed = downloadItem.state == DownloadItemState.FAILED
         val downloadDetails = buildList {
             downloadItem.currentChapterTitle
                 ?.takeIf(String::isNotBlank)
@@ -584,71 +584,146 @@ private fun Card(
                     )
                 }
             }
-            when {
-                isRunning && downloadItem.item.type == DownloadType.CACHE -> {
-                    IconButton(onClickPause) {
-                        Icon(
-                            painter = painterResource(R.drawable.pause_24px),
-                            contentDescription = stringResource(R.string.download_pause)
-                        )
-                    }
-                    IconButton(onClickCancel) {
-                        Icon(
-                            painter = painterResource(R.drawable.cancel_24px),
-                            contentDescription = stringResource(R.string.download_cancel)
-                        )
-                    }
-                }
-                isRunning -> {
-                    IconButton(onClickCancel) {
-                        Icon(
-                            painter = painterResource(R.drawable.cancel_24px),
-                            contentDescription = stringResource(R.string.download_cancel)
-                        )
-                    }
-                }
-                isPaused && downloadItem.item.type == DownloadType.CACHE -> {
-                    IconButton(onClickResume) {
-                        Icon(
-                            painter = painterResource(R.drawable.play_arrow_24px),
-                            contentDescription = stringResource(R.string.download_resume)
-                        )
-                    }
-                    IconButton(onClickCancel) {
-                        Icon(
-                            painter = painterResource(R.drawable.cancel_24px),
-                            contentDescription = stringResource(R.string.download_cancel)
-                        )
-                    }
-                }
-                isFailed && downloadItem.item.type == DownloadType.CACHE -> {
-                    IconButton(onClickRetry) {
-                        Icon(
-                            painter = painterResource(R.drawable.autorenew_24px),
-                            contentDescription = stringResource(R.string.download_retry)
-                        )
-                    }
-                    IconButton(onClickCancel) {
-                        Icon(
-                            painter = painterResource(R.drawable.cancel_24px),
-                            contentDescription = stringResource(R.string.download_cancel)
-                        )
-                    }
-                }
-                isFailed || isPaused -> {
-                    IconButton(onClickCancel) {
-                        Icon(
-                            painter = painterResource(R.drawable.cancel_24px),
-                            contentDescription = stringResource(R.string.download_cancel)
-                        )
-                    }
-                }
-            }
+            DownloadItemActions(
+                downloadItem = downloadItem,
+                onClickCancel = onClickCancel,
+                onClickPause = onClickPause,
+                onClickResume = onClickResume,
+                onClickRetry = onClickRetry
+            )
             Box(Modifier.width(7.dp))
         }
-    }?.onErr {
-        //TODO 错误显示
+    }?.onErr { error ->
+        Row(
+            modifier = modifier,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            BookInformationErrorCover(
+                width = 64.dp,
+                height = 93.dp,
+                errorMessage = error.message.ifEmpty { stringResource(R.string.error_data_source_generic) }
+            )
+            Spacer(Modifier.width(16.dp))
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.error_book_title),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.W600,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+                Text(
+                    text = stringResource(R.string.error_book_info),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        tint = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.size(16.dp),
+                        painter = when (downloadItem.state) {
+                            DownloadItemState.COMPLETED -> painterResource(R.drawable.done_outline_24px)
+                            DownloadItemState.FAILED -> painterResource(R.drawable.error_24px)
+                            DownloadItemState.PAUSED -> painterResource(R.drawable.hourglass_top_24px)
+                            DownloadItemState.RUNNING -> painterResource(downloadItem.item.type.icon)
+                        },
+                        contentDescription = null
+                    )
+                    Box(Modifier.width(10.dp))
+                    Text(
+                        text = when (downloadItem.state) {
+                            DownloadItemState.RUNNING -> stringResource(
+                                R.string.download_item_progress,
+                                formTime(downloadItem.startTime),
+                                (downloadItem.progress.coerceAtLeast(0f) * 100).toInt()
+                            )
+                            DownloadItemState.PAUSED -> stringResource(
+                                R.string.download_item_paused,
+                                (downloadItem.progress.coerceAtLeast(0f) * 100).toInt()
+                            )
+                            DownloadItemState.FAILED -> stringResource(
+                                R.string.download_item_failed,
+                                downloadItem.item.type.typeName
+                            )
+                            DownloadItemState.COMPLETED -> stringResource(
+                                R.string.download_item_finished,
+                                downloadItem.item.type.typeName
+                            )
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.W500,
+                        letterSpacing = 0.15.sp,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
+                if (downloadItem.state == DownloadItemState.RUNNING ||
+                    downloadItem.state == DownloadItemState.PAUSED
+                ) {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth(),
+                        progress = { progressAnim }
+                    )
+                }
+            }
+            DownloadItemActions(
+                downloadItem = downloadItem,
+                onClickCancel = onClickCancel,
+                onClickPause = onClickPause,
+                onClickResume = onClickResume,
+                onClickRetry = onClickRetry
+            )
+            Box(Modifier.width(7.dp))
+        }
     } ?: DownloadItemSkeleton()
+}
+
+@Composable
+private fun DownloadItemActions(
+    downloadItem: DownloadItemSnapshot,
+    onClickCancel: () -> Unit,
+    onClickPause: () -> Unit,
+    onClickResume: () -> Unit,
+    onClickRetry: () -> Unit
+) {
+    if (downloadItem.item.type == DownloadType.CACHE) {
+        when (downloadItem.state) {
+            DownloadItemState.RUNNING -> IconButton(onClickPause) {
+                Icon(
+                    painter = painterResource(R.drawable.pause_24px),
+                    contentDescription = stringResource(R.string.download_pause)
+                )
+            }
+            DownloadItemState.PAUSED -> IconButton(onClickResume) {
+                Icon(
+                    painter = painterResource(R.drawable.play_arrow_24px),
+                    contentDescription = stringResource(R.string.download_resume)
+                )
+            }
+            DownloadItemState.FAILED -> IconButton(onClickRetry) {
+                Icon(
+                    painter = painterResource(R.drawable.autorenew_24px),
+                    contentDescription = stringResource(R.string.download_retry)
+                )
+            }
+            DownloadItemState.COMPLETED -> Unit
+        }
+    }
+    if (downloadItem.state != DownloadItemState.COMPLETED) {
+        IconButton(onClickCancel) {
+            Icon(
+                painter = painterResource(R.drawable.cancel_24px),
+                contentDescription = stringResource(R.string.download_cancel)
+            )
+        }
+    }
 }
 
 @Composable

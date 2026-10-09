@@ -5,7 +5,6 @@ import android.content.Context
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import dagger.hilt.android.HiltAndroidApp
-import indi.dmzz_yyhyy.lightnovelreader.data.logging.LogLevel
 import indi.dmzz_yyhyy.lightnovelreader.data.logging.LoggerRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadWorkScheduler
 import indi.dmzz_yyhyy.lightnovelreader.data.plugin.PluginManager
@@ -65,10 +64,6 @@ class LightNovelReaderApplication : Application(), Configuration.Provider {
         coroutineScope.launch(Dispatchers.IO) {
             matomoAnalytics.initialize()
             matomoAnalytics.trackAppLaunch()
-            loggerRepository.logLevel = LogLevel.from(
-                userDataRepository.stringUserData(UserDataPath.Settings.Data.LogLevel.path)
-                    .getOrDefault("none")
-            )
             loggerRepository.startLogging()
             ProxyPool.enable =
                 userDataRepository.booleanUserData(UserDataPath.Settings.Data.IsUseProxy.path)

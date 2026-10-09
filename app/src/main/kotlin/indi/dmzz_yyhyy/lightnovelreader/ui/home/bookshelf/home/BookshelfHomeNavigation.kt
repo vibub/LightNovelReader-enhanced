@@ -7,14 +7,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import indi.dmzz_yyhyy.lightnovelreader.ui.navigation.Navigator
-import indi.dmzz_yyhyy.lightnovelreader.ui.navigation.NavEntryScope
-import indi.dmzz_yyhyy.lightnovelreader.ui.navigation.overlay.overlayEntry
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.ui.LocalNavigator
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.detail.navigateToBookDetailDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.dialog.AddBookToBookshelfDialog
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.bookshelf.edit.navigateToBookshelfEditDestination
+import indi.dmzz_yyhyy.lightnovelreader.ui.navigation.NavEntryScope
+import indi.dmzz_yyhyy.lightnovelreader.ui.navigation.Navigator
+import indi.dmzz_yyhyy.lightnovelreader.ui.navigation.overlay.overlayEntry
 import indi.dmzz_yyhyy.lightnovelreader.utils.activityHiltViewModel
 import io.nightfish.lightnovelreader.api.Route
 import io.nightfish.lightnovelreader.api.bookshelf.Bookshelf
@@ -29,32 +29,43 @@ fun NavEntryScope.bookshelfHomeDestination(sharedTransitionScope: SharedTransiti
         val bookshelfHomeViewModel = activityHiltViewModel<BookshelfHomeViewModel>()
         val bookshelfNewTitle = stringResource(R.string.bookshelf_new_title)
         val bookshelfEditTitle = stringResource(R.string.bookshelf_edit_title)
-        val uiState = remember(navigator, bookshelfHomeViewModel, bookshelfNewTitle, bookshelfEditTitle) {
-            object : BookshelfHomeUiState by bookshelfHomeViewModel.uiState {
-                override val enableReorderMode: () -> Unit = {
-                    navigator.navigate(Route.Main.Bookshelf.ReorderBooks(bookshelfHomeViewModel.uiState.selectedBookshelfId))
-                }
-                override val enableBookshelfReorderMode: () -> Unit = {
-                    navigator.navigate(Route.Main.Bookshelf.ReorderBookshelves)
-                }
-                override val onCreate: () -> Unit = {
-                    navigator.navigateToBookshelfEditDestination(-1, bookshelfNewTitle)
-                }
-                override val onEdit: (Int) -> Unit = { bookshelfId ->
-                    navigator.navigateToBookshelfEditDestination(bookshelfId, bookshelfEditTitle)
-                }
-                override val onBookClick: (String) -> Unit = navigator::navigateToBookDetailDestination
-                override val onRemove: () -> Unit = {
-                    bookshelfHomeViewModel.removeSelectedBooks()
-                    if (bookshelfHomeViewModel.uiState.selectedBookshelf?.allBookIds?.isEmpty() == true) {
+        val uiState =
+            remember(navigator, bookshelfHomeViewModel, bookshelfNewTitle, bookshelfEditTitle) {
+                object : BookshelfHomeUiState by bookshelfHomeViewModel.uiState {
+                    override val enableReorderMode: () -> Unit = {
+                        navigator.navigate(
+                            Route.Main.Bookshelf.ReorderBooks(
+                                bookshelfHomeViewModel.uiState.selectedBookshelfId
+                            )
+                        )
+                    }
+                    override val enableBookshelfReorderMode: () -> Unit = {
+                        navigator.navigate(Route.Main.Bookshelf.ReorderBookshelves)
+                    }
+                    override val onCreate: () -> Unit = {
+                        navigator.navigateToBookshelfEditDestination(-1, bookshelfNewTitle)
+                    }
+                    override val onEdit: (Int) -> Unit = { bookshelfId ->
+                        navigator.navigateToBookshelfEditDestination(
+                            bookshelfId,
+                            bookshelfEditTitle
+                        )
+                    }
+                    override val onBookClick: (String) -> Unit =
+                        navigator::navigateToBookDetailDestination
+                    override val onRemove: () -> Unit = {
+                        bookshelfHomeViewModel.removeSelectedBooks()
+                        if (bookshelfHomeViewModel.uiState.selectedBookshelf?.allBookIds?.isEmpty() == true) {
+                            bookshelfHomeViewModel.disableSelectMode()
+                        }
+                    }
+                    override val onMarkSelectedBooks: () -> Unit = {
+                        val selectedBookIds = bookshelfHomeViewModel.uiState.selectedBookIds.toList()
+                        navigator.navigateToAddBookToBookshelfDialog(selectedBookIds)
                         bookshelfHomeViewModel.disableSelectMode()
                     }
                 }
-                override val onMarkSelectedBooks: () -> Unit = {
-                    navigator.navigateToAddBookToBookshelfDialog(bookshelfHomeViewModel.uiState.selectedBookIds.toList())
-                }
             }
-        }
         BookshelfHomeScreen(
             init = bookshelfHomeViewModel::load,
             uiState = uiState,

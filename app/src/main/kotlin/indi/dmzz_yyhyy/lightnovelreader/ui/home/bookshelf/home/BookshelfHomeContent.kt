@@ -51,6 +51,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,6 +59,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import indi.dmzz_yyhyy.lightnovelreader.R
+import indi.dmzz_yyhyy.lightnovelreader.ui.components.BookInformationUnavailableCard
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.EmptyPage
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.bookshelf.BookshelfCardSnapshot
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.rememberLoadingSkeletonShimmer
@@ -420,7 +422,11 @@ private fun LazyListScope.bookshelfContent(
                 ) {
                     Text(
                         modifier = Modifier.padding(vertical = 18.dp),
-                        text = stringResource(R.string.n_books, allBookIds.size),
+                        text = pluralStringResource(
+                            R.plurals.n_books,
+                            allBookIds.size,
+                            allBookIds.size
+                        ),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.W600,
                         color = MaterialTheme.colorScheme.outline
@@ -449,22 +455,30 @@ private fun BookshelfBookCard(
         .padding(horizontal = 16.dp)
         .padding(vertical = 6.dp)
     val bookInformation = snapshot.bookInformation
-    if (bookInformation == null) {
-        BookCardContentSkeleton(modifier = modifier)
-    } else {
-        BookCardContent(
+    val error = snapshot.error
+    val onClick = {
+        if (!selectMode) onBookClick(id)
+        else onBookSelect(id)
+    }
+    when {
+        bookInformation != null -> BookCardContent(
             modifier = modifier,
             bookInformation = bookInformation,
             selected = selected,
             collected = false,
-            onClick = {
-                if (!selectMode) onBookClick(id)
-                else onBookSelect(id)
-            },
+            onClick = onClick,
             onLongPress = { onLongPress(id) },
             latestChapterTitle = snapshot.lastUpdatedChapterTitle,
             titleHeight = titleHeight
         )
+        error != null -> BookInformationUnavailableCard(
+            modifier = modifier,
+            webRequestError = error,
+            onClick = onClick,
+            onLongPress = { onLongPress(id) },
+            titleHeight = titleHeight
+        )
+        else -> BookCardContentSkeleton(modifier = modifier)
     }
 }
 

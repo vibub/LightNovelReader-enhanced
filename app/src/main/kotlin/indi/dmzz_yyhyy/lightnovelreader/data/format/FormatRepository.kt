@@ -13,7 +13,10 @@ import io.nightfish.lightnovelreader.api.text.ComponentProcessor
 import io.nightfish.lightnovelreader.api.text.TextProcessor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.util.regex.PatternSyntaxException
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -26,24 +29,29 @@ class FormatRepository @Inject constructor(
     private val processorMap = mutableMapOf<String, SnapshotStateList<FormattingRule>>()
 
     init {
+        runBlocking(Dispatchers.IO) {
+            replaceRules(formattingRuleDao.getAllBookRuleEntity())
+        }
         CoroutineScope(Dispatchers.IO).launch {
             formattingRuleDao.getAllBookRuleEntityFlow().collect { formattingRuleEntities ->
-                processorMap.values.forEach { it.clear() }
-                for (formattingRule in formattingRuleEntities) {
-                    if (!processorMap.contains(formattingRule.bookId)) processorMap[formattingRule.bookId] =
-                        mutableStateListOf()
-                    processorMap[formattingRule.bookId]!!.add(
-                        FormattingRule(
-                            id = formattingRule.id,
-                            name = formattingRule.name,
-                            isRegex = formattingRule.isRegex,
-                            match = formattingRule.match,
-                            replacement = formattingRule.replacement,
-                            isEnabled = formattingRule.isEnabled
-                        )
-                    )
-                }
+                replaceRules(formattingRuleEntities)
             }
+        }
+    }
+
+    private fun replaceRules(formattingRuleEntities: List<FormattingRuleEntity>) {
+        processorMap.values.forEach { it.clear() }
+        formattingRuleEntities.forEach { formattingRule ->
+            processorMap.getOrPut(formattingRule.bookId) { mutableStateListOf() }.add(
+                FormattingRule(
+                    id = formattingRule.id,
+                    name = formattingRule.name,
+                    isRegex = formattingRule.isRegex,
+                    match = formattingRule.match,
+                    replacement = formattingRule.replacement,
+                    isEnabled = formattingRule.isEnabled,
+                )
+            )
         }
     }
 
@@ -112,17 +120,30 @@ class FormatRepository @Inject constructor(
         return result
     }
 
+    private fun FormattingRuleEntity.toFormattingRule() = FormattingRule(
+        id = this.id,
+        name = this.name,
+        isRegex = this.isRegex,
+        match = this.match,
+        replacement = this.replacement,
+        isEnabled = this.isEnabled
+    )
+
     suspend fun getFormattingRules(id: Int): FormattingRule? {
-        val formattingRule = formattingRuleDao.getBookRuleEntity(id) ?: return null
-        return FormattingRule(
-            id = formattingRule.id,
-            name = formattingRule.name,
-            isRegex = formattingRule.isRegex,
-            match = formattingRule.match,
-            replacement = formattingRule.replacement,
-            isEnabled = formattingRule.isEnabled
-        )
+        return formattingRuleDao.getBookRuleEntity(id)?.toFormattingRule()
     }
+
+    fun getFormattingMapFlow(): Flow<Map<String, List<FormattingRule>>> =
+        formattingRuleDao.getAllBookRuleEntityFlow().map { entities ->
+            entities.groupBy { it.bookId }.mapValues { (_, rules) ->
+                rules.map { it.toFormattingRule() }
+            }
+        }
+
+    fun getFormattingRulesFlow(bookId: String): Flow<List<FormattingRule>> =
+        formattingRuleDao.getBookRuleEntityFlow(bookId).map { entities ->
+            entities.map { it.toFormattingRule() }
+        }
 
     suspend fun insertRule(bookId: String, formattingRule: FormattingRule) {
         formattingRuleDao.insertRuleEntity(
@@ -156,18 +177,27 @@ class FormatRepository @Inject constructor(
         formattingRuleDao.deleteRule(ruleId)
     }
 
-    fun getFormattingMap(): Map<String, List<FormattingRule>> = processorMap
+    override fun processText(text: String): String = processText("", text)
 
-    fun getStateBookFormattingRules(bookId: String): List<FormattingRule> {
-        if (!processorMap.contains(bookId)) processorMap[bookId] = mutableStateListOf()
-        return processorMap[bookId]!!
+    override fun processChapterContent(
+        bookId: String,
+        chapterContent: ChapterContent,
+        componentProcessor: ComponentProcessor,
+    ): ChapterContent {
+        return chapterContent.copy(
+            content = componentProcessor.apply {
+                process { data: TextData<*> ->
+                    data.processText { text -> processText(bookId, text) }
+                }
+            }.get(),
+        )
     }
 
-    override fun processText(text: String): String = text
-    override fun List<String>.process() = this
-    override fun <T> Map<T, String>.process() = this
     override fun processExploreBooksRow(exploreDisplayBook: ExploreDisplayBook): ExploreDisplayBook =
-        exploreDisplayBook
+        exploreDisplayBook.copy(
+            title = processText("", exploreDisplayBook.title),
+            author = processText("", exploreDisplayBook.author),
+        )
 
     override fun processBookInformation(bookInformation: BookInformation): BookInformation =
         bookInformation.copy(
@@ -188,16 +218,4 @@ class FormatRepository @Inject constructor(
                     )
                 })
         })
-
-    override fun processChapterContent(
-        bookId: String,
-        chapterContent: ChapterContent,
-        componentProcessor: ComponentProcessor
-    ): ChapterContent = chapterContent.copy(
-        content = componentProcessor.apply {
-            process { data: TextData<*> ->
-                data.processText { text -> processText(bookId, text) }
-            }
-        }.get()
-    )
 }

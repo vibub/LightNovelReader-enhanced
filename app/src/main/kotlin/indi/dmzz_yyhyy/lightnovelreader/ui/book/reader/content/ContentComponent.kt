@@ -98,7 +98,7 @@ fun ChapterContentError(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = error.title,
+                text = error.title.ifEmpty { stringResource(R.string.error_chapter_content_generic) },
                 style = MaterialTheme.typography.titleMedium,
                 textAlign = TextAlign.Center
             )

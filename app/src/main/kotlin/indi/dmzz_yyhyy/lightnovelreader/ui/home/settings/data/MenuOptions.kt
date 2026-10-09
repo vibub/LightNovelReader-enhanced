@@ -91,8 +91,7 @@ sealed class MenuOptions : SettingsMenuOptionGroup {
 
     data object LnrAPIUpdateChannelOptions : UpdateChannelOptions(
         OptionWithValue(RELEASE, R.string.key_update_channel_release, APIParser.StableParser),
-        OptionWithValue(DEVELOPMENT, R.string.key_update_channel_development, APIParser.BetaParser),
-        OptionWithValue("CI", R.string.key_update_channel_ci, APIParser.UnstableParser)
+        OptionWithValue(DEVELOPMENT, R.string.key_update_channel_development, APIParser.BetaParser)
     )
 
     data object UpdatePlatformOptions : MenuOptionsWithValues<UpdateChannelOptions>() {

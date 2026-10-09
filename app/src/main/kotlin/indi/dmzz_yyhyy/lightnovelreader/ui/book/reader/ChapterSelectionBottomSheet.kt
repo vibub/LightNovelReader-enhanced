@@ -33,13 +33,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import indi.dmzz_yyhyy.lightnovelreader.R
+import indi.dmzz_yyhyy.lightnovelreader.ui.components.ErrorPage
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.Loading
 import io.nightfish.lightnovelreader.api.book.BookVolumes
+import io.nightfish.lightnovelreader.api.error.WebRequestError
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,6 +50,7 @@ fun ChapterSelectionBottomSheet(
     sheetState: SheetState,
     selectedVolumeId: String,
     bookVolumes: BookVolumes?,
+    error: WebRequestError?,
     readingChapterId: String,
     onDismissRequest: () -> Unit,
     onClickChapter: (chapterId: String) -> Unit,
@@ -82,7 +86,15 @@ fun ChapterSelectionBottomSheet(
         }
     ) {
         Spacer(Modifier.height(8.dp))
-        if (bookVolumes == null || bookVolumes.volumes.all { it.chapters.isEmpty() }) {
+        if (error != null) {
+            ErrorPage(
+                modifier = Modifier.fillMaxWidth().height(260.dp),
+                title = error.title.ifEmpty { stringResource(R.string.error_book_volumes_unavailable_generic) },
+                message = error.message.ifEmpty { stringResource(R.string.error_book_info) },
+                onRetry = {},
+                isRetryEnabled = false
+            )
+        } else if (bookVolumes == null || bookVolumes.volumes.all { it.chapters.isEmpty() }) {
             Box(
                 modifier = Modifier.fillMaxWidth().height(200.dp),
                 contentAlignment = Alignment.Center
@@ -119,7 +131,11 @@ fun ChapterSelectionBottomSheet(
                                         color = colorScheme.onSurface
                                     )
                                     Text(
-                                        text = stringResource(R.string.info_volume_chapters_count, volume.chapters.size),
+                                        text = pluralStringResource(
+                                            R.plurals.info_volume_chapters_count,
+                                            volume.chapters.size,
+                                            volume.chapters.size
+                                        ),
                                         color = colorScheme.secondary,
                                         style = typography.labelMedium
                                     )

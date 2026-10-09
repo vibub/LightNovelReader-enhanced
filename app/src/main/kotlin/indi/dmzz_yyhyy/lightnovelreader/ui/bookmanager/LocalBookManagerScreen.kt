@@ -27,7 +27,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -47,6 +46,7 @@ import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MaterialTheme.colorScheme
 import androidx.compose.material3.MaterialTheme.typography
 import androidx.compose.material3.OutlinedButton
@@ -78,7 +78,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
 import indi.dmzz_yyhyy.lightnovelreader.R
+import indi.dmzz_yyhyy.lightnovelreader.data.book.volumeChapterCountText
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.Cover
+import indi.dmzz_yyhyy.lightnovelreader.ui.components.BookInformationErrorCover
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.EmptyPage
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.SectionHeader
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.bookshelf.home.TagChip
@@ -88,7 +90,6 @@ import indi.dmzz_yyhyy.lightnovelreader.utils.formTime
 import indi.dmzz_yyhyy.lightnovelreader.utils.formatSize
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun LocalBookManagerContent(
     uiState: LocalBookManagerUiState
@@ -184,7 +185,7 @@ fun LocalBookManagerContent(
         if (confirmClear) {
             AlertDialog(
                 onDismissRequest = { confirmClear = false },
-                title = { Text(stringResource(R.string.local_book_clear_confirm_title)) },
+                title = { Text(stringResource(R.string.delete_confirm_title)) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
@@ -224,9 +225,7 @@ fun LocalBookManagerContent(
     }
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 12.dp),
+            modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 top = 4.dp,
                 bottom = when {
@@ -234,9 +233,18 @@ fun LocalBookManagerContent(
                     shownInfoItem != null -> 320.dp
                     else -> 0.dp
                 }
-            ),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            )
         ) {
+            if (contentList.isNotEmpty()) {
+                item {
+                    Text(
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+                        text = stringResource(R.string.local_books),
+                        style = typography.bodyLarge,
+                        fontWeight = FontWeight.W600
+                    )
+                }
+            }
             items(
                 items = contentList,
                 key = { "book_${it.id}" }
@@ -442,10 +450,10 @@ private fun LocalBookListItemSkeleton() {
     val roundCorner = RoundedCornerShape(4.dp)
 
     Row(
-        modifier = Modifier.shimmer(shimmer),
+        modifier = Modifier.fillMaxWidth().height(93.dp).shimmer(shimmer),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(Modifier.size(width = 60.dp, height = 87.dp).background(baseColor, RoundedCornerShape(8.dp)))
+        Box(Modifier.width(64.dp).height(93.dp).background(baseColor, RoundedCornerShape(8.dp)))
         Spacer(Modifier.width(16.dp))
         Column(
             modifier = Modifier.weight(1f),
@@ -473,7 +481,7 @@ private fun LocalBookDetailSkeleton() {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(Modifier.width(64.dp).height(93.dp).background(baseColor, RoundedCornerShape(8.dp)))
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(16.dp))
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -509,6 +517,7 @@ private fun LocalBookRow(
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .padding(horizontal = 12.dp)
             .clip(roundedCorner)
             .combinedClickable(
                 onClick = {
@@ -539,8 +548,8 @@ private fun LocalBookRow(
             val result by item.bookInformationFlow.collectAsStateWithLifecycle(null)
             result?.onOk {
                 Cover(
-                    width = 60.dp,
-                    height = 87.dp,
+                    width = 64.dp,
+                    height = 93.dp,
                     uri = it.coverUri,
                     title = it.title
                 )
@@ -576,8 +585,47 @@ private fun LocalBookRow(
                         )
                     }
                 }
-            }?.onErr {
-                //TODO 错误显示
+            }?.onErr { error ->
+                BookInformationErrorCover(
+                    width = 64.dp,
+                    height = 93.dp,
+                    errorMessage = error.message.ifEmpty { stringResource(R.string.error_data_source_generic) }
+                )
+                Spacer(Modifier.width(16.dp))
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.error_book_title),
+                        style = typography.titleMedium,
+                        fontWeight = FontWeight.W600,
+                        color = colorScheme.onBackground
+                    )
+                    Text(
+                        text = stringResource(R.string.error_book_info),
+                        style = typography.bodyMedium,
+                        color = colorScheme.secondary
+                    )
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = formatSize(item.size),
+                            style = typography.bodyMedium,
+                            color = colorScheme.secondary
+                        )
+                        TagChip(painterResource(R.drawable.update_24px))
+                        Text(
+                            text = if (item.lastReadTime != null) formTime(item.lastReadTime)
+                            else stringResource(R.string.book_manager_no_local_reading_record),
+                            style = typography.bodyMedium,
+                            color = colorScheme.secondary
+                        )
+                    }
+                }
             } ?: LocalBookListItemSkeleton()
         }
 
@@ -684,7 +732,7 @@ private fun LocalBookInfoCard(
                         title = it.title
                     )
 
-                    Spacer(Modifier.width(12.dp))
+                    Spacer(Modifier.width(16.dp))
                     Column(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -703,17 +751,31 @@ private fun LocalBookInfoCard(
                             color = colorScheme.primary
                         )
                         Text(
-                            text = stringResource(
-                                R.string.detail_info_stats_count_content,
-                                item.volumeCount,
-                                item.chapterCount
-                            ),
+                            text = volumeChapterCountText(item.volumeCount, item.chapterCount),
                             style = typography.bodyMedium,
                             color = colorScheme.secondary
                         )
                     }
-                }?.onErr {
-                    //TODO 错误显示
+                }?.onErr { error ->
+                    BookInformationErrorCover(
+                        width = 64.dp,
+                        height = 93.dp,
+                        errorMessage = error.message.ifEmpty { stringResource(R.string.error_data_source_generic) }
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.error_book_title),
+                            style = typography.titleMedium,
+                            fontWeight = FontWeight.W600,
+                            color = colorScheme.onBackground
+                        )
+                        Text(
+                            text = stringResource(R.string.error_book_info),
+                            style = typography.bodyMedium,
+                            color = colorScheme.secondary
+                        )
+                    }
                 } ?: LocalBookDetailSkeleton()
             }
             AnimatedContent(

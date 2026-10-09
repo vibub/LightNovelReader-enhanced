@@ -105,6 +105,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.github.michaelbull.result.getError
+import com.github.michaelbull.result.getOr
 import com.github.michaelbull.result.getOrElse
 import com.github.michaelbull.result.map
 import com.github.michaelbull.result.onErr
@@ -117,6 +119,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.download.ChapterDownloadStatus
 import indi.dmzz_yyhyy.lightnovelreader.data.download.DownloadItem
 import indi.dmzz_yyhyy.lightnovelreader.ui.LocalNavigator
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.Cover
+import indi.dmzz_yyhyy.lightnovelreader.ui.components.ErrorPage
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.LnrSnackbar
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.Loading
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.SwitchChip
@@ -133,6 +136,7 @@ import indi.dmzz_yyhyy.lightnovelreader.utils.isScrollingUp
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.ChapterInformation
 import io.nightfish.lightnovelreader.api.book.Volume
+import io.nightfish.lightnovelreader.api.error.WebRequestError
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -155,6 +159,8 @@ fun DetailScreen(
     onClickMarkAsRead: () -> Unit,
     onMarkChaptersAsRead: (List<String>) -> Unit,
     onMarkReadThrough: (List<String>) -> Unit,
+    onRetryBookInformation: () -> Unit,
+    onRetryBookVolumes: () -> Unit,
     onClickWebView: (() -> Unit)? = null,
     onMatchLinovelibBookmark: (String) -> Unit = {}
 ) {
@@ -165,7 +171,7 @@ fun DetailScreen(
 
     val exportBottomSheetState =
         rememberBottomSheetState(initialValue = SheetValue.PartiallyExpanded)
-    val infoBottomSheetState = rememberBottomSheetState(initialValue = SheetValue.PartiallyExpanded)
+    val infoBottomSheetState = rememberBottomSheetState(initialValue = SheetValue.Expanded)
 
     var showExportBottomSheet by remember { mutableStateOf(false) }
     var showInfoBottomSheet by remember { mutableStateOf(false) }
@@ -176,6 +182,8 @@ fun DetailScreen(
     var forceRefreshDownload by remember { mutableStateOf(false) }
     var selectedChapterIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var exportSettings by remember { mutableStateOf(ExportSettings()) }
+    var isBookInformationRetryEnabled by remember { mutableStateOf(true) }
+    var isBookVolumesRetryEnabled by remember { mutableStateOf(true) }
 
     val allChapterIds = uiState.bookVolumes?.component1()?.volumes.orEmpty()
         .flatMap { it.chapters }
@@ -206,7 +214,7 @@ fun DetailScreen(
     }
 
     val lazyListState = rememberLazyListState()
-    val volumesEmpty = uiState.bookVolumes == null
+    val volumesEmpty = uiState.bookVolumes == null || uiState.bookVolumes?.isErr == true
     val selectedCachedCount = selectedChapterIds.count {
         uiState.chapterDownloadStates[it]?.isAvailableOffline == true
     }
@@ -235,7 +243,7 @@ fun DetailScreen(
     val scrollingUp by lazyListState.isScrollingUp()
     val fabVisible by remember(uiState.bookVolumes, lazyListState, downloadSelectionMode) {
         derivedStateOf {
-            val hasVolumes = uiState.bookVolumes != null
+            val hasVolumes = uiState.bookVolumes?.isErr == false
             val allowByDirection = !lazyListState.isScrollInProgress || scrollingUp
             val canGoForward = lazyListState.canScrollForward
 
@@ -340,7 +348,10 @@ fun DetailScreen(
                     DetailContentSkeleton(
                         Modifier
                             .fillMaxSize()
-                            .background(colorScheme.surface)
+                            .background(colorScheme.surface),
+                        webRequestError = uiState.bookInformation?.getError(),
+                        onRetry = onRetryBookInformation,
+                        isRetryEnabled = isBookInformationRetryEnabled
                     )
                 } else {
                     uiState.bookInformation?.component1()?.let { bookInformation ->
@@ -384,7 +395,9 @@ fun DetailScreen(
                             onClickCover = onClickCover,
                             onClickShowInfo = { showInfoBottomSheet = true },
                             onClickWebView = onClickWebView,
-                            onClickUnresolvedBookmark = { showBookmarkMatchDialog = true }
+                            onClickUnresolvedBookmark = { showBookmarkMatchDialog = true },
+                            onRetryBookVolumes = onRetryBookVolumes,
+                            isBookVolumesRetryEnabled = isBookVolumesRetryEnabled
                         )
                     }
                 }
@@ -457,15 +470,13 @@ fun DetailScreen(
             }
         }
         AnimatedVisibility(visible = showInfoBottomSheet) {
-            uiState.bookVolumes?.onOk { bookVolumes ->
-                uiState.bookInformation?.onOk { bookInformation ->
-                    BookInfoBottomSheet(
-                        bookInformation = bookInformation,
-                        bookVolumes = bookVolumes,
-                        sheetState = infoBottomSheetState,
-                        onDismissRequest = { showInfoBottomSheet = false }
-                    )
-                }
+            uiState.bookInformation?.onOk { bookInformation ->
+                BookInfoBottomSheet(
+                    bookInformation = bookInformation,
+                    bookVolumes = uiState.bookVolumes?.getOr(null),
+                    sheetState = infoBottomSheetState,
+                    onDismissRequest = { showInfoBottomSheet = false }
+                )
             }
         }
 
@@ -565,101 +576,169 @@ fun DetailScreen(
 
 
 @Composable
-private fun DetailContentSkeleton(modifier: Modifier = Modifier) {
+private fun DetailContentSkeleton(
+    modifier: Modifier = Modifier,
+    webRequestError: WebRequestError? = null,
+    onRetry: () -> Unit = {},
+    isRetryEnabled: Boolean = true
+) {
     val cornerShape = RoundedCornerShape(6.dp)
     val cornerShapeLarge = RoundedCornerShape(8.dp)
     val baseColor = colorScheme.surfaceContainerLow
     val shimmer = rememberLoadingSkeletonShimmer()
 
-    Column(
-        modifier = modifier
-            .shimmer(shimmer),
-        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.Top),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth()
-                .heightIn(188.dp)
-                .padding(horizontal = itemHorizontalPadding, vertical = 20.dp),
-            verticalAlignment = Alignment.CenterVertically
+    Box(modifier = modifier) {
+        Column(
+            modifier = if (webRequestError == null) Modifier.shimmer(shimmer) else Modifier,
+            verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.Top),
         ) {
-            Box(
-                modifier = Modifier.size(width = 122.dp, height = 178.dp)
-                    .clip(cornerShapeLarge)
-                    .background(baseColor)
-            )
-            Column(
-                modifier = Modifier.padding(start = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(188.dp)
+                    .padding(horizontal = itemHorizontalPadding, vertical = 20.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 122.dp, height = 178.dp)
+                        .clip(cornerShapeLarge)
+                        .background(baseColor)
+                )
+                Column(
+                    modifier = Modifier.padding(start = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    repeat(3) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(0.8f)
+                                .height(20.dp)
+                                .clip(cornerShape)
+                                .background(baseColor)
+                        )
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 repeat(3) {
                     Box(
-                        modifier = Modifier.fillMaxWidth(0.8f)
-                            .height(20.dp)
-                            .clip(cornerShape)
+                        modifier = Modifier
+                            .width(64.dp)
+                            .height(32.dp)
+                            .clip(RoundedCornerShape(50))
                             .background(baseColor)
                     )
                 }
             }
-        }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            repeat(3) {
-                Box(
-                    modifier = Modifier.width(64.dp)
-                        .height(32.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(baseColor)
-                )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                repeat(3) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(90.dp)
+                            .padding(vertical = itemVerticalPadding)
+                            .clip(cornerShapeLarge)
+                            .background(baseColor)
+                    )
+                }
+            }
+
+            if (webRequestError == null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.4f)
+                            .height(24.dp)
+                            .clip(cornerShape)
+                            .background(baseColor)
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    repeat(4) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(18.dp)
+                                .clip(cornerShape)
+                                .background(baseColor)
+                        )
+                    }
+                }
             }
         }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            repeat(3) {
-                Box(
-                    modifier = Modifier.weight(1f)
-                        .height(90.dp)
-                        .padding(vertical = itemVerticalPadding)
-                        .clip(cornerShapeLarge)
-                        .background(baseColor)
-                )
-            }
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Box(
-                modifier = Modifier.fillMaxWidth(0.4f)
-                    .height(24.dp)
-                    .clip(cornerShape)
-                    .background(baseColor)
+        webRequestError?.let { error ->
+            DetailBookInformationErrorOverlay(
+                modifier = Modifier.fillMaxSize(),
+                title = error.title.ifEmpty { stringResource(R.string.error_book_title) },
+                message = error.message.ifEmpty { stringResource(R.string.error_book_info) },
+                onRetry = onRetry,
+                isRetryEnabled = isRetryEnabled
             )
-            Spacer(Modifier.height(10.dp))
-            repeat(4) {
-                Box(
-                    modifier = Modifier.fillMaxWidth()
-                        .height(18.dp)
-                        .clip(cornerShape)
-                        .background(baseColor)
-                )
-            }
         }
     }
 }
 
+@Composable
+private fun DetailBookInformationErrorOverlay(
+    modifier: Modifier = Modifier,
+    title: String,
+    message: String,
+    onRetry: () -> Unit,
+    isRetryEnabled: Boolean
+) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(20.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, colorScheme.background)
+                        )
+                    )
+            )
+            ErrorPage(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(colorScheme.background)
+                    .padding(vertical = 20.dp),
+                title = title,
+                message = message,
+                onRetry = onRetry,
+                isRetryEnabled = isRetryEnabled
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(20.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(colorScheme.background, Color.Transparent)
+                        )
+                    )
+            )
+        }
+    }
+}
 
 private val itemHorizontalPadding = 18.dp
 private val itemVerticalPadding = 8.dp
@@ -688,7 +767,9 @@ private fun DetailContent(
     onClickCover: (Uri) -> Unit,
     onClickShowInfo: () -> Unit,
     onClickWebView: (() -> Unit)?,
-    onClickUnresolvedBookmark: () -> Unit
+    onClickUnresolvedBookmark: () -> Unit,
+    onRetryBookVolumes: () -> Unit,
+    isBookVolumesRetryEnabled: Boolean
 ) {
     var hideReadChapters by remember { mutableStateOf(false) }
     val deferred = 6
@@ -826,13 +907,23 @@ private fun DetailContent(
                         bookmarkChapterId = uiState.bookmarkUiState.chapterId
                     )
                 }
-            }?.onErr {
-                //TODO 错误显示
+            }?.onErr { error ->
+                item(key = "volumes-error") {
+                    ErrorPage(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(260.dp),
+                        title = error.title.ifEmpty { stringResource(R.string.error_book_volumes_unavailable_generic) },
+                        message = error.message.ifEmpty { stringResource(R.string.error_book_info) },
+                        onRetry = onRetryBookVolumes,
+                        isRetryEnabled = isBookVolumesRetryEnabled
+                    )
+                }
             } ?: item(key = "volumes-loading") {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(200.dp),
+                        .height(260.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Loading()
@@ -1129,11 +1220,12 @@ private fun TopBarActions(
         Icon(painterResource(id = R.drawable.find_replace_24px), contentDescription = "formatting")
     }
     Box {
-        IconButton(enabled = !volumesEmpty, onClick = { menuExpanded = true }) {
+        IconButton(onClick = { menuExpanded = true }) {
             Icon(painterResource(id = R.drawable.more_vert_24px), contentDescription = "more")
         }
         DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
             DropdownMenuItem(
+                enabled = !volumesEmpty,
                 text = {
                     Text(
                         stringResource(R.string.mark_as_read),

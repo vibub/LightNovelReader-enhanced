@@ -30,6 +30,7 @@ import indi.dmzz_yyhyy.lightnovelreader.utils.toLegacyCompatibleSourceId
 import io.nightfish.lightnovelreader.api.book.UserReadingData
 import io.nightfish.lightnovelreader.api.web.WebDataSourcePriority
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
@@ -80,14 +81,75 @@ class DetailViewModel @Inject constructor(
 
     var isInitialized by mutableStateOf(false)
         private set
+    private var bookId: String? = null
+    private var bookInformationJob: Job? = null
+    private var bookVolumesJob: Job? = null
 
     fun init(bookId: String) {
         Log.d("DetailViewModel", "Init bookId = $bookId")
         if (isInitialized) return
         isInitialized = true
-        val isLinovelibSource = webBookDataSourceProvider.value.id == LinovelibConstants.SOURCE_ID
+        this.bookId = bookId
+        val dataSourceId = webBookDataSourceProvider.value.id
+        val sourceId = dataSourceId.toLegacyCompatibleSourceId()
+        val isLinovelibSource = dataSourceId == LinovelibConstants.SOURCE_ID
         _uiState.isLinovelibSource = isLinovelibSource
+        requestBookInformation(bookId)
+        requestBookVolumes(bookId)
         viewModelScope.launch(Dispatchers.IO) {
+            chapterDownloadRepository.getStatesFlow(sourceId, bookId).collect { states ->
+                _uiState.chapterDownloadStates = states
+            }
+        }
+        if (isLinovelibSource) {
+            viewModelScope.launch(Dispatchers.IO) {
+                linovelibBookmarkRepository.getBookmarkFlow(bookId).collect { bookmark ->
+                    _uiState.bookmarkUiState = DetailBookmarkUiState(
+                        chapterId = bookmark?.chapterId.orEmpty(),
+                        chapterTitle = bookmark?.chapterTitle.orEmpty(),
+                        syncState = bookmark?.syncState.orEmpty()
+                    )
+                }
+            }
+        } else {
+            _uiState.bookmarkUiState = DetailBookmarkUiState()
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            bookRepository.getUserReadingDataFlow(bookId).collect {
+                _uiState.userReadingData = it
+            }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.isCached = bookRepository.getIsBookCached(bookId)
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            bookshelfRepository.getBookshelfBookMetadataFlow(bookId).collect {
+                _uiState.isInBookshelf = it != null
+            }
+        }
+        viewModelScope.launch {
+            snapshotFlow { downloadProgressRepository.downloadItemIdList }.collect {
+                _uiState.downloadItem = downloadProgressRepository.downloadItemIdList.findLast {
+                    it.bookId == bookId &&
+                        it.sourceId == sourceId &&
+                        it.type == DownloadType.CACHE
+                }
+            }
+        }
+    }
+
+    fun retryBookInformation() {
+        bookId?.let(::requestBookInformation)
+    }
+
+    fun retryBookVolumes() {
+        bookId?.let(::requestBookVolumes)
+    }
+
+    private fun requestBookInformation(bookId: String) {
+        bookInformationJob?.cancel()
+        _uiState.bookInformation = null
+        bookInformationJob = viewModelScope.launch(Dispatchers.IO) {
             bookRepository.getBookInformationFlow(bookId, WebDataSourcePriority.High)
                 .collect { result ->
                     result.onOk {
@@ -107,11 +169,16 @@ class DetailViewModel @Inject constructor(
                     _uiState.bookInformation = result
                 }
         }
-        viewModelScope.launch(Dispatchers.IO) {
-            val sourceId = webBookDataSourceProvider.value.id.toLegacyCompatibleSourceId()
+    }
+
+    private fun requestBookVolumes(bookId: String) {
+        bookVolumesJob?.cancel()
+        _uiState.bookVolumes = null
+        val sourceId = webBookDataSourceProvider.value.id.toLegacyCompatibleSourceId()
+        bookVolumesJob = viewModelScope.launch(Dispatchers.IO) {
             bookRepository.getBookVolumesFlow(bookId, WebDataSourcePriority.High).collect { result ->
                 _uiState.bookVolumes = result
-                result.component1()?.let { bookVolumes ->
+                result.onOk { bookVolumes ->
                     val chapterIds = bookVolumes.volumes
                         .flatMap { volume -> volume.chapters.map { chapter -> chapter.id } }
                     chapterDownloadRepository.migrateLegacyCachedChapters(
@@ -124,48 +191,6 @@ class DetailViewModel @Inject constructor(
                         bookId = bookId,
                         chapterIds = chapterIds
                     )
-                }
-            }
-        }
-        viewModelScope.launch(Dispatchers.IO) {
-            val sourceId = webBookDataSourceProvider.value.id.toLegacyCompatibleSourceId()
-            chapterDownloadRepository.getStatesFlow(sourceId, bookId).collect { states ->
-                _uiState.chapterDownloadStates = states
-            }
-        }
-        viewModelScope.launch(Dispatchers.IO) {
-            bookRepository.getUserReadingDataFlow(bookId).collect {
-                _uiState.userReadingData = it
-            }
-        }
-        if (isLinovelibSource) {
-            viewModelScope.launch(Dispatchers.IO) {
-                linovelibBookmarkRepository.getBookmarkFlow(bookId).collect { bookmark ->
-                    _uiState.bookmarkUiState = DetailBookmarkUiState(
-                        chapterId = bookmark?.chapterId.orEmpty(),
-                        chapterTitle = bookmark?.chapterTitle.orEmpty(),
-                        syncState = bookmark?.syncState.orEmpty()
-                    )
-                }
-            }
-        } else {
-            _uiState.bookmarkUiState = DetailBookmarkUiState()
-        }
-        viewModelScope.launch(Dispatchers.IO) {
-            _uiState.isCached = bookRepository.getIsBookCached(bookId)
-        }
-        viewModelScope.launch(Dispatchers.IO) {
-            bookshelfRepository.getBookshelfBookMetadataFlow(bookId).collect {
-                _uiState.isInBookshelf = it != null
-            }
-        }
-        viewModelScope.launch {
-            val sourceId = webBookDataSourceProvider.value.id.toLegacyCompatibleSourceId()
-            snapshotFlow { downloadProgressRepository.downloadItemIdList }.collect {
-                _uiState.downloadItem = downloadProgressRepository.downloadItemIdList.findLast {
-                    it.bookId == bookId &&
-                        it.sourceId == sourceId &&
-                        it.type == DownloadType.CACHE
                 }
             }
         }
