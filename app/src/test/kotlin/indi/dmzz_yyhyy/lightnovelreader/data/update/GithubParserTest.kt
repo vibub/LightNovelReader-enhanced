@@ -10,19 +10,32 @@ class GithubParserTest {
     fun workflowRunNotesDoNotUsePullRequestsFromOlderRuns() {
         val workflowDocument = Jsoup.parse(
             """
-            <div id="check_suite_current">
-                <a href="/vibub/LightNovelReader-enhanced/actions/runs/36703513649">
-                    feat(reader): 统一正文排版并修复空白叠加与文本裁切
+            <a href="/vibub/LightNovelReader-enhanced/actions/runs/36703513649/workflow">工作流文件</a>
+            <h3>
+                <a href="https://github.com/vibub/LightNovelReader-enhanced/actions/runs/36703513649">
+                    <span>feat(reader): 统一正文排版并修复空白叠加与文本裁切</span>
                 </a>
-            </div>
-            <div id="check_suite_old">
-                <a href="/vibub/LightNovelReader-enhanced/actions/runs/35198532565">
+            </h3>
+            <h3>
+                <a href="https://github.com/vibub/LightNovelReader-enhanced/actions/runs/35198532565">
                     Merge pull request #1 from dmzz-yyhyy/refactoring
                 </a>
-            </div>
+            </h3>
             """.trimIndent()
         )
-        val workflowRunTitle = workflowDocument.selectFirst("#check_suite_current a")!!.text()
+        val workflowRunLink = GithubParser.workflowRunLink(workflowDocument)!!
+        assertEquals(
+            "https://github.com/vibub/LightNovelReader-enhanced/actions/runs/36703513649",
+            workflowRunLink.attr("href")
+        )
+        assertEquals(
+            "/vibub/LightNovelReader-enhanced/actions/runs/36703513649",
+            GithubParser.workflowRunLink(
+                Jsoup.parse("""<a href="/vibub/LightNovelReader-enhanced/actions/runs/36703513649">旧版链接</a>""")
+            )?.attr("href")
+        )
+        assertNull(GithubParser.workflowRunLink(Jsoup.parse("<html></html>")))
+        val workflowRunTitle = workflowRunLink.text()
         assertNull(GithubParser.workflowRunPullRequestId(workflowRunTitle))
         assertEquals("1", GithubParser.workflowRunPullRequestId("Merge pull request #1 from dmzz-yyhyy/refactoring"))
 

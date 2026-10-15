@@ -166,6 +166,11 @@ object GithubParser {
         }
     }
 
+    internal fun workflowRunLink(workflowDocument: Document) =
+        workflowDocument.select(
+            """a[href~=^(https://github\.com)?$REPOSITORY_PATH/actions/runs/[0-9]+$]"""
+        ).firstOrNull()
+
     internal fun workflowRunCommitHref(runDocument: Document): String? =
         runDocument.select("""a[href*="$REPOSITORY_PATH/commit/"]""")
             .firstOrNull()
@@ -193,15 +198,6 @@ object GithubParser {
             commitReleaseNotes(connectGithubPage(normalizeGithubUrl(commitHref)).get(), commitHref)
         } catch (e: Exception) {
             Log.e("GithubParser", "failed to get commit release notes: ${e.message}")
-            null
-        }
-
-    private fun parseWorkflowRunCommitReleaseNotes(actionRunHref: String): String? =
-        try {
-            val runDocument = connectGithubPage(normalizeGithubUrl(actionRunHref)).get()
-            workflowRunCommitHref(runDocument)?.let(::parseCommitReleaseNotes)
-        } catch (e: Exception) {
-            Log.e("GithubParser", "failed to get workflow run commit release notes: ${e.message}")
             null
         }
 
@@ -281,29 +277,23 @@ object GithubParser {
         }
     }
     object CIParser: UpdateParser {
-        private const val URL = "$REPOSITORY_PATH/actions/workflows/$WORKFLOW_FILE"
+        private const val URL = "$REPOSITORY_PATH/actions/workflows/$WORKFLOW_FILE?query=branch%3A$DEFAULT_BRANCH+is%3Asuccess"
         override fun parser(updatePhase: MutableStateFlow<String>): Release? {
             System.setProperty("sun.net.http.allowRestrictedHeaders", "true")
             host = updateHost()
-            updatePhase.tryEmit("GitHub步骤: 获取最新Release")
-            val downloadUrl: String?
-            updatePhase.tryEmit("GitHub步骤: 拉取远程分支版本号")
-            val gradle = fetchRawGithubText("refs/heads/$DEFAULT_BRANCH")
+            updatePhase.tryEmit("GitHub步骤: 获取最新成功的 CI 构建")
+            val document = connectGithubPage(host + URL).get()
+            val apkLinkElement = workflowRunLink(document)
+                ?: throw IOException("未找到 $DEFAULT_BRANCH 分支的成功 CI 构建")
+            val actionRunHref = apkLinkElement.attr("href").removePrefix(RAW_HOST)
+            val runDocument = connectGithubPage(normalizeGithubUrl(actionRunHref)).get()
+            val commitHref = workflowRunCommitHref(runDocument)
+                ?: throw IOException("未找到 CI 构建对应的提交")
+            updatePhase.tryEmit("GitHub步骤: 拉取构建提交版本号")
+            val gradle = fetchRawGithubText(commitHref.substringAfterLast('/'))
             val fallbackVersionCode = versionCodeRegex.find(gradle)?.groups?.get(1)?.value?.replace("_", "")?.toIntOrNull() ?: Log.e("GithubParser", "failed to get versionCode").also { return null }
             val fallbackVersionName = versionNameRegex.find(gradle)?.groups?.get(1)?.value?.replace("\"", "") ?: Log.e("GithubParser", "failed to get versionName").also { return null }
-            val connection = Jsoup.connect(host + URL)
-            if (host.startsWith("http://")) {
-                connection.header("Host", "github.com")
-            }
-            val document = connection.get()
-            updatePhase.tryEmit("Github步骤: 获取apk下载链接")
-            val apkLinkElement = document.select(
-                "div[id^=check_suite_]:contains(ReleaseApkBuild) > div > div.d-table-cell.v-align-top.col-11.col-md-6.position-relative > a"
-            ).first()
-                ?: Log.e("GithubParser", "failed to get action run link").let { return null }
-            val actionRunHref = apkLinkElement.attr("href")
-                .takeIf { it.isNotBlank() }
-                ?: Log.e("GithubParser", "failed to get action run link").let { return null }
+            updatePhase.tryEmit("GitHub步骤: 获取apk下载链接")
             val actionUrl = "https://nightly.link$actionRunHref"
             val fileDocument = Jsoup.connect(actionUrl).get()
             val artifactLinkElement = fileDocument
@@ -317,7 +307,7 @@ object GithubParser {
             val versionCode = artifactMatch?.groups?.get(2)?.value?.toIntOrNull() ?: fallbackVersionCode
             val versionName = artifactMatch?.groups?.get(1)?.value ?: fallbackVersionName
             val downloadUrls = listOf(apkDownloadHref)
-            downloadUrl = downloadUrls.first()
+            val downloadUrl = downloadUrls.first()
             val downloadFileProgress: ((File, File) -> Unit) = { zipFile, targetApk ->
                 try {
 
@@ -352,7 +342,7 @@ object GithubParser {
                 .trim()
                 .takeIf { it.isNotBlank() && it != "ReleaseApkBuild" }
             // 日志必须跟随所选构建，不能从历史运行列表中借用其他提交的 PR。
-            val commitReleaseNotes = parseWorkflowRunCommitReleaseNotes(actionRunHref)
+            val commitReleaseNotes = parseCommitReleaseNotes(commitHref)
             val prId = workflowRunPullRequestId(workflowRunTitle)
             val prReleaseNotes = if (commitReleaseNotes == null && prId != null) {
                 try {
