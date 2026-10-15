@@ -13,7 +13,9 @@ on:
 
 jobs:
   BuildReleaseApk:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    env:
+      BUILD_TOOLS_VERSION: "36.0.0"
     steps:
       - uses: actions/checkout@v6
       - name: Setup Java 21
@@ -34,20 +36,53 @@ jobs:
         id: android_version
       - name: Build release APK
         run: ./gradlew assembleRelease --stacktrace
-      - uses: r0adkll/sign-android-release@v1
-        name: Sign app APK
+      - name: Install APK signing tools
+        run: sdkmanager "build-tools;$BUILD_TOOLS_VERSION"
+      - name: Sign app APK
         id: sign_app
-        with:
-          releaseDirectory: app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
-          alias: ${{ secrets.ALIAS }}
-          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
+        shell: bash
         env:
-          BUILD_TOOLS_VERSION: "34.0.0"
-      - uses: actions/upload-artifact@v4
+          SIGNING_KEY_BASE64: ${{ secrets.SIGNING_KEY }}
+          SIGNING_ALIAS: ${{ secrets.ALIAS }}
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          keystore="$(mktemp "$RUNNER_TEMP/release-keystore.XXXXXX")"
+          trap 'rm -f "$keystore"' EXIT
+          printf '%s' "$SIGNING_KEY_BASE64" | base64 --decode > "$keystore"
+          export KEY_PASSWORD="${KEY_PASSWORD:-$KEY_STORE_PASSWORD}"
+
+          build_tools="$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION"
+          signed_dir="app/build/outputs/apk/release"
+          mkdir -p "$signed_dir"
+          shopt -s nullglob
+          apks=(app/build/outputs/apk/release/*.apk)
+          if (( ${#apks[@]} == 0 )); then
+            echo "::error::未找到待签名的 release APK"
+            exit 1
+          fi
+
+          for apk in "${apks[@]}"; do
+            apk_name="$(basename "${apk%.apk}")"
+            aligned_apk="$signed_dir/$apk_name-aligned.apk"
+            signed_apk="$signed_dir/$apk_name-signed.apk"
+            "$build_tools/zipalign" -P 16 -f 4 "$apk" "$aligned_apk"
+            "$build_tools/apksigner" sign \
+              --ks "$keystore" \
+              --ks-key-alias "$SIGNING_ALIAS" \
+              --ks-pass env:KEY_STORE_PASSWORD \
+              --key-pass env:KEY_PASSWORD \
+              --out "$signed_apk" \
+              "$aligned_apk"
+            "$build_tools/apksigner" verify --verbose "$signed_apk"
+            rm -f "$aligned_apk"
+          done
+          echo "signedReleaseDirectory=$signed_dir" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
         with:
           name: LightNovelReader-${{steps.android_version.outputs.VERSION_NAME}}-${{steps.android_version.outputs.VERSION_CODE}}-release
           path: |
-            ${{steps.sign_app.outputs.signedReleaseFile}}
+            ${{steps.sign_app.outputs.signedReleaseDirectory}}/*-signed.apk
             app/build/outputs/mapping/release/mapping.txt
