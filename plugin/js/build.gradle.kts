@@ -90,12 +90,4 @@ dependencies {
     implementation(libs.javet.node.android)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.jsoup)
-
-    // Js Test
-    testImplementation(libs.caoccao.javet) // Must-have
-    testImplementation(libs.javet.node.linux.arm64)
-    testImplementation(libs.javet.node.linux.x86.x4)
-    testImplementation(libs.javet.node.macos.arm64)
-    testImplementation(libs.javet.node.macos.x86.x4)
-    testImplementation(libs.javet.node.windows.x86.x4)
 }

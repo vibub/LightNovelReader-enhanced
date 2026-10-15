@@ -11,18 +11,17 @@ import java.io.File
 import java.time.LocalDateTime
 
 fun main() {
-    val rootPath = ClassLoader.getSystemClassLoader().getResource("")!!.toURI()
     EpubBuilder()
         .apply {
             title = "Супербольшая книга Yuk"
             modifier = LocalDateTime.now()
-            cover(File(ClassLoader.getSystemClassLoader().getResource("cover.jpg")?.toURI()!!))
+            cover(File("path/to/cover.jpg"))
             chapter {
                 title("Сто способов обработать ночную рыбу")
                 content {
                     title("Сто способов обработать ночную рыбу")
                     text("Давным-давно была лиса по имени Ночная рыба, которая целыми днями занималась любовными делами с другими...")
-                    image(File(ClassLoader.getSystemClassLoader().getResource("70d0a8f050ac1b4dfffb5665ce052498.jpg")?.toURI()!!))
+                    image(File("path/to/illustration.jpg"))
                 }
             }
             chapter {
@@ -53,7 +52,7 @@ fun main() {
             }
         }
         .build()
-        .save(File(rootPath.resolve("generate/test.epub")))
+        .save(File("generate/test.epub"))
 }
 ```
 
@@ -122,7 +121,7 @@ chapter {
     content {
         title("Сто способов обработать ночную рыбу")
         text("Давным-давно была лиса по имени Ночная рыба, которая целыми днями занималась любовными делами с другими...")
-        image(File(ClassLoader.getSystemClassLoader().getResource("70d0a8f050ac1b4dfffb5665ce052498.jpg")?.toURI()!!))
+        image(File("path/to/illustration.jpg"))
     }
 }
 ```

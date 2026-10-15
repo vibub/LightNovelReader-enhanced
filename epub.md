@@ -4,6 +4,8 @@
 
 ## 示例
 
+示例中的 `path/to/...` 为占位路径，请替换为实际图片文件；生成结果保存为当前工作目录下的 `generate/test.epub`。
+
 ```kotlin
 import io.nightfish.potatoepub.builder.EpubBuilder
 import io.nightfish.potatoepub.xml.XmlBuilder.Companion.xml
@@ -11,18 +13,17 @@ import java.io.File
 import java.time.LocalDateTime
 
 fun main() {
-    val rootPath = ClassLoader.getSystemClassLoader().getResource("")!!.toURI()
     EpubBuilder()
         .apply {
             title = "yuk的超级大"
             modifier = LocalDateTime.now()
-            cover(File(ClassLoader.getSystemClassLoader().getResource("cover.jpg")?.toURI()!!))
+            cover(File("path/to/cover.jpg"))
             chapter {
                 title("干夜鱼的一百种方法")
                 content {
                     title("干夜鱼的一百种方法")
                     text("话说很久以前，有只叫做夜鱼的狐狸，他终日与他人尾交......")
-                    image(File(ClassLoader.getSystemClassLoader().getResource("70d0a8f050ac1b4dfffb5665ce052498.jpg")?.toURI()!!))
+                    image(File("path/to/illustration.jpg"))
                 }
             }
             chapter {
@@ -53,7 +54,7 @@ fun main() {
             }
         }
         .build()
-        .save(File(rootPath.resolve("generate/test.epub")))
+        .save(File("generate/test.epub"))
 }
 ```
 
@@ -119,7 +120,7 @@ chaper {
     content {
         title("干夜鱼的一百种方法")
         text("话说很久以前，有只叫做夜鱼的狐狸，他终日与他人尾交......")
-        image(File(ClassLoader.getSystemClassLoader().getResource("70d0a8f050ac1b4dfffb5665ce052498.jpg")?.toURI()!!))
+        image(File("path/to/illustration.jpg"))
     }
 }
 ```
