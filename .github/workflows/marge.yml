@@ -36,8 +36,20 @@ jobs:
         id: android_version
       - name: Build release APK
         run: ./gradlew assembleRelease --stacktrace
-      - name: Install APK signing tools
-        run: sdkmanager "build-tools;$BUILD_TOOLS_VERSION"
+      - name: Prepare APK signing tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_tools="$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION"
+          if [[ ! -x "$build_tools/zipalign" || ! -x "$build_tools/apksigner" ]]; then
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;$BUILD_TOOLS_VERSION"
+          fi
+          for tool in zipalign apksigner; do
+            if [[ ! -x "$build_tools/$tool" ]]; then
+              echo "::error::未找到可执行的 APK 签名工具：$build_tools/$tool"
+              exit 1
+            fi
+          done
       - name: Sign app APK
         id: sign_app
         shell: bash
