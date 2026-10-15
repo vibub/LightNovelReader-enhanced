@@ -847,6 +847,11 @@ private fun DetailContent(
         expandedVolumes = expandedVolumes + initialExpandedVolumes
     }
     val hasBookmark = uiState.isLinovelibSource && uiState.bookmarkUiState.chapterTitle.isNotBlank()
+    val contentsFadeSpec = remember { tween<Float>(durationMillis = 180) }
+    val contentsPlacementSpec = remember {
+        tween<IntOffset>(durationMillis = 250, easing = FastOutSlowInEasing)
+    }
+    val animateContentsChanges = chapterToLocate == null
     val deferred = 6
     val framesPerStep = 2
     var visible by rememberSaveable { mutableIntStateOf(0) }
@@ -990,9 +995,15 @@ private fun DetailContent(
                 ) { item ->
                     val volume = item.volume
                     val chapter = item.chapter
+                    // 使用懒列表原生动画，避免为整卷高度过渡组合、测量所有章节。
+                    val itemModifier = Modifier.animateItem(
+                        fadeInSpec = if (animateContentsChanges && chapter != null) contentsFadeSpec else null,
+                        placementSpec = if (animateContentsChanges) contentsPlacementSpec else null,
+                        fadeOutSpec = if (animateContentsChanges && chapter != null) contentsFadeSpec else null
+                    )
                     if (chapter == null) {
                         VolumeItem(
-                            modifier = Modifier.fadeInOnce(volume.volumeId),
+                            modifier = itemModifier.fadeInOnce(volume.volumeId),
                             volume = volume,
                             allChapterIds = allChapterIds,
                             hideReadChapters = hideReadChapters,
@@ -1013,6 +1024,7 @@ private fun DetailContent(
                         )
                     } else {
                         ChapterItem(
+                            modifier = itemModifier,
                             chapter = chapter,
                             onDownload = { onDownloadChapters(listOf(chapter.id)) },
                             onMarkAsRead = { onMarkChaptersAsRead(listOf(chapter.id)) },
@@ -2118,6 +2130,7 @@ private fun DetailItemActionMenu(
 
 @Composable
 private fun ChapterItem(
+    modifier: Modifier = Modifier,
     chapter: ChapterInformation,
     isRead: Boolean,
     isLastRead: Boolean,
@@ -2137,7 +2150,7 @@ private fun ChapterItem(
     val status = downloadState.status
     val statusLabel = stringResource(downloadStatusLabel(status))
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(
