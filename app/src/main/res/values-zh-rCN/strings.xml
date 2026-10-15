@@ -363,6 +363,11 @@
     <!-- UI -->
     <string name="detail_introduction">介绍</string>
     <string name="detail_contents">目录</string>
+    <string name="detail_locate_last_read">定位上次阅读的章节</string>
+    <string name="detail_locate_bookmark">定位书签章节</string>
+    <string name="detail_locate_chapter_unavailable">未在目录中找到该章节</string>
+    <string name="detail_sort_reverse">倒序排列书卷与章节</string>
+    <string name="detail_sort_original">恢复正序排列</string>
     <string name="detail_title">详情</string>
     <string name="detail_info_word_count_content">%1$s 字</string>
     <plurals name="n_volumes">

@@ -54,6 +54,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -76,7 +77,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -184,6 +184,8 @@ fun DetailScreen(
     var exportSettings by remember { mutableStateOf(ExportSettings()) }
     var isBookInformationRetryEnabled by remember { mutableStateOf(true) }
     var isBookVolumesRetryEnabled by remember { mutableStateOf(true) }
+    var reverseContents by rememberSaveable { mutableStateOf(false) }
+    var chapterToLocate by remember { mutableStateOf<String?>(null) }
 
     val allChapterIds = uiState.bookVolumes?.component1()?.volumes.orEmpty()
         .flatMap { it.chapters }
@@ -255,29 +257,6 @@ fun DetailScreen(
     val isStartReading = !hasReadingRecord(uiState.userReadingData?.lastReadChapterId)
     val fabTextRes = if (isStartReading) R.string.start_reading else R.string.continue_reading
 
-    val fabContent = remember {
-        movableContentOf<Boolean, Int, () -> Unit> { visible, textRes, onClick ->
-            AnimatedVisibility(
-                visible = visible,
-                enter = slideInVertically(
-                    initialOffsetY = { it / 4 },
-                    animationSpec = tween(250, easing = FastOutSlowInEasing)
-                ) + fadeIn(tween(200, easing = FastOutSlowInEasing)),
-                exit = slideOutVertically(
-                    targetOffsetY = { it / 4 },
-                    animationSpec = tween(200, easing = FastOutSlowInEasing)
-                ) + fadeOut(tween(150, easing = FastOutSlowInEasing))
-            ) {
-                ExtendedFloatingActionButton(
-                    modifier = Modifier.padding(end = 28.dp, bottom = 28.dp),
-                    onClick = onClick,
-                    icon = { Icon(painterResource(R.drawable.filled_menu_book_24px), null) },
-                    text = { Text(stringResource(textRes)) }
-                )
-            }
-        }
-    }
-
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         snackbarHost = {
@@ -304,8 +283,44 @@ fun DetailScreen(
                 }
 
                 Box(modifier = Modifier.align(Alignment.BottomEnd)) {
-                    fabContent(fabVisible, fabTextRes) {
-                        if (isStartReading) onClickReadFromStart() else onClickContinueReading()
+                    AnimatedVisibility(
+                        visible = fabVisible,
+                        enter = slideInVertically(
+                            initialOffsetY = { it / 4 },
+                            animationSpec = tween(250, easing = FastOutSlowInEasing)
+                        ) + fadeIn(tween(200, easing = FastOutSlowInEasing)),
+                        exit = slideOutVertically(
+                            targetOffsetY = { it / 4 },
+                            animationSpec = tween(200, easing = FastOutSlowInEasing)
+                        ) + fadeOut(tween(150, easing = FastOutSlowInEasing))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(end = 28.dp, bottom = 28.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (!isStartReading) {
+                                FilledTonalIconButton(
+                                    modifier = Modifier.size(56.dp),
+                                    enabled = uiState.userReadingData?.lastReadChapterId in allChapterIds,
+                                    onClick = {
+                                        chapterToLocate = uiState.userReadingData?.lastReadChapterId
+                                    }
+                                ) {
+                                    Icon(
+                                        painterResource(R.drawable.target_24px),
+                                        contentDescription = stringResource(R.string.detail_locate_last_read)
+                                    )
+                                }
+                            }
+                            ExtendedFloatingActionButton(
+                                onClick = {
+                                    if (isStartReading) onClickReadFromStart() else onClickContinueReading()
+                                },
+                                icon = { Icon(painterResource(R.drawable.filled_menu_book_24px), null) },
+                                text = { Text(stringResource(fabTextRes)) }
+                            )
+                        }
                     }
                 }
             }
@@ -334,6 +349,8 @@ fun DetailScreen(
                     }
                 },
                 onClickMarkAsRead = onClickMarkAsRead,
+                reverseContents = reverseContents,
+                onToggleReverseContents = { reverseContents = !reverseContents },
                 scrollBehavior = scrollBehavior,
                 isCollapsed = isCollapsed
             )
@@ -364,6 +381,10 @@ fun DetailScreen(
                             bookInformation = bookInformation,
                             onClickChapter = onClickChapter,
                             lazyListState = lazyListState,
+                            reverseContents = reverseContents,
+                            chapterToLocate = chapterToLocate,
+                            onLocateChapter = { chapterToLocate = it },
+                            onChapterLocated = { chapterToLocate = null },
                             cacheBook = { _ -> openDownloadSelection() },
                             onDownloadChapters = { chapterIds ->
                                 onStartCache(bookInformation.id, chapterIds, false)
@@ -743,6 +764,15 @@ private fun DetailBookInformationErrorOverlay(
 private val itemHorizontalPadding = 18.dp
 private val itemVerticalPadding = 8.dp
 
+private data class DetailContentsItem(
+    val volume: Volume,
+    val chapter: ChapterInformation? = null
+) {
+    val key: String
+        get() = chapter?.let { "chapter:${volume.volumeId}:${it.id}" }
+            ?: "volume:${volume.volumeId}"
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DetailContent(
@@ -751,6 +781,10 @@ private fun DetailContent(
     uiState: DetailUiState,
     bookInformation: BookInformation,
     lazyListState: LazyListState,
+    reverseContents: Boolean,
+    chapterToLocate: String?,
+    onLocateChapter: (String) -> Unit,
+    onChapterLocated: () -> Unit,
     onClickChapter: (String) -> Unit,
     cacheBook: (String) -> Unit,
     onDownloadChapters: (List<String>) -> Unit,
@@ -771,7 +805,48 @@ private fun DetailContent(
     onRetryBookVolumes: () -> Unit,
     isBookVolumesRetryEnabled: Boolean
 ) {
+    val context = LocalContext.current
     var hideReadChapters by remember { mutableStateOf(false) }
+    var expandedVolumes by rememberSaveable { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
+    val volumes = uiState.bookVolumes?.component1()?.volumes.orEmpty()
+    val readIds = remember(uiState.userReadingData?.maxChapterReadingProgressMap) {
+        uiState.userReadingData?.maxChapterReadingProgressMap
+            ?.filterValues { it >= 1f }?.keys.orEmpty()
+    }
+    val allChapterIds = remember(volumes) {
+        volumes.flatMap { it.chapters }.map { it.id }
+    }
+    val displayedVolumes = remember(volumes, reverseContents) {
+        if (reverseContents) volumes.asReversed() else volumes
+    }
+    fun isVolumeExpanded(volume: Volume): Boolean = expandedVolumes[volume.volumeId]
+        ?: (volume.chapters.any { it.id !in readIds } || volumes.size > 8)
+
+    val contentsItems = remember(
+        displayedVolumes, expandedVolumes, readIds, hideReadChapters, downloadSelectionMode,
+        reverseContents
+    ) {
+        buildList {
+            displayedVolumes.forEach { volume ->
+                add(DetailContentsItem(volume))
+                if (isVolumeExpanded(volume)) {
+                    val chapters = if (reverseContents) volume.chapters.asReversed() else volume.chapters
+                    chapters.forEach { chapter ->
+                        if (downloadSelectionMode || !hideReadChapters || chapter.id !in readIds) {
+                            add(DetailContentsItem(volume, chapter))
+                        }
+                    }
+                }
+            }
+        }
+    }
+    LaunchedEffect(volumes) {
+        val initialExpandedVolumes = volumes
+            .filter { it.volumeId !in expandedVolumes }
+            .associate { it.volumeId to isVolumeExpanded(it) }
+        expandedVolumes = expandedVolumes + initialExpandedVolumes
+    }
+    val hasBookmark = uiState.isLinovelibSource && uiState.bookmarkUiState.chapterTitle.isNotBlank()
     val deferred = 6
     val framesPerStep = 2
     var visible by rememberSaveable { mutableIntStateOf(0) }
@@ -780,6 +855,31 @@ private fun DetailContent(
         while (visible < deferred) {
             repeat(framesPerStep) { withFrameNanos { } }
             visible += 1
+        }
+    }
+
+    LaunchedEffect(
+        chapterToLocate, visible, contentsItems, hasBookmark, hideReadChapters, uiState.bookVolumes
+    ) {
+        val chapterId = chapterToLocate ?: return@LaunchedEffect
+        if (visible < deferred || uiState.bookVolumes == null) return@LaunchedEffect
+        val volume = volumes.firstOrNull { volume -> volume.chapters.any { it.id == chapterId } }
+        if (volume == null) {
+            Toast.makeText(context, R.string.detail_locate_chapter_unavailable, Toast.LENGTH_SHORT).show()
+            onChapterLocated()
+            return@LaunchedEffect
+        }
+        if (hideReadChapters || !isVolumeExpanded(volume)) {
+            hideReadChapters = false
+            expandedVolumes = expandedVolumes + (volume.volumeId to true)
+            return@LaunchedEffect
+        }
+        val chapterIndex = contentsItems.indexOfFirst { it.chapter?.id == chapterId }
+        if (chapterIndex >= 0) {
+            // 目录前依次为封面、标签、快捷操作、可选书签、简介和目录标题。
+            val headerCount = 5 + if (hasBookmark) 1 else 0
+            lazyListState.scrollToItem(headerCount + chapterIndex)
+            onChapterLocated()
         }
     }
 
@@ -834,7 +934,7 @@ private fun DetailContent(
             )
         }
 
-        if (visible >= 4 && uiState.isLinovelibSource && uiState.bookmarkUiState.chapterTitle.isNotBlank()) item(key = "linovelib-bookmark") {
+        if (visible >= 4 && hasBookmark) item(key = "linovelib-bookmark") {
             LinovelibBookmarkBlock(
                 modifier = Modifier.fadeInOnce("linovelib-bookmark"),
                 bookmarkUiState = uiState.bookmarkUiState,
@@ -842,6 +942,12 @@ private fun DetailContent(
                     uiState.bookmarkUiState.chapterId
                         .takeIf { it.isNotBlank() }
                         ?.let(onClickChapter)
+                        ?: onClickUnresolvedBookmark()
+                },
+                onLongClick = {
+                    uiState.bookmarkUiState.chapterId
+                        .takeIf { it.isNotBlank() }
+                        ?.let(onLocateChapter)
                         ?: onClickUnresolvedBookmark()
                 }
             )
@@ -876,36 +982,57 @@ private fun DetailContent(
         }
 
         if (visible >= 6) {
-            uiState.bookVolumes?.onOk { bookVolumes ->
-                val allChapterIds = bookVolumes.volumes
-                    .flatMap { it.chapters }
-                    .map { it.id }
+            uiState.bookVolumes?.onOk {
                 items(
-                    items = bookVolumes.volumes,
-                    key = { "volume:${it.volumeId}" }
-                ) { volume ->
-                    VolumeItem(
-                        modifier = Modifier.fadeInOnce(volume.volumeId),
-                        volume = volume,
-                        allChapterIds = allChapterIds,
-                        hideReadChapters = hideReadChapters,
-                        readCompletedChapterIds = uiState.userReadingData?.maxChapterReadingProgressMap?.filterValues { it >= 1f }?.keys?.toList()
-                            ?: emptyList(),
-                        onClickChapter = onClickChapter,
-                        onDownloadChapters = onDownloadChapters,
-                        onOpenDownloadSelection = onOpenDownloadSelection,
-                        onMarkChaptersAsRead = onMarkChaptersAsRead,
-                        onMarkReadThrough = onMarkReadThrough,
-                        downloadStates = uiState.chapterDownloadStates,
-                        selectionMode = downloadSelectionMode,
-                        selectedChapterIds = selectedChapterIds,
-                        onToggleChapterSelection = onToggleChapterSelection,
-                        onToggleVolumeSelection = onToggleVolumeSelection,
-                        onRetryChapter = onRetryChapter,
-                        volumesSize = bookVolumes.volumes.size,
-                        lastReadingChapterId = uiState.userReadingData?.lastReadChapterId,
-                        bookmarkChapterId = uiState.bookmarkUiState.chapterId
-                    )
+                    items = contentsItems,
+                    key = { it.key },
+                    contentType = { if (it.chapter == null) "volume" else "chapter" }
+                ) { item ->
+                    val volume = item.volume
+                    val chapter = item.chapter
+                    if (chapter == null) {
+                        VolumeItem(
+                            modifier = Modifier.fadeInOnce(volume.volumeId),
+                            volume = volume,
+                            allChapterIds = allChapterIds,
+                            hideReadChapters = hideReadChapters,
+                            readCompletedChapterIds = readIds,
+                            onDownloadChapters = onDownloadChapters,
+                            onOpenDownloadSelection = onOpenDownloadSelection,
+                            onMarkChaptersAsRead = onMarkChaptersAsRead,
+                            onMarkReadThrough = onMarkReadThrough,
+                            downloadStates = uiState.chapterDownloadStates,
+                            selectionMode = downloadSelectionMode,
+                            selectedChapterIds = selectedChapterIds,
+                            onToggleVolumeSelection = onToggleVolumeSelection,
+                            expanded = isVolumeExpanded(volume),
+                            onToggleExpanded = {
+                                expandedVolumes = expandedVolumes +
+                                    (volume.volumeId to !isVolumeExpanded(volume))
+                            }
+                        )
+                    } else {
+                        ChapterItem(
+                            chapter = chapter,
+                            onDownload = { onDownloadChapters(listOf(chapter.id)) },
+                            onMarkAsRead = { onMarkChaptersAsRead(listOf(chapter.id)) },
+                            onMarkReadThrough = {
+                                val chapterIndex = allChapterIds.indexOf(chapter.id)
+                                onMarkReadThrough(allChapterIds.take(chapterIndex + 1))
+                            },
+                            onMultiSelect = { onOpenDownloadSelection(setOf(chapter.id)) },
+                            isRead = chapter.id in readIds,
+                            isLastRead = chapter.id == uiState.userReadingData?.lastReadChapterId,
+                            isBookmarked = chapter.id == uiState.bookmarkUiState.chapterId,
+                            downloadState = uiState.chapterDownloadStates[chapter.id]
+                                ?: ChapterDownloadState(ChapterDownloadStatus.NOT_DOWNLOADED),
+                            selectionMode = downloadSelectionMode,
+                            isSelected = chapter.id in selectedChapterIds,
+                            onToggleSelection = { onToggleChapterSelection(chapter.id) },
+                            onRetry = { onRetryChapter(chapter.id) },
+                            onClick = { onClickChapter(chapter.id) }
+                        )
+                    }
                 }
             }?.onErr { error ->
                 item(key = "volumes-error") {
@@ -1102,6 +1229,8 @@ private fun TopBar(
     onClickExport: () -> Unit,
     onClickTextFormatting: () -> Unit,
     onClickMarkAsRead: () -> Unit,
+    reverseContents: Boolean,
+    onToggleReverseContents: () -> Unit,
     scrollBehavior: TopAppBarScrollBehavior,
     isCollapsed: Boolean
 ) {
@@ -1175,7 +1304,9 @@ private fun TopBar(
                     volumesEmpty = volumesEmpty,
                     onClickExport = onClickExport,
                     onClickTextFormatting = onClickTextFormatting,
-                    onClickMarkAsRead = onClickMarkAsRead
+                    onClickMarkAsRead = onClickMarkAsRead,
+                    reverseContents = reverseContents,
+                    onToggleReverseContents = onToggleReverseContents
                 )
             },
             scrollBehavior = scrollBehavior
@@ -1209,7 +1340,9 @@ private fun TopBarActions(
     volumesEmpty: Boolean,
     onClickExport: () -> Unit,
     onClickTextFormatting: () -> Unit,
-    onClickMarkAsRead: () -> Unit
+    onClickMarkAsRead: () -> Unit,
+    reverseContents: Boolean,
+    onToggleReverseContents: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
 
@@ -1224,6 +1357,23 @@ private fun TopBarActions(
             Icon(painterResource(id = R.drawable.more_vert_24px), contentDescription = "more")
         }
         DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+            DropdownMenuItem(
+                enabled = !volumesEmpty,
+                text = {
+                    Text(
+                        stringResource(
+                            if (reverseContents) R.string.detail_sort_original
+                            else R.string.detail_sort_reverse
+                        ),
+                        style = typography.bodyLarge
+                    )
+                },
+                leadingIcon = { Icon(painterResource(R.drawable.sort_24px), null) },
+                onClick = {
+                    menuExpanded = false
+                    onToggleReverseContents()
+                }
+            )
             DropdownMenuItem(
                 enabled = !volumesEmpty,
                 text = {
@@ -1522,7 +1672,8 @@ private fun QuickOperationsBlock(
 private fun LinovelibBookmarkBlock(
     modifier: Modifier,
     bookmarkUiState: DetailBookmarkUiState,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
 ) {
     Row(
         modifier = modifier
@@ -1530,7 +1681,11 @@ private fun LinovelibBookmarkBlock(
             .padding(horizontal = itemHorizontalPadding, vertical = itemVerticalPadding)
             .clip(RoundedCornerShape(16.dp))
             .background(colorScheme.surfaceContainerLow)
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+                onLongClickLabel = stringResource(R.string.detail_locate_bookmark)
+            )
             .padding(16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -1757,8 +1912,7 @@ private fun VolumeItem(
     volume: Volume,
     allChapterIds: List<String>,
     hideReadChapters: Boolean = false,
-    readCompletedChapterIds: List<String>,
-    onClickChapter: (String) -> Unit,
+    readCompletedChapterIds: Set<String>,
     onDownloadChapters: (List<String>) -> Unit,
     onOpenDownloadSelection: (Set<String>) -> Unit,
     onMarkChaptersAsRead: (List<String>) -> Unit,
@@ -1766,15 +1920,12 @@ private fun VolumeItem(
     downloadStates: Map<String, ChapterDownloadState>,
     selectionMode: Boolean,
     selectedChapterIds: Set<String>,
-    onToggleChapterSelection: (String) -> Unit,
     onToggleVolumeSelection: (List<String>) -> Unit,
-    onRetryChapter: (String) -> Unit,
-    volumesSize: Int,
-    lastReadingChapterId: String?,
-    bookmarkChapterId: String
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit
 ) {
-    val readIds = remember(readCompletedChapterIds) { readCompletedChapterIds.toSet() }
-    val (readCount, totalCount) = remember(volume.volumeId, readIds) {
+    val readIds = readCompletedChapterIds
+    val (readCount, totalCount) = remember(volume, readIds) {
         val count = volume.chapters.count { it.id in readIds }
         count to volume.chapters.size
     }
@@ -1790,9 +1941,6 @@ private fun VolumeItem(
         volumeChapterIds
     }
     val isFullyRead = readCount >= totalCount
-    var expanded by rememberSaveable {
-        mutableStateOf(readCount < totalCount || volumesSize > 8)
-    }
     var actionMenuExpanded by remember { mutableStateOf(false) }
     val rotation by animateFloatAsState(targetValue = if (expanded) 90f else 0f, animationSpec = tween(200))
 
@@ -1816,7 +1964,7 @@ private fun VolumeItem(
                             Modifier
                         } else {
                             Modifier.combinedClickable(
-                                onClick = { expanded = !expanded },
+                                onClick = onToggleExpanded,
                                 onLongClick = { actionMenuExpanded = true }
                             )
                         }
@@ -1879,7 +2027,7 @@ private fun VolumeItem(
                     }
                 }
                 if (selectionMode) {
-                    IconButton(onClick = { expanded = !expanded }) {
+                    IconButton(onClick = onToggleExpanded) {
                         Icon(
                             modifier = Modifier
                                 .size(16.dp)
@@ -1899,39 +2047,6 @@ private fun VolumeItem(
                 onMarkReadThrough = { onMarkReadThrough(chapterIdsThroughVolume) },
                 onMultiSelect = { onOpenDownloadSelection(volumeChapterIds.toSet()) }
             )
-        }
-        Column(modifier = Modifier.animateContentSize(animationSpec = tween(250))) {
-            if (expanded) {
-                volume.chapters.forEach { chapter ->
-                    val visible = selectionMode || !(hideReadChapters && chapter.id in readIds)
-                    if (visible) {
-                        val chapterIndex = allChapterIds.indexOf(chapter.id)
-                        val chapterIdsThrough = if (chapterIndex >= 0) {
-                            allChapterIds.take(chapterIndex + 1)
-                        } else {
-                            listOf(chapter.id)
-                        }
-                        val state = downloadStates[chapter.id]
-                            ?: ChapterDownloadState(ChapterDownloadStatus.NOT_DOWNLOADED)
-                        ChapterItem(
-                            chapter = chapter,
-                            onDownload = { onDownloadChapters(listOf(chapter.id)) },
-                            onMarkAsRead = { onMarkChaptersAsRead(listOf(chapter.id)) },
-                            onMarkReadThrough = { onMarkReadThrough(chapterIdsThrough) },
-                            onMultiSelect = { onOpenDownloadSelection(setOf(chapter.id)) },
-                            isRead = chapter.id in readIds,
-                            isLastRead = chapter.id == lastReadingChapterId,
-                            isBookmarked = chapter.id == bookmarkChapterId,
-                            downloadState = state,
-                            selectionMode = selectionMode,
-                            isSelected = chapter.id in selectedChapterIds,
-                            onToggleSelection = { onToggleChapterSelection(chapter.id) },
-                            onRetry = { onRetryChapter(chapter.id) },
-                            onClick = { onClickChapter(chapter.id) }
-                        )
-                    }
-                }
-            }
         }
     }
 }

@@ -327,6 +327,11 @@
     <!-- UI -->
     <string name="detail_introduction">Аннотация</string>
     <string name="detail_contents">Оглавление</string>
+    <string name="detail_locate_last_read">Найти последнюю прочитанную главу</string>
+    <string name="detail_locate_bookmark">Найти главу с закладкой</string>
+    <string name="detail_locate_chapter_unavailable">Глава не найдена в оглавлении</string>
+    <string name="detail_sort_reverse">Обратный порядок томов и глав</string>
+    <string name="detail_sort_original">Восстановить исходный порядок</string>
     <string name="detail_title">Детали</string>
     <string name="detail_info_word_count_content">%1$s words</string>
     <plurals name="n_volumes">

@@ -379,6 +379,11 @@
     <!-- UI -->
     <string name="detail_introduction">Introduction</string>
     <string name="detail_contents">Contents</string>
+    <string name="detail_locate_last_read">Locate last read chapter</string>
+    <string name="detail_locate_bookmark">Locate bookmarked chapter</string>
+    <string name="detail_locate_chapter_unavailable">Chapter not found in the contents</string>
+    <string name="detail_sort_reverse">Reverse volume and chapter order</string>
+    <string name="detail_sort_original">Restore original order</string>
     <string name="detail_title">Detail</string>
     <string name="detail_info_word_count_content">%1$s words</string>
     <plurals name="n_volumes">
