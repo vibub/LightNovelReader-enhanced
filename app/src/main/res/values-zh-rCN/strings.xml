@@ -773,6 +773,9 @@
     <string name="linovelib_sync_requires_source">请先切换到 Linovelib 数据源再同步，以确保导入的书籍和章节书签保存到正确的数据源。</string>
     <string name="linovelib_webview_hint">请在下方登录并通过站点检查，然后点击“保存当前 Cookie”。当前页面：%1$s</string>
     <string name="linovelib_web_search_title">Linovelib 网页搜索</string>
+    <string name="linovelib_search_loading">正在加载搜索结果…</string>
+    <string name="linovelib_search_open_web">打开网页搜索</string>
+    <string name="linovelib_search_verification_hint">如需站点验证，请在下方完成。识别到当前关键词的结果后会自动返回原生列表，也可直接在网页中搜索和浏览。</string>
     <string name="linovelib_web_back">后退</string>
     <string name="linovelib_web_forward">前进</string>
     <string name="linovelib_refresh">刷新</string>

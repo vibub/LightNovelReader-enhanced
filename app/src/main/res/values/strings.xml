@@ -811,6 +811,9 @@
     <string name="linovelib_sync_requires_source">Switch to the Linovelib data source before syncing to ensure imported books and chapter bookmarks are saved to the correct data source.</string>
     <string name="linovelib_webview_hint">Sign in below and pass the site check, then tap "Save current Cookie". Current page: %1$s</string>
     <string name="linovelib_web_search_title">Linovelib web search</string>
+    <string name="linovelib_search_loading">Loading search results…</string>
+    <string name="linovelib_search_open_web">Open web search</string>
+    <string name="linovelib_search_verification_hint">If the site asks for verification, complete it below. Recognized results for your keyword will return to the native list automatically. You can also search and browse here.</string>
     <string name="linovelib_web_back">Back</string>
     <string name="linovelib_web_forward">Forward</string>
     <string name="linovelib_refresh">Refresh</string>

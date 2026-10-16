@@ -683,6 +683,9 @@
     <string name="linovelib_sync_requires_source">請先切換到 Linovelib 資料來源再同步，以確保匯入的書籍和章節書籤儲存到正確的資料來源。</string>
     <string name="linovelib_webview_hint">請在下方登入並通過站點檢查，然後點選「儲存目前 Cookie」。目前頁面：%1$s</string>
     <string name="linovelib_web_search_title">Linovelib 網頁搜尋</string>
+    <string name="linovelib_search_loading">正在載入搜尋結果…</string>
+    <string name="linovelib_search_open_web">開啟網頁搜尋</string>
+    <string name="linovelib_search_verification_hint">如需站點驗證，請在下方完成。辨識到目前關鍵字的結果後會自動返回原生列表，也可直接在網頁中搜尋和瀏覽。</string>
     <string name="linovelib_web_back">返回</string>
     <string name="linovelib_web_forward">前進</string>
     <string name="linovelib_refresh">重新整理</string>

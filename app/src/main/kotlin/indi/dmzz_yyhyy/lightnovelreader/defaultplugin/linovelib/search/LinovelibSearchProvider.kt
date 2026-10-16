@@ -4,16 +4,21 @@ import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstan
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book.LinovelibWebsiteDataSource
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibBlockedException
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibJsoup
+import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.util.Cache
 import io.nightfish.lightnovelreader.api.util.local
 import io.nightfish.lightnovelreader.api.web.search.AbstractSearchProvider
 import io.nightfish.lightnovelreader.api.web.search.SearchResult
 import io.nightfish.lightnovelreader.api.web.search.SearchType
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import org.jsoup.Jsoup
 import java.net.URLEncoder
+
+data class LinovelibWebSearchRequest(val id: Long, val keyword: String)
 
 class LinovelibSearchProvider(
     private val jsoup: LinovelibJsoup,
@@ -22,6 +27,22 @@ class LinovelibSearchProvider(
 ) : AbstractSearchProvider() {
     init {
         registerSearchType(SEARCH_BY_NAME, "按书名搜索".local(), "请输入书本名称".local())
+    }
+
+    /** null 表示尚未识别到搜索结果，不能把验证页或搜索表单当成空结果。 */
+    fun parseWebSearchPage(request: LinovelibWebSearchRequest, url: String, html: String): List<BookInformation>? {
+        if (!LinovelibConstants.isSearchPageUrl(url)) return null
+        val document = Jsoup.parse(html, url)
+        val title = document.title()
+        // POST 搜索的 URL 不带关键词，通过站点结果标题绑定当前请求。
+        if (!title.startsWith("${request.keyword} 搜索结果") &&
+            !title.startsWith("${request.keyword} 搜尋結果")
+        ) return null
+        val text = document.body().text()
+        if (Regex("(?:相关共有|相關共有)\\s*0\\s*[条條][记記][录錄]").containsMatchIn(text)) {
+            return emptyList()
+        }
+        return websiteDataSource.parseSearchBooks(document).takeIf { it.isNotEmpty() }
     }
 
     override fun search(searchType: SearchType, keyword: String): Flow<SearchResult> = flow {
@@ -55,6 +76,7 @@ class LinovelibSearchProvider(
             } catch (blocked: LinovelibBlockedException) {
                 blockedErrors += blocked
             } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
                 throwable.printStackTrace()
                 otherErrors += throwable
             }

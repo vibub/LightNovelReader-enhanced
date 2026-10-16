@@ -43,6 +43,7 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.components.Cover
 import indi.dmzz_yyhyy.lightnovelreader.utils.dateFormatter
 import indi.dmzz_yyhyy.lightnovelreader.utils.withHaptic
 import io.nightfish.lightnovelreader.api.book.BookInformation
+import java.time.LocalDateTime
 
 @Composable
 fun BookCardContent(
@@ -181,32 +182,36 @@ fun BookCardContent(
                     BookStatusIcon(bookInformation.isComplete)
                 }
 
-                val dateText = bookInformation.lastUpdated.format(dateFormatter())
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    TagChip(painterResource(R.drawable.update_24px))
-                    Text(
-                        text = dateText,
-                        style = typography.labelMedium.copy(color = colorScheme.secondary),
-                        maxLines = 1,
-                        overflow = TextOverflow.StartEllipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-
-                    Spacer(Modifier.width(2.dp))
-
-                    TagChip(painterResource(R.drawable.article_24px))
-                    Text(
-                        text = bookInformation.wordCount.get(),
-                        style = typography.labelMedium.copy(color = colorScheme.secondary),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
+                val hasUpdateTime = bookInformation.lastUpdated != LocalDateTime.MIN
+                val hasWordCount = bookInformation.wordCount.count > 0
+                if (hasUpdateTime || hasWordCount) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (hasUpdateTime) {
+                            TagChip(painterResource(R.drawable.update_24px))
+                            Text(
+                                text = bookInformation.lastUpdated.format(dateFormatter()),
+                                style = typography.labelMedium.copy(color = colorScheme.secondary),
+                                maxLines = 1,
+                                overflow = TextOverflow.StartEllipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                        }
+                        if (hasUpdateTime && hasWordCount) Spacer(Modifier.width(2.dp))
+                        if (hasWordCount) {
+                            TagChip(painterResource(R.drawable.article_24px))
+                            Text(
+                                text = bookInformation.wordCount.get(),
+                                style = typography.labelMedium.copy(color = colorScheme.secondary),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                        }
+                    }
                 }
 
 

@@ -2,14 +2,12 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.home
 
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import indi.dmzz_yyhyy.lightnovelreader.ui.LocalNavigator
 import indi.dmzz_yyhyy.lightnovelreader.ui.navigation.Navigator
 import indi.dmzz_yyhyy.lightnovelreader.ui.navigation.NavEntryScope
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.detail.navigateToBookDetailDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.ExploreViewModel
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.expanded.navigateToExploreExpandDestination
-import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.search.navigateToLinovelibWebSearchDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.search.navigateToSearchDestination
 import indi.dmzz_yyhyy.lightnovelreader.utils.activityHiltViewModel
 import io.nightfish.lightnovelreader.api.Route
@@ -28,25 +26,13 @@ fun NavEntryScope.exploreHomeDestination() {
                 onClickBook = navigator::navigateToBookDetailDestination,
                 init = exploreHomeViewModel::init,
                 changePage = exploreHomeViewModel::changePage,
-                onClickSearch = {
-                    if (exploreViewModel.uiState.sourceId == LinovelibConstants.SOURCE_ID) {
-                        navigator.navigateToLinovelibWebSearchDestination("")
-                    } else {
-                        navigator.navigateToSearchDestination()
-                    }
-                },
+                onClickSearch = navigator::navigateToSearchDestination,
                 refresh = exploreHomeViewModel::refresh
             )
         } else {
             CustomExploreHomeScreen(
                 init = exploreHomeViewModel::init,
-                onClickSearch = {
-                    if (exploreViewModel.uiState.sourceId == LinovelibConstants.SOURCE_ID) {
-                        navigator.navigateToLinovelibWebSearchDestination("")
-                    } else {
-                        navigator.navigateToSearchDestination()
-                    }
-                },
+                onClickSearch = navigator::navigateToSearchDestination,
                 customExplorePageProvider = exploreHomeViewModel.customExplorePageProvider!!
             )
         }

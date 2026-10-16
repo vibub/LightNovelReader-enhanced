@@ -290,7 +290,8 @@ class LinovelibWebsiteDataSource(
         return elements.mapNotNull { element ->
             val href = element.selectFirst("a[href~=/novel/\\d+\\.html]")?.attr("href") ?: return@mapNotNull null
             val bookId = href.extractBookId() ?: return@mapNotNull null
-            val title = element.selectFirst("a[href~=/novel/\\d+\\.html]")?.text()?.cleanText().orEmpty()
+            val title = (element.selectFirst(".book-title, .book-name, h3, h4")?.text()
+                ?: element.selectFirst("a[href~=/novel/\\d+\\.html]")?.text())?.cleanText().orEmpty()
             if (title.isBlank()) return@mapNotNull null
             val cover = element.selectFirst("img")?.imageUrl().orEmpty()
             BookInformation(
@@ -298,10 +299,11 @@ class LinovelibWebsiteDataSource(
                 title = title,
                 subtitle = "",
                 coverUri = cover.takeIf { it.isNotBlank() }?.toUri() ?: Uri.EMPTY,
-                author = element.textAfterLabel("作者") ?: "",
-                description = element.selectFirst(".desc, .intro, p")?.text()?.cleanDescription() ?: "",
-                tags = emptyList(),
-                publishingHouse = "",
+                author = element.selectFirst(".book-author")?.clone()?.apply { select("svg").remove() }
+                    ?.text()?.cleanText() ?: element.textAfterLabel("作者") ?: "",
+                description = element.selectFirst(".book-desc, .desc, .intro, p")?.text()?.cleanDescription() ?: "",
+                tags = element.selectFirst(".tag-small.red")?.text()?.split(" ")?.filter(String::isNotBlank) ?: emptyList(),
+                publishingHouse = element.selectFirst(".tag-small.yellow")?.text().orEmpty(),
                 wordCount = WordCount(0),
                 lastUpdated = LocalDateTime.MIN,
                 isComplete = element.text().contains("完结")

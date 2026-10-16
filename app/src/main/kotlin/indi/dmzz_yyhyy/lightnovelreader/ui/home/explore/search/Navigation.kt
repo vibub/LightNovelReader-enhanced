@@ -1,6 +1,11 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.search
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.key
+import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.ui.LinovelibSearchLoader
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.ui.LinovelibWebBookScreen
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.ui.LinovelibWebSearchScreen
 import indi.dmzz_yyhyy.lightnovelreader.ui.LocalNavigator
@@ -17,30 +22,47 @@ fun NavEntryScope.exploreSearchDestination() {
         val navigator = LocalNavigator.current
         val exploreViewModel = activityHiltViewModel<ExploreViewModel>()
         val exploreSearchViewModel = hiltViewModel<ExploreSearchViewModel>()
-        ExploreSearchScreen(
-            exploreUiState = exploreViewModel.uiState,
-            exploreSearchUiState = exploreSearchViewModel.uiState,
-            refresh = exploreViewModel::refresh,
-            requestAddBookToBookshelf = {
-                navigator.navigateToAddBookToBookshelfDialog(it)
-            },
-            onClickBack = navigator::popBackStack,
-            init = exploreSearchViewModel::init,
-            onChangeSearchType = { exploreSearchViewModel.changeSearchType(it) },
-            onSearch = {
-                exploreSearchViewModel.search(
-                    keyword = it,
-                    navigateToSingleBook = navigator::navigateToBookDetailDestination,
-                    openLinovelibWebSearch = navigator::navigateToLinovelibWebSearchDestination
-                )
-            },
-            onClickDeleteHistory = { exploreSearchViewModel.deleteHistory(it) },
-            onClickClearAllHistory = exploreSearchViewModel::clearAllHistory,
-            onClickBook = {
-                navigator.navigateToBookDetailDestination(it)
-            },
-            updateSuggestions = exploreSearchViewModel::updateSuggestions
-        )
+        Box(Modifier.fillMaxSize()) {
+            ExploreSearchScreen(
+                exploreUiState = exploreViewModel.uiState,
+                exploreSearchUiState = exploreSearchViewModel.uiState,
+                refresh = exploreViewModel::refresh,
+                requestAddBookToBookshelf = {
+                    navigator.navigateToAddBookToBookshelfDialog(it)
+                },
+                onClickBack = { navigator.popBackStack() },
+                init = exploreSearchViewModel::init,
+                onChangeSearchType = { exploreSearchViewModel.changeSearchType(it) },
+                onSearch = {
+                    exploreSearchViewModel.search(
+                        keyword = it,
+                        navigateToSingleBook = navigator::navigateToBookDetailDestination,
+                        openLinovelibWebSearch = navigator::navigateToLinovelibWebSearchDestination
+                    )
+                },
+                onClickDeleteHistory = { exploreSearchViewModel.deleteHistory(it) },
+                onClickClearAllHistory = exploreSearchViewModel::clearAllHistory,
+                onClickBook = navigator::navigateToBookDetailDestination,
+                updateSuggestions = exploreSearchViewModel::updateSuggestions,
+                openLinovelibWebSearch = navigator::navigateToLinovelibWebSearchDestination
+            )
+            exploreSearchViewModel.uiState.linovelibSearchRequest?.let { request ->
+                key(request.id) {
+                    LinovelibSearchLoader(
+                        request = request,
+                        onPageReady = { url, html ->
+                            exploreSearchViewModel.acceptLinovelibSearchPage(request.id, url, html)
+                        },
+                        onCancel = { exploreSearchViewModel.cancelLinovelibSearch(request.id) },
+                        onBookDetected = { bookId ->
+                            if (exploreSearchViewModel.acceptLinovelibSearchBook(request.id, bookId)) {
+                                navigator.navigateToBookDetailDestination(bookId)
+                            }
+                        }
+                    )
+                }
+            }
+        }
     }
     entry<Route.Main.Explore.LinovelibWebSearch> { route ->
         val navigator = LocalNavigator.current

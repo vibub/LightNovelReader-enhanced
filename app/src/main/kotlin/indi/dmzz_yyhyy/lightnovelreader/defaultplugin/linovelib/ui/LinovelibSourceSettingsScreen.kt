@@ -43,7 +43,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
-import java.net.URLEncoder
 
 private class WebViewHolder {
     var webView: WebView? = null
@@ -330,6 +329,7 @@ fun LinovelibWebSearchScreen(
     viewModel: LinovelibWebSearchViewModel = hiltViewModel()
 ) {
     var webView: WebView? by remember { mutableStateOf(null) }
+    var searchSubmitted by remember { mutableStateOf(viewModel.getWebViewState() != null) }
     var canGoBack by remember { mutableStateOf(false) }
     var canGoForward by remember { mutableStateOf(false) }
     val updateNavigationState: (WebView?) -> Unit = { view ->
@@ -346,11 +346,7 @@ fun LinovelibWebSearchScreen(
         )
     }
 
-    val searchUrl = remember(keyword) {
-        keyword.trim().takeIf { it.isNotBlank() }
-            ?.let { LinovelibConstants.searchUrl(URLEncoder.encode(it, Charsets.UTF_8.name())) }
-            ?: LinovelibConstants.MOBILE_BASE_URL
-    }
+    val searchUrl = LinovelibConstants.FILTER_BASE_URL
 
     DisposableEffect(Unit) {
         onDispose {
@@ -404,6 +400,11 @@ fun LinovelibWebSearchScreen(
             onPageFinished = { view, _ ->
                 updateNavigationState(view)
                 viewModel.finishBackNavigation()
+                if (!searchSubmitted) {
+                    view.submitLinovelibSearch(keyword.trim()) { submitted ->
+                        if (submitted) searchSubmitted = true
+                    }
+                }
             }
         )
     }

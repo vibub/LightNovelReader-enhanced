@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import com.github.michaelbull.result.Result
 import androidx.compose.runtime.Stable
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.search.LinovelibWebSearchRequest
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.error.WebRequestError
 import io.nightfish.lightnovelreader.api.util.LocalString
@@ -19,6 +20,8 @@ interface ExploreSearchUiState {
     val isLoading: Boolean
     val isLoadingComplete: Boolean
     val errorMessage: String
+    val linovelibSearchRequest: LinovelibWebSearchRequest?
+    val linovelibSearchKeyword: String?
     val historyList: List<String>
     val suggestions: List<String>
     val searchTypeIdList: List<String>
@@ -38,6 +41,8 @@ class MutableExploreSearchUiState : ExploreSearchUiState {
     override var isLoading: Boolean by mutableStateOf(true)
     override var isLoadingComplete: Boolean by mutableStateOf(false)
     override var errorMessage: String by mutableStateOf("")
+    override var linovelibSearchRequest: LinovelibWebSearchRequest? by mutableStateOf(null)
+    override var linovelibSearchKeyword: String? by mutableStateOf(null)
     override var historyList: List<String> by mutableStateOf(emptyList())
     override var suggestions: List<String> by mutableStateOf(emptyList())
     override var searchTypeIdList = mutableStateListOf<String>()

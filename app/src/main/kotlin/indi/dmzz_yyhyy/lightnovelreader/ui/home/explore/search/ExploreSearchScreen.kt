@@ -31,6 +31,8 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -39,6 +41,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.isTraversalGroup
@@ -74,11 +78,25 @@ fun ExploreSearchScreen(
     onClickDeleteHistory: (String) -> Unit,
     onClickClearAllHistory: () -> Unit,
     onClickBook: (String) -> Unit,
-    updateSuggestions: (keyword: String) -> Unit
+    updateSuggestions: (keyword: String) -> Unit,
+    openLinovelibWebSearch: (keyword: String) -> Unit
 ) {
     var searchKeyword by rememberSaveable { mutableStateOf("") }
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     LifecycleEventEffect(Lifecycle.Event.ON_START) {
         init.invoke()
+    }
+    LaunchedEffect(exploreSearchUiState.linovelibSearchRequest, exploreSearchUiState.isLoadingComplete) {
+        if (exploreSearchUiState.linovelibSearchKeyword != null &&
+            exploreSearchUiState.linovelibSearchRequest == null && exploreSearchUiState.isLoadingComplete
+        ) {
+            // 等待 WebView 移除后的焦点恢复，避免结果被重新展开的搜索建议遮住。
+            withFrameNanos { }
+            focusManager.clearFocus(force = true)
+            exploreSearchUiState.setSearchBarExpandedState(false)
+            keyboardController?.hide()
+        }
     }
     Scaffold(
         topBar = {
@@ -121,12 +139,14 @@ fun ExploreSearchScreen(
                         .semantics { traversalIndex = 0f },
                     inputField = {
                         SearchBarDefaults.InputField(
+                            enabled = exploreSearchUiState.linovelibSearchRequest == null,
                             query = searchKeyword,
                             onQueryChange = {
                                 searchKeyword = it
                                 updateSuggestions(it)
                             },
                             onSearch = {
+                                focusManager.clearFocus()
                                 exploreSearchUiState.setSearchBarExpandedState(false)
                                 onSearch(it)
                             },
@@ -149,6 +169,14 @@ fun ExploreSearchScreen(
                             },
                             trailingIcon = {
                                 Row {
+                                    exploreSearchUiState.linovelibSearchKeyword?.let { keyword ->
+                                        IconButton(onClick = { openLinovelibWebSearch(keyword) }) {
+                                            Icon(
+                                                painter = painterResource(R.drawable.public_24px),
+                                                contentDescription = stringResource(R.string.linovelib_search_open_web)
+                                            )
+                                        }
+                                    }
                                     if (searchKeyword.isNotBlank())
                                         IconButton(onClick = {
                                             exploreSearchUiState.setSearchBarExpandedState(true)
@@ -246,6 +274,7 @@ fun ExploreSearchScreen(
                                             .padding(horizontal = 16.dp)
                                             .clickable {
                                                 searchKeyword = it
+                                                focusManager.clearFocus()
                                                 exploreSearchUiState.setSearchBarExpandedState(false)
                                                 onSearch.invoke(history)
                                             },
@@ -293,6 +322,7 @@ fun ExploreSearchScreen(
                                             .padding(horizontal = 16.dp)
                                             .clickable {
                                                 searchKeyword = it
+                                                focusManager.clearFocus()
                                                 exploreSearchUiState.setSearchBarExpandedState(false)
                                                 onSearch.invoke(history)
                                             },

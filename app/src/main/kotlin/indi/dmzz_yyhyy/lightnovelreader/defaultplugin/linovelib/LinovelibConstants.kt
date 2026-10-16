@@ -1,6 +1,7 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib
 
 import io.nightfish.lightnovelreader.api.identifier.Identifier
+import java.net.URI
 
 object LinovelibConstants {
     /** 桌面端 URL，用于 Jsoup 数据抓取（目录、章节、详情） */
@@ -40,11 +41,19 @@ object LinovelibConstants {
     fun mobileChapterUrl(bookId: String, chapterId: String): String =
         "$MOBILE_BASE_URL/novel/${bookId.normalizeBookId()}/${chapterId.normalizeChapterId()}.html"
     fun loginUrl(): String = MOBILE_BASE_URL
+    // 移动旧域名可能丢弃搜索参数并重定向到首页，直接使用当前搜索站点。
     fun searchUrl(keyword: String = ""): String = if (keyword.isBlank()) {
-        "$MOBILE_BASE_URL/search.html"
+        "$FILTER_BASE_URL/search.html"
     } else {
-        "$MOBILE_BASE_URL/search.html?searchkey=$keyword"
+        "$FILTER_BASE_URL/search.html?searchkey=$keyword"
     }
+    fun isSearchPageUrl(url: String): Boolean = runCatching {
+        val uri = URI(url)
+        uri.scheme == "https" && uri.userInfo == null && uri.port in listOf(-1, 443) &&
+            uri.host in listOf(MOBILE_BASE_URL, FILTER_BASE_URL, BASE_URL).map { URI(it).host } &&
+            uri.path in listOf("/search.html", "/search.php")
+    }.getOrDefault(false)
+
     fun bookcaseUrl(): String = "$MOBILE_BASE_URL/bookcase.php"
 
     fun extractBookIdFromUrl(url: String): String? {
