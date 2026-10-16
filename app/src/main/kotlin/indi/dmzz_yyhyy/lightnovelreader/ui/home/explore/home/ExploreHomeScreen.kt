@@ -2,7 +2,7 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.home
 
 import android.annotation.SuppressLint
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -74,15 +73,12 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.components.EmptyPage
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.Loading
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.ExploreScreen
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.ExploreUiState
-import indi.dmzz_yyhyy.lightnovelreader.utils.bottomBarPadding
 import indi.dmzz_yyhyy.lightnovelreader.utils.bottomBarSpacer
 import indi.dmzz_yyhyy.lightnovelreader.utils.fadingEdge
 import indi.dmzz_yyhyy.lightnovelreader.utils.navigationBarSpacer
 import io.nightfish.lightnovelreader.api.explore.ExploreBooksRow
 import io.nightfish.lightnovelreader.api.explore.ExploreDisplayBook
 import io.nightfish.lightnovelreader.api.web.explore.ExplorePageProvider
-import kotlinx.coroutines.delay
-import kotlin.time.Duration.Companion.milliseconds
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -143,27 +139,6 @@ fun ExploreHomeScreen(
                         changePage = changePage
                     )
 
-                    var showEmptyPage by remember { mutableStateOf(false) }
-
-                    LaunchedEffect(exploreHomeUiState.explorePageBooksRawList) {
-                        if (exploreHomeUiState.explorePageBooksRawList.isEmpty()) {
-                            delay(140.milliseconds)
-                            showEmptyPage = true
-                        } else {
-                            showEmptyPage = false
-                        }
-                    }
-
-                    AnimatedVisibility(
-                        modifier = Modifier
-                            .navigationBarsPadding()
-                            .bottomBarPadding(),
-                        visible = showEmptyPage,
-                        enter = fadeIn(),
-                        exit = fadeOut()
-                    ) {
-                        Loading()
-                    }
                     AnimatedContent(
                         targetState = exploreHomeUiState.explorePageBooksRawList,
                         contentKey = { exploreHomeUiState.selectedPage },
@@ -316,16 +291,24 @@ fun ExplorePage(
             refresh()
         },
     ) {
-        ExploreRowsList(
-            modifier = Modifier
-                .fillMaxWidth()
-                .nestedScroll(nestedScrollConnection),
-            listState = listState,
-            rows = explorePageBooksRawList,
-            titleHeight = titleHeight,
-            onClickExpand = onClickExpand,
-            onClickBook = onClickBook
-        )
+        Crossfade(
+            targetState = explorePageBooksRawList.isEmpty()
+        ) { isEmpty ->
+            if (isEmpty) {
+                Loading()
+            } else {
+                ExploreRowsList(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .nestedScroll(nestedScrollConnection),
+                    listState = listState,
+                    rows = explorePageBooksRawList,
+                    titleHeight = titleHeight,
+                    onClickExpand = onClickExpand,
+                    onClickBook = onClickBook
+                )
+            }
+        }
     }
 }
 
