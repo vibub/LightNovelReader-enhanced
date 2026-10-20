@@ -2,7 +2,11 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.search
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.ui.LinovelibSearchLoader
@@ -22,6 +26,8 @@ fun NavEntryScope.exploreSearchDestination() {
         val navigator = LocalNavigator.current
         val exploreViewModel = activityHiltViewModel<ExploreViewModel>()
         val exploreSearchViewModel = hiltViewModel<ExploreSearchViewModel>()
+        val request = exploreSearchViewModel.uiState.linovelibSearchRequest
+        var showLinovelibSearchBrowser by remember(request?.id) { mutableStateOf(false) }
         Box(Modifier.fillMaxSize()) {
             ExploreSearchScreen(
                 exploreUiState = exploreViewModel.uiState,
@@ -44,12 +50,15 @@ fun NavEntryScope.exploreSearchDestination() {
                 onClickClearAllHistory = exploreSearchViewModel::clearAllHistory,
                 onClickBook = navigator::navigateToBookDetailDestination,
                 updateSuggestions = exploreSearchViewModel::updateSuggestions,
-                openLinovelibWebSearch = navigator::navigateToLinovelibWebSearchDestination
+                openLinovelibWebSearch = navigator::navigateToLinovelibWebSearchDestination,
+                openLinovelibSearchBrowser = { showLinovelibSearchBrowser = true }
             )
-            exploreSearchViewModel.uiState.linovelibSearchRequest?.let { request ->
+            request?.let {
                 key(request.id) {
                     LinovelibSearchLoader(
                         request = request,
+                        showBrowser = showLinovelibSearchBrowser,
+                        onShowBrowser = { showLinovelibSearchBrowser = true },
                         onPageReady = { url, html ->
                             exploreSearchViewModel.acceptLinovelibSearchPage(request.id, url, html)
                         },

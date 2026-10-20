@@ -114,6 +114,7 @@ class ExploreSearchViewModel @Inject constructor(
         if (exploreRepository.currentSourceId == LinovelibConstants.SOURCE_ID) {
             _uiState.linovelibSearchKeyword = trimmedKeyword
             _uiState.linovelibSearchRequest = LinovelibWebSearchRequest(++nextLinovelibRequestId, trimmedKeyword)
+            _uiState.isLoading = false
             saveSearchHistory(trimmedKeyword)
             return
         }

@@ -79,7 +79,8 @@ fun ExploreSearchScreen(
     onClickClearAllHistory: () -> Unit,
     onClickBook: (String) -> Unit,
     updateSuggestions: (keyword: String) -> Unit,
-    openLinovelibWebSearch: (keyword: String) -> Unit
+    openLinovelibWebSearch: (keyword: String) -> Unit,
+    openLinovelibSearchBrowser: () -> Unit
 ) {
     var searchKeyword by rememberSaveable { mutableStateOf("") }
     val focusManager = LocalFocusManager.current
@@ -428,11 +429,21 @@ fun ExploreSearchScreen(
                             enter = fadeIn(),
                             exit = fadeOut()
                         ) {
-                            LinearProgressIndicator(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp, horizontal = 20.dp)
-                            )
+                            Column {
+                                LinearProgressIndicator(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 8.dp, horizontal = 20.dp)
+                                )
+                                if (exploreSearchUiState.linovelibSearchRequest != null) {
+                                    TextButton(
+                                        onClick = openLinovelibSearchBrowser,
+                                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                                    ) {
+                                        Text(stringResource(R.string.linovelib_search_open_web))
+                                    }
+                                }
+                            }
                         }
                     }
                 }
