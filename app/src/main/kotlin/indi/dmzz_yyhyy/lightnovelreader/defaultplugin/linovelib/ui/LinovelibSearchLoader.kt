@@ -61,7 +61,7 @@ fun LinovelibSearchLoader(
     val currentOnPageReady by rememberUpdatedState(onPageReady)
     val currentOnBookDetected by rememberUpdatedState(onBookDetected)
     val lifecycleOwner = LocalLifecycleOwner.current
-    val initialUrl = LinovelibConstants.FILTER_BASE_URL
+    val initialUrl = LinovelibConstants.BASE_URL
     val updateNavigationState: (WebView?) -> Unit = { view ->
         canGoBack = view?.canGoBack() == true
         canGoForward = view?.canGoForward() == true
@@ -108,9 +108,8 @@ fun LinovelibSearchLoader(
                     if (page?.get("blocked")?.jsonPrimitive?.booleanOrNull == true) {
                         showBrowser = true
                     } else if (!searchSubmitted && page?.get("formReady")?.jsonPrimitive?.booleanOrNull == true) {
-                        view.submitLinovelibSearch(request.keyword) { submitted ->
-                            searchSubmitted = submitted
-                            if (!submitted) showBrowser = true
+                        view.submitLinovelibDesktopSearch(request.keyword) { submitted ->
+                            if (submitted) searchSubmitted = true else showBrowser = true
                         }
                     } else {
                         val url = page?.get("url")?.jsonPrimitive?.contentOrNull
@@ -153,6 +152,7 @@ fun LinovelibSearchLoader(
                 LinovelibWebView(
                     modifier = Modifier.fillMaxSize(),
                     initialUrl = initialUrl,
+                    mode = LinovelibWebViewMode.DesktopBrowsing,
                     onWebViewCreated = { webView = it },
                     onUrlChanged = { url ->
                         if (url != lastBookUrl) {
@@ -163,7 +163,7 @@ fun LinovelibSearchLoader(
                     onPageFinished = { view, _ ->
                         updateNavigationState(view)
                         if (!searchSubmitted) {
-                            view.submitLinovelibSearch(request.keyword) { submitted ->
+                            view.submitLinovelibDesktopSearch(request.keyword) { submitted ->
                                 if (submitted) searchSubmitted = true
                             }
                         }
@@ -186,6 +186,43 @@ fun LinovelibSearchLoader(
             }
         }
     }
+}
+
+internal fun WebView.submitLinovelibDesktopSearch(keyword: String, onSubmitted: (Boolean) -> Unit) {
+    if (keyword.isBlank() || !LinovelibConstants.isDesktopPageUrl(url.orEmpty())) {
+        onSubmitted(false)
+        return
+    }
+    // 从电脑端首页读取原有表单，保留站点的提交方式、隐藏字段及事件处理。
+    evaluateJavascript(
+        """
+        (function() {
+            if (location.origin !== ${Json.encodeToString(LinovelibConstants.BASE_URL)}) return false;
+            var searchPath = /^(?:\/search\.(?:html|php)|\/modules\/article\/search\.php|\/S\d+\/?)${'$'}/;
+            var input = document.querySelector('form input[name="searchkey"]');
+            if (!input) {
+                if (!['/', '/index.php', '/index.html'].includes(location.pathname)) return false;
+                var link = Array.from(document.querySelectorAll('a[href]')).find(function(a) {
+                    var target = new URL(a.href, location.href);
+                    return target.origin === location.origin && searchPath.test(target.pathname);
+                });
+                if (link) link.click();
+                return false;
+            }
+            var form = input.form;
+            var action = new URL(form.action, location.href);
+            if (action.origin !== location.origin || !searchPath.test(action.pathname)) return false;
+            if (form.method.toLowerCase() !== 'post' && form.method.toLowerCase() !== 'get') return false;
+            if (form.dataset.lnrSearchSubmitted === 'true') return true;
+            form.dataset.lnrSearchSubmitted = 'true';
+            input.value = ${Json.encodeToString(keyword)};
+            input.dispatchEvent(new Event('input', {bubbles: true}));
+            if (form.requestSubmit) form.requestSubmit();
+            else if (form.dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}))) form.submit();
+            return true;
+        })()
+        """.trimIndent()
+    ) { onSubmitted(it == "true") }
 }
 
 internal fun WebView.submitLinovelibSearch(keyword: String, onSubmitted: (Boolean) -> Unit) {
@@ -232,20 +269,30 @@ private suspend fun WebView.searchPageSnapshot(): String = suspendCancellableCor
     }
 }
 
-private const val SEARCH_PAGE_SNAPSHOT_SCRIPT = """
+private val SEARCH_PAGE_SNAPSHOT_SCRIPT = """
 (function() {
-    if (!document.body) return null;
+    if (!document.body || location.origin !== ${Json.encodeToString(LinovelibConstants.BASE_URL)}) return null;
     var blocked = !!document.querySelector(
         '#challenge-running, #challenge-stage, .cf-turnstile, iframe[src*="challenges.cloudflare.com"]'
     ) || /Just a moment|Attention Required|安全验证|安全驗證/.test(document.title);
     if (blocked) return {url: location.href, blocked: true};
-    if (!/\/search\.(html|php)$/.test(location.pathname)) return null;
     var input = document.querySelector('form input[name="searchkey"]');
-    var formReady = !!input && input.form.method.toLowerCase() === 'post' && document.readyState === 'complete';
+    var formReady = !!input && document.readyState === 'complete';
+    var knownSearchPath = /^(?:\/search\.(?:html|php)|\/modules\/article\/search\.php|\/S\d+\/?|\/search\/[^/]+_\d+\.html)${'$'}/.test(location.pathname);
+    var hasResultSummary = /共\s*(?:搜索|搜尋)\s*到\s*\d+\s*[部本]\s*[与與]\s*[“"'「『].*?[”"'」』]\s*(?:相关|相關)\s*(?:结果|結果)/.test(document.body.innerText || '');
+    if (!knownSearchPath && !hasResultSummary) {
+        return {url: location.href, formReady: formReady, blocked: false};
+    }
     var page = document.documentElement.cloneNode(true);
-    page.querySelectorAll('script, style, form, input, textarea, button, iframe, header, footer, nav').forEach(function(node) {
+    page.querySelectorAll('script, style, form, input, textarea, button, iframe, header, footer, nav, meta[name="lnr-search-keyword"]').forEach(function(node) {
         node.remove();
     });
+    if (input && input.value.trim()) {
+        var keyword = document.createElement('meta');
+        keyword.name = 'lnr-search-keyword';
+        keyword.content = input.value.trim();
+        page.querySelector('head').appendChild(keyword);
+    }
     return {url: location.href, html: page.outerHTML, formReady: formReady, blocked: false};
 })()
 """

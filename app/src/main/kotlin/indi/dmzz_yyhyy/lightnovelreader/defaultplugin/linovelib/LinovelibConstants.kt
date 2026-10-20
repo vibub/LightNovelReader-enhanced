@@ -54,6 +54,21 @@ object LinovelibConstants {
             uri.path in listOf("/search.html", "/search.php")
     }.getOrDefault(false)
 
+    fun isDesktopPageUrl(url: String): Boolean = runCatching {
+        val uri = URI(url)
+        uri.scheme == "https" && uri.userInfo == null && uri.port in listOf(-1, 443) &&
+            uri.host == URI(BASE_URL).host
+    }.getOrDefault(false)
+
+    fun isDesktopSearchPageUrl(url: String): Boolean = runCatching {
+        val path = URI(url).path
+        isDesktopPageUrl(url) && (
+            path in listOf("/search.html", "/search.php", "/modules/article/search.php") ||
+                Regex("/S\\d+/?").matches(path) ||
+                Regex("/search/[^/]+_\\d+\\.html").matches(path)
+            )
+    }.getOrDefault(false)
+
     fun bookcaseUrl(): String = "$MOBILE_BASE_URL/bookcase.php"
 
     fun extractBookIdFromUrl(url: String): String? {

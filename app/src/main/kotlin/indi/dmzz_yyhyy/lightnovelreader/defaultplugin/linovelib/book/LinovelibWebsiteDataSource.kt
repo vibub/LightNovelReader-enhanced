@@ -285,13 +285,21 @@ class LinovelibWebsiteDataSource(
     }
 
     fun parseSearchBooks(document: Document): List<BookInformation> {
-        val elements = document.select(".book-list li, .search-result li, .bookbox, .book-item, .book-layout")
-            .ifEmpty { document.select("a[href~=/novel/\\d+\\.html]").map { it.parent() ?: it } }
+        val elements = document.select(
+            ".search-result-list, .book-ol li, .book-list li, .search-result li, .bookbox, .book-item, .book-layout"
+        ).ifEmpty { document.select("a[href~=/novel/\\d+\\.html]").map { it.parent() ?: it } }
         return elements.mapNotNull { element ->
-            val href = element.selectFirst("a[href~=/novel/\\d+\\.html]")?.attr("href") ?: return@mapNotNull null
-            val bookId = href.extractBookId() ?: return@mapNotNull null
-            val title = (element.selectFirst(".book-title, .book-name, h3, h4")?.text()
-                ?: element.selectFirst("a[href~=/novel/\\d+\\.html]")?.text())?.cleanText().orEmpty()
+            val titleElement = element.selectFirst(".book-title, .book-name, .bookname, .tit, h3, h4")
+            val links = element.select("a[href~=/novel/\\d+\\.html]")
+            val titleLink = titleElement?.selectFirst("a[href~=/novel/\\d+\\.html]")
+            val link = titleLink
+                ?: links.firstOrNull { it.text().isNotBlank() }
+                ?: links.firstOrNull()
+                ?: return@mapNotNull null
+            val bookId = link.attr("href").extractBookId() ?: return@mapNotNull null
+            val title = (titleLink?.text() ?: titleElement?.text() ?: link.text()).cleanText()
+                .ifBlank { link.attr("title").cleanText() }
+                .ifBlank { element.selectFirst("img")?.attr("alt")?.cleanText().orEmpty() }
             if (title.isBlank()) return@mapNotNull null
             val cover = element.selectFirst("img")?.imageUrl().orEmpty()
             BookInformation(
@@ -299,9 +307,11 @@ class LinovelibWebsiteDataSource(
                 title = title,
                 subtitle = "",
                 coverUri = cover.takeIf { it.isNotBlank() }?.toUri() ?: Uri.EMPTY,
-                author = element.selectFirst(".book-author")?.clone()?.apply { select("svg").remove() }
-                    ?.text()?.cleanText() ?: element.textAfterLabel("作者") ?: "",
-                description = element.selectFirst(".book-desc, .desc, .intro, p")?.text()?.cleanDescription() ?: "",
+                author = element.selectFirst(".book-author, .author, .au-name, a[href*=/author/]")
+                    ?.clone()?.apply { select("svg").remove() }?.text()?.cleanText()
+                    ?: element.textAfterLabel("作者") ?: "",
+                description = element.selectFirst(".book-desc, .bookintro, .book-intro, .desc, .intro, .fl p, p")
+                    ?.text()?.cleanDescription() ?: "",
                 tags = element.selectFirst(".tag-small.red")?.text()?.split(" ")?.filter(String::isNotBlank) ?: emptyList(),
                 publishingHouse = element.selectFirst(".tag-small.yellow")?.text().orEmpty(),
                 wordCount = WordCount(0),

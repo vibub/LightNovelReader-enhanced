@@ -5,6 +5,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.webkit.CookieManager
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
@@ -43,6 +44,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
+import indi.dmzz_yyhyy.lightnovelreader.utils.network.UserAgentGenerator
 
 private class WebViewHolder {
     var webView: WebView? = null
@@ -484,6 +486,7 @@ private const val LOGIN_INPUT_CARET_FIX_SCRIPT = """
 
 enum class LinovelibWebViewMode {
     Browsing,
+    DesktopBrowsing,
     Login
 }
 
@@ -513,12 +516,16 @@ fun LinovelibWebView(
             WebView(context).apply {
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
-                if (mode == LinovelibWebViewMode.Browsing) {
+                if (mode != LinovelibWebViewMode.Login) {
                     settings.loadWithOverviewMode = true
                     settings.useWideViewPort = true
-                    settings.userAgentString = settings.userAgentString
-                        .replace("; wv", "")
-                        .replace("Version/4.0 ", "")
+                    settings.userAgentString = if (mode == LinovelibWebViewMode.DesktopBrowsing) {
+                        UserAgentGenerator.generateDesktop()
+                    } else {
+                        settings.userAgentString
+                            .replace("; wv", "")
+                            .replace("Version/4.0 ", "")
+                    }
                 } else {
                     settings.loadWithOverviewMode = false
                     settings.useWideViewPort = false
@@ -533,6 +540,10 @@ fun LinovelibWebView(
                 isFocusableInTouchMode = true
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                 webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
+                        mode == LinovelibWebViewMode.DesktopBrowsing && request.isForMainFrame &&
+                            !LinovelibConstants.isDesktopPageUrl(request.url.toString())
+
                     override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
                         super.doUpdateVisitedHistory(view, url, isReload)
                         currentOnUrlChanged(url)
