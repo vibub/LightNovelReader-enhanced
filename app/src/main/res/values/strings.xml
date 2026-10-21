@@ -817,6 +817,8 @@
     <string name="linovelib_search_load_failed">Web search could not load</string>
     <string name="linovelib_search_blank_page">The site returned a blank page. No automatic refresh was attempted. Retry loading or open the separate mobile web search.</string>
     <string name="linovelib_search_load_error">The page failed to load (code %1$d). No automatic retry was attempted.</string>
+    <string name="linovelib_search_pull_more">Swipe up further to load the next page</string>
+    <string name="linovelib_search_no_more">No more results</string>
     <string name="linovelib_search_open_mobile">Open separate mobile web search</string>
     <string name="linovelib_web_back">Back</string>
     <string name="linovelib_web_forward">Forward</string>

@@ -35,11 +35,13 @@ class LinovelibExplorePageProvider internal constructor(
             }
         ),
         loadFilterDocument = { url ->
+            // 此加载器仅由 ExpandedPage 的进入、筛选、刷新、翻页及手动重试触发。
             jsoup.getDocument(
                 url = url,
                 referer = LinovelibConstants.BASE_URL,
                 retryTime = 0,
-                userAgentMode = LinovelibJsoup.UserAgentMode.Desktop
+                userAgentMode = LinovelibJsoup.UserAgentMode.Desktop,
+                requestIntent = LinovelibJsoup.RequestIntent.UserInitiated
             )
         }
     )

@@ -2,6 +2,7 @@ package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib
 
 import io.nightfish.lightnovelreader.api.identifier.Identifier
 import java.net.URI
+import java.net.URLEncoder
 
 object LinovelibConstants {
     /** 桌面端 URL，用于后台详情、目录、章节、探索、筛选与原生搜索。 */
@@ -24,6 +25,12 @@ object LinovelibConstants {
     const val SYNC_BOOKSHELF_NAME: String = "Linovelib 书架"
 
     // ── 桌面端 URL（Jsoup 数据抓取）──
+    fun desktopSearchUrl(keyword: String, page: Int = 1): String {
+        require(keyword.isNotBlank() && page > 0)
+        val encodedKeyword = URLEncoder.encode(keyword, Charsets.UTF_8.name()).replace("+", "%20")
+        return "$BASE_URL/S6/${encodedKeyword}_$page.html"
+    }
+
     fun detailUrl(bookId: String): String = "$BASE_URL/novel/${bookId.normalizeBookId()}.html"
     fun catalogUrl(bookId: String): String = "$BASE_URL/novel/${bookId.normalizeBookId()}/catalog"
     fun chapterUrl(bookId: String, chapterId: String): String =
@@ -42,16 +49,18 @@ object LinovelibConstants {
         "$MOBILE_BASE_URL/novel/${bookId.normalizeBookId()}/${chapterId.normalizeChapterId()}.html"
     fun loginUrl(): String = MOBILE_BASE_URL
     // 移动旧域名可能丢弃搜索参数并重定向到首页，直接使用当前搜索站点。
-    fun searchUrl(keyword: String = ""): String = if (keyword.isBlank()) {
-        "$FILTER_BASE_URL/search.html"
-    } else {
-        "$FILTER_BASE_URL/search.html?searchkey=$keyword"
+    fun searchUrl(keyword: String = "", page: Int = 1): String {
+        require(page > 0)
+        if (keyword.isBlank()) return "$FILTER_BASE_URL/search.html"
+        val encodedKeyword = URLEncoder.encode(keyword.trim(), Charsets.UTF_8.name()).replace("+", "%20")
+        return "$FILTER_BASE_URL/search/${encodedKeyword}_$page.html"
     }
     fun isSearchPageUrl(url: String): Boolean = runCatching {
         val uri = URI(url)
         uri.scheme == "https" && uri.userInfo == null && uri.port in listOf(-1, 443) &&
             uri.host in listOf(MOBILE_BASE_URL, FILTER_BASE_URL, BASE_URL).map { URI(it).host } &&
-            uri.path in listOf("/search.html", "/search.php")
+            (uri.path in listOf("/search.html", "/search.php") ||
+                Regex("/search/[^/]+_\\d+\\.html").matches(uri.rawPath))
     }.getOrDefault(false)
 
     fun isDesktopPageUrl(url: String): Boolean = runCatching {
@@ -61,10 +70,11 @@ object LinovelibConstants {
     }.getOrDefault(false)
 
     fun isDesktopSearchPageUrl(url: String): Boolean = runCatching {
-        val path = URI(url).path
+        val path = URI(url).rawPath
         isDesktopPageUrl(url) && (
             path in listOf("/search.html", "/search.php", "/modules/article/search.php") ||
                 Regex("/S\\d+/?").matches(path) ||
+                Regex("/S6/[^/]+_\\d+\\.html").matches(path) ||
                 Regex("/search/[^/]+_\\d+\\.html").matches(path)
             )
     }.getOrDefault(false)

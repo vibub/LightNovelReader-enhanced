@@ -38,6 +38,12 @@ class LinovelibJsoup(
         Mobile
     }
 
+    /** 用户主动加载保留正常节流，但不因历史失败冷却拒绝，也不自动失败重试。 */
+    enum class RequestIntent {
+        Background,
+        UserInitiated
+    }
+
     private val desktopUserAgent = UserAgentGenerator.generateDesktop()
     private val mobileUserAgent = UserAgentGenerator.generate()
 
@@ -46,14 +52,16 @@ class LinovelibJsoup(
         referer: String = LinovelibConstants.BASE_URL,
         useCookie: Boolean = true,
         retryTime: Int = 2,
-        userAgentMode: UserAgentMode = UserAgentMode.Desktop
+        userAgentMode: UserAgentMode = UserAgentMode.Desktop,
+        requestIntent: RequestIntent = RequestIntent.Background
     ): Document = fetch(
         url = url,
         referer = referer,
         accept = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         useCookie = useCookie,
         retryTime = retryTime,
-        userAgentMode = userAgentMode
+        userAgentMode = userAgentMode,
+        requestIntent = requestIntent
     ).let { body ->
         Jsoup.parse(body, url).apply {
             outputSettings().prettyPrint(false)
@@ -131,12 +139,16 @@ class LinovelibJsoup(
         userAgentMode: UserAgentMode,
         method: Connection.Method = Connection.Method.GET,
         formData: Map<String, String> = emptyMap(),
-        extraHeaders: Map<String, String> = emptyMap()
+        extraHeaders: Map<String, String> = emptyMap(),
+        requestIntent: RequestIntent = RequestIntent.Background
     ): String = withContext(Dispatchers.IO) {
         if (useCookie) accountStore?.refreshCookie()
+        val userInitiated = requestIntent == RequestIntent.UserInitiated
+        // 用户操作只发起本次请求，失败后由用户决定是否重试，不能借绕过冷却自动重放。
+        val retryCount = if (userInitiated) 0 else retryTime
         var lastError: Throwable? = null
         var delayMillis = 1_500L
-        repeat(retryTime + 1) { attempt ->
+        repeat(retryCount + 1) { attempt ->
             try {
                 val session = Jsoup.newSession()
                     .ignoreContentType(true)
@@ -154,7 +166,7 @@ class LinovelibJsoup(
                         throw LinovelibBlockedException("Linovelib 后台请求只允许电脑端地址，请使用网页浏览打开其他站点")
                     }
                     var redirectUrl: String? = null
-                    val body = LinovelibRateLimiter.run {
+                    val body = LinovelibRateLimiter.run(ignoreFailureCooldown = userInitiated) {
                         val connection = session.newRequest().url(requestUrl).method(method)
                         if (formData.isNotEmpty()) connection.data(formData)
                         val response = connection.execute()
@@ -208,7 +220,7 @@ class LinovelibJsoup(
             } catch (e: Throwable) {
                 throw e
             }
-            if (attempt < retryTime) {
+            if (attempt < retryCount) {
                 val retryDelay = retryDelayMillis(delayMillis)
                 Log.w(TAG, "request failed, retrying in ${retryDelay}ms: $url", lastError)
                 delay(retryDelay.milliseconds)

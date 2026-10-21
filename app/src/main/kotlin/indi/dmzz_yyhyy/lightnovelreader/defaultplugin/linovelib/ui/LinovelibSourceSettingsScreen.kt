@@ -336,7 +336,6 @@ fun LinovelibWebSearchScreen(
     viewModel: LinovelibWebSearchViewModel = hiltViewModel()
 ) {
     var webView: WebView? by remember { mutableStateOf(null) }
-    var searchSubmitted by remember { mutableStateOf(viewModel.getWebViewState() != null) }
     var canGoBack by remember { mutableStateOf(false) }
     var canGoForward by remember { mutableStateOf(false) }
     val updateNavigationState: (WebView?) -> Unit = { view ->
@@ -353,7 +352,7 @@ fun LinovelibWebSearchScreen(
         )
     }
 
-    val searchUrl = LinovelibConstants.FILTER_BASE_URL
+    val searchUrl = LinovelibConstants.searchUrl(keyword.trim())
 
     DisposableEffect(Unit) {
         onDispose {
@@ -407,11 +406,6 @@ fun LinovelibWebSearchScreen(
             onPageFinished = { view, _ ->
                 updateNavigationState(view)
                 viewModel.finishBackNavigation()
-                if (!searchSubmitted) {
-                    view.submitLinovelibSearch(keyword.trim()) { submitted ->
-                        if (submitted) searchSubmitted = true
-                    }
-                }
             }
         )
     }

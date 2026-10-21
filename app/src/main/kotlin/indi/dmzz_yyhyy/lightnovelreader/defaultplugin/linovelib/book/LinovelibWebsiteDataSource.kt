@@ -287,10 +287,12 @@ class LinovelibWebsiteDataSource(
 
     fun parseSearchBooks(document: Document): List<BookInformation> {
         val elements = document.select(
-            ".search-result-list, .book-ol li, .book-list li, .search-result li, .bookbox, .book-item, .book-layout"
-        ).ifEmpty { document.select("a[href~=/novel/\\d+\\.html]").map { it.parent() ?: it } }
+            ".book-img-text li, .book-ol li, .book-ol-normal li, .book-list li, .search-result li, " +
+                ".search-result-list > li, .search-results li, .bookbox, .book-item, .book-layout"
+        ).ifEmpty { document.select(".search-result-list") }
+            .ifEmpty { document.select("a[href~=/novel/\\d+\\.html]").map { it.parent() ?: it } }
         return elements.mapNotNull { element ->
-            val titleElement = element.selectFirst(".book-title, .book-name, .bookname, .tit, h3, h4")
+            val titleElement = element.selectFirst(".book-title, .book-name, .bookname, .tit, h2, h3, h4")
             val links = element.select("a[href~=/novel/\\d+\\.html]")
             val titleLink = titleElement?.selectFirst("a[href~=/novel/\\d+\\.html]")
             val link = titleLink
@@ -303,15 +305,24 @@ class LinovelibWebsiteDataSource(
                 .ifBlank { element.selectFirst("img")?.attr("alt")?.cleanText().orEmpty() }
             if (title.isBlank()) return@mapNotNull null
             val cover = element.selectFirst("img")?.imageUrl().orEmpty()
+            val authorElement = element.selectFirst(".book-author, .au-name, .author .name, a[href*=/author/]")
+                ?: element.selectFirst(".author")
+            val author = authorElement?.clone()?.apply {
+                // 作者可能用内嵌 SVG text 显示，不能把文字和图标一起删掉。
+                select("svg").forEach { svg ->
+                    svg.replaceWith(org.jsoup.nodes.TextNode(svg.select("text").joinToString("") { it.wholeText() }))
+                }
+            }?.text()?.cleanText()?.substringBefore('|')?.substringBefore('｜')?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?: element.textAfterLabel("作者").orEmpty()
             BookInformation(
                 id = bookId,
                 title = title,
                 subtitle = "",
                 coverUri = cover.takeIf { it.isNotBlank() }?.toUri() ?: Uri.EMPTY,
-                author = element.selectFirst(".book-author, .author, .au-name, a[href*=/author/]")
-                    ?.clone()?.apply { select("svg").remove() }?.text()?.cleanText()
-                    ?: element.textAfterLabel("作者") ?: "",
-                description = element.selectFirst(".book-desc, .bookintro, .book-intro, .desc, .intro, .fl p, p")
+                author = author,
+                description = (element.selectFirst(".book-desc, .bookintro, .book-intro, .desc, .intro, .fl p")
+                    ?: element.selectFirst("p:not(.author):not(.book-author)"))
                     ?.text()?.cleanDescription() ?: "",
                 tags = element.selectFirst(".tag-small.red")?.text()?.split(" ")?.filter(String::isNotBlank) ?: emptyList(),
                 publishingHouse = element.selectFirst(".tag-small.yellow")?.text().orEmpty(),

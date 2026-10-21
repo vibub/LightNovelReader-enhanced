@@ -62,9 +62,7 @@ fun LinovelibSearchLoader(
     var canGoBack by remember { mutableStateOf(false) }
     var canGoForward by remember { mutableStateOf(false) }
     var lastBookUrl by remember { mutableStateOf<String?>(null) }
-    var searchSubmitted by remember { mutableStateOf(false) }
     var searchAttempt by remember { mutableStateOf(0) }
-    var submissionInProgress by remember { mutableStateOf(false) }
     var pageLoading by remember { mutableStateOf(true) }
     var pageError by remember { mutableStateOf<String?>(null) }
     var httpError by remember { mutableStateOf<String?>(null) }
@@ -75,7 +73,7 @@ fun LinovelibSearchLoader(
     val currentOnSearchStateChanged by rememberUpdatedState(onSearchStateChanged)
     val currentOnBookDetected by rememberUpdatedState(onBookDetected)
     val lifecycleOwner = LocalLifecycleOwner.current
-    val initialUrl = LinovelibConstants.BASE_URL
+    val initialUrl = LinovelibConstants.desktopSearchUrl(request.keyword, request.page)
     val updateNavigationState: (WebView?) -> Unit = { view ->
         canGoBack = view?.canGoBack() == true
         canGoForward = view?.canGoForward() == true
@@ -91,25 +89,12 @@ fun LinovelibSearchLoader(
             webView?.let { view ->
                 pageError = null
                 httpError = null
-                searchSubmitted = false
                 searchAttempt++
-                submissionInProgress = false
                 verificationPaused = false
                 pageLoading = true
                 view.stopLoading()
-                // 从首页重新走站内表单，不能 reload 空白文档或重放上一次 POST。
+                // 每次用户操作只加载当前结果页，不经过首页表单，也不重放 POST。
                 view.loadUrl(initialUrl)
-            }
-        }
-    }
-    val submitSearch: (WebView) -> Unit = { view ->
-        if (!searchSubmitted && !submissionInProgress && !verificationPaused &&
-            pageError == null && httpError == null
-        ) {
-            submissionInProgress = true
-            view.submitLinovelibDesktopSearch(request.keyword) { submitted ->
-                submissionInProgress = false
-                if (submitted) searchSubmitted = true
             }
         }
     }
@@ -201,9 +186,6 @@ fun LinovelibSearchLoader(
                         val url = page?.get("url")?.jsonPrimitive?.contentOrNull
                         val html = page?.get("html")?.jsonPrimitive?.contentOrNull
                         if (!pageLoading && url != null && html != null && currentOnPageReady(url, html)) return@repeatOnLifecycle
-                        if (!pageLoading && !searchSubmitted && page?.get("formReady")?.jsonPrimitive?.booleanOrNull == true) {
-                            submitSearch(view)
-                        }
                     }
                 }
                 delay(1_000)
@@ -299,81 +281,6 @@ fun LinovelibSearchLoader(
     }
 }
 
-internal fun WebView.submitLinovelibDesktopSearch(keyword: String, onSubmitted: (Boolean) -> Unit) {
-    if (keyword.isBlank() || !LinovelibConstants.isDesktopPageUrl(url.orEmpty())) {
-        onSubmitted(false)
-        return
-    }
-    // 从电脑端首页读取原有表单，保留站点的提交方式、隐藏字段及事件处理。
-    evaluateJavascript(
-        """
-        (function() {
-            if (location.origin !== ${Json.encodeToString(LinovelibConstants.BASE_URL)}) return false;
-            var searchPath = /^(?:\/search\.(?:html|php)|\/modules\/article\/search\.php|\/S\d+\/?)${'$'}/;
-            var input = document.querySelector('form input[name="searchkey"]');
-            if (!input) {
-                if (!['/', '/index.php', '/index.html'].includes(location.pathname)) return false;
-                var link = Array.from(document.querySelectorAll('a[href]')).find(function(a) {
-                    var target = new URL(a.href, location.href);
-                    return target.origin === location.origin && searchPath.test(target.pathname);
-                });
-                if (link) link.click();
-                return false;
-            }
-            var form = input.form;
-            var action = new URL(form.action, location.href);
-            if (action.origin !== location.origin || !searchPath.test(action.pathname)) return false;
-            if (form.method.toLowerCase() !== 'post' && form.method.toLowerCase() !== 'get') return false;
-            if (form.dataset.lnrSearchSubmitted === 'true') return true;
-            form.dataset.lnrSearchSubmitted = 'true';
-            input.value = ${Json.encodeToString(keyword)};
-            input.dispatchEvent(new Event('input', {bubbles: true}));
-            if (form.requestSubmit) form.requestSubmit();
-            else if (form.dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}))) form.submit();
-            return true;
-        })()
-        """.trimIndent()
-    ) { onSubmitted(it == "true") }
-}
-
-internal fun WebView.submitLinovelibSearch(keyword: String, onSubmitted: (Boolean) -> Unit) {
-    // 先走站内入口，避免缺少首页会话初始化时搜索页返回空白内容。
-    if (url?.substringBefore('?')?.substringBefore('#')?.trimEnd('/') == LinovelibConstants.FILTER_BASE_URL) {
-        evaluateJavascript(
-            """
-            (function() {
-                var link = document.querySelector('a.search-guide');
-                if (link && new URL(link.href).origin === location.origin) link.click();
-            })()
-            """.trimIndent(),
-            null
-        )
-        onSubmitted(false)
-        return
-    }
-    if (keyword.isBlank() || !LinovelibConstants.isSearchPageUrl(url.orEmpty())) {
-        onSubmitted(false)
-        return
-    }
-    evaluateJavascript(
-        """
-        (function() {
-            var input = document.querySelector('form input[name="searchkey"]');
-            if (!input || input.form.method.toLowerCase() !== 'post') return false;
-            var form = input.form;
-            if (new URL(form.action, location.href).origin !== location.origin) return false;
-            if (form.dataset.lnrSearchSubmitted === 'true') return true;
-            form.dataset.lnrSearchSubmitted = 'true';
-            input.value = ${Json.encodeToString(keyword)};
-            input.dispatchEvent(new Event('input', {bubbles: true}));
-            if (form.requestSubmit) form.requestSubmit();
-            else if (form.dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}))) form.submit();
-            return true;
-        })()
-        """.trimIndent()
-    ) { onSubmitted(it == "true") }
-}
-
 private suspend fun WebView.searchPageSnapshot(): String = suspendCancellableCoroutine { continuation ->
     evaluateJavascript(SEARCH_PAGE_SNAPSHOT_SCRIPT) { value ->
         if (continuation.isActive) continuation.resume(value)
@@ -391,23 +298,12 @@ private val SEARCH_PAGE_SNAPSHOT_SCRIPT = """
         !document.body.innerText.trim() && !document.querySelector('form, img, svg, canvas, iframe, video')) {
         return {url: location.href, blank: true};
     }
-    var input = document.querySelector('form input[name="searchkey"]');
-    var formReady = !!input && document.readyState === 'complete';
-    var knownSearchPath = /^(?:\/search\.(?:html|php)|\/modules\/article\/search\.php|\/S\d+\/?|\/search\/[^/]+_\d+\.html)${'$'}/.test(location.pathname);
-    var hasResultSummary = /共\s*(?:搜索|搜尋)\s*到\s*\d+\s*[部本]\s*[与與]\s*[“"'「『].*?[”"'」』]\s*(?:相关|相關)\s*(?:结果|結果)/.test(document.body.innerText || '');
-    if (!knownSearchPath && !hasResultSummary) {
-        return {url: location.href, formReady: formReady, blocked: false};
-    }
+    var knownSearchPath = /^\/S6\/[^/]+_\d+\.html${'$'}/.test(location.pathname);
+    if (!knownSearchPath) return null;
     var page = document.documentElement.cloneNode(true);
     page.querySelectorAll('script, style, form, input, textarea, button, iframe, header, footer, nav, meta[name="lnr-search-keyword"]').forEach(function(node) {
         node.remove();
     });
-    if (input && input.value.trim()) {
-        var keyword = document.createElement('meta');
-        keyword.name = 'lnr-search-keyword';
-        keyword.content = input.value.trim();
-        page.querySelector('head').appendChild(keyword);
-    }
-    return {url: location.href, html: page.outerHTML, formReady: formReady, blocked: false};
+    return {url: location.href, html: page.outerHTML, blocked: false};
 })()
 """

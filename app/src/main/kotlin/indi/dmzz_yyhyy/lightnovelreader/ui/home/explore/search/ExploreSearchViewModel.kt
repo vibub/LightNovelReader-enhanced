@@ -34,6 +34,7 @@ class ExploreSearchViewModel @Inject constructor(
     private var searchTypeTipMap = mutableMapOf<String, LocalString>()
     private var searchJob: Job? = null
     private var nextLinovelibRequestId = 0L
+    private var lastLinovelibSearchPage = 0
     private var initialized = false
     val uiState: ExploreSearchUiState = _uiState
 
@@ -102,6 +103,10 @@ class ExploreSearchViewModel @Inject constructor(
         searchJob?.cancel()
         _uiState.linovelibSearchRequest = null
         _uiState.linovelibSearchKeyword = null
+        _uiState.linovelibSearchTotalCount = null
+        _uiState.linovelibSearchHasNextPage = false
+        _uiState.linovelibSearchLoadMoreError = ""
+        lastLinovelibSearchPage = 0
         _uiState.isLoading = true
         _uiState.isLoadingComplete = false
         _uiState.errorMessage = ""
@@ -160,19 +165,36 @@ class ExploreSearchViewModel @Inject constructor(
         saveSearchHistory(keyword)
     }
 
+    fun loadMoreLinovelibSearchResults() {
+        val keyword = _uiState.linovelibSearchKeyword ?: return
+        if (exploreRepository.currentSourceId != LinovelibConstants.SOURCE_ID) return
+        val pending = _uiState.linovelibSearchRequest
+        if (pending != null && (pending.page == 1 || _uiState.linovelibSearchLoadMoreError.isEmpty())) return
+        if (!_uiState.linovelibSearchHasNextPage) return
+        val page = pending?.page ?: (lastLinovelibSearchPage + 1)
+        _uiState.linovelibSearchLoadMoreError = ""
+        _uiState.isLoadingComplete = false
+        _uiState.linovelibSearchRequest = LinovelibWebSearchRequest(++nextLinovelibRequestId, keyword, page)
+    }
+
     suspend fun acceptLinovelibSearchPage(requestId: Long, url: String, html: String): Boolean {
         val request = _uiState.linovelibSearchRequest?.takeIf { it.id == requestId } ?: return false
         if (exploreRepository.currentSourceId != LinovelibConstants.SOURCE_ID) return false
         val provider = exploreRepository.searchProvider as? LinovelibSearchProvider ?: return false
-        val books = withContext(Dispatchers.Default) {
+        val result = withContext(Dispatchers.Default) {
             provider.parseWebSearchPage(request, url, html)
         } ?: return false
         if (_uiState.linovelibSearchRequest != request ||
             exploreRepository.currentSourceId != LinovelibConstants.SOURCE_ID
         ) return false
-        // 直接使用网页摘要，避免每个搜索卡片再请求一次详情，也不覆盖完整详情缓存。
-        _uiState.searchResult.clear()
+        // 翻页只追加结果页摘要，不请求详情；重复末页不能继续触发下一页。
+        val knownIds = _uiState.searchResult.mapTo(mutableSetOf()) { it.first }
+        val books = if (result.page == request.page) result.books.filter { knownIds.add(it.id) } else emptyList()
         books.forEach { book -> _uiState.searchResult.add(book.id to flowOf(Ok(book))) }
+        lastLinovelibSearchPage = request.page
+        _uiState.linovelibSearchTotalCount = result.totalCount ?: _uiState.linovelibSearchTotalCount
+        _uiState.linovelibSearchHasNextPage = result.hasNextPage && books.isNotEmpty()
+        _uiState.linovelibSearchLoadMoreError = ""
         _uiState.searchBarExpanded = false
         _uiState.isLoading = false
         _uiState.isLoadingComplete = true
@@ -184,17 +206,25 @@ class ExploreSearchViewModel @Inject constructor(
         if (_uiState.linovelibSearchRequest?.id != requestId ||
             exploreRepository.currentSourceId != LinovelibConstants.SOURCE_ID
         ) return
-        _uiState.errorMessage = errorMessage.orEmpty()
+        if (_uiState.linovelibSearchRequest?.page == 1) {
+            _uiState.errorMessage = errorMessage.orEmpty()
+        } else {
+            _uiState.linovelibSearchLoadMoreError = errorMessage.orEmpty()
+        }
         _uiState.isLoadingComplete = errorMessage != null
         if (errorMessage != null) _uiState.searchBarExpanded = false
     }
 
     fun cancelLinovelibSearch(requestId: Long) {
-        if (_uiState.linovelibSearchRequest?.id != requestId) return
+        val request = _uiState.linovelibSearchRequest?.takeIf { it.id == requestId } ?: return
         _uiState.linovelibSearchRequest = null
         _uiState.isLoading = false
         _uiState.isLoadingComplete = true
-        _uiState.errorMessage = "已取消搜索，可重新搜索或使用网页搜索。"
+        if (request.page == 1) {
+            _uiState.errorMessage = "已取消搜索，可重新搜索或使用网页搜索。"
+        } else {
+            _uiState.linovelibSearchLoadMoreError = "已取消加载，可手动重试。"
+        }
     }
 
     fun acceptLinovelibSearchBook(requestId: Long, bookId: String): Boolean {

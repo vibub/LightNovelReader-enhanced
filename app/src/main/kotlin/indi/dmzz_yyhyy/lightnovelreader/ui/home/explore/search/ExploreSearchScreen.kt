@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
@@ -35,10 +36,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -50,6 +57,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -80,21 +88,60 @@ fun ExploreSearchScreen(
     onClickBook: (String) -> Unit,
     updateSuggestions: (keyword: String) -> Unit,
     openLinovelibWebSearch: (keyword: String) -> Unit,
-    openLinovelibSearchBrowser: () -> Unit
+    openLinovelibSearchBrowser: () -> Unit,
+    loadMoreLinovelibSearchResults: () -> Unit
 ) {
     var searchKeyword by rememberSaveable { mutableStateOf("") }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val resultListState = rememberLazyListState()
+    val currentLoadMore by rememberUpdatedState(loadMoreLinovelibSearchResults)
+    val pullThreshold = with(LocalDensity.current) { 48.dp.toPx() }
+    val loadMoreConnection = remember(resultListState, exploreSearchUiState, pullThreshold) {
+        var pullDistance = 0f
+        var requestedForGesture = false
+        object : NestedScrollConnection {
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (source != NestedScrollSource.UserInput || requestedForGesture) return Offset.Zero
+                if (available.y < 0 && !resultListState.canScrollForward &&
+                    exploreSearchUiState.searchResult.isNotEmpty() &&
+                    exploreSearchUiState.linovelibSearchHasNextPage &&
+                    exploreSearchUiState.linovelibSearchRequest == null &&
+                    exploreSearchUiState.linovelibSearchLoadMoreError.isEmpty()
+                ) {
+                    pullDistance -= available.y
+                    if (pullDistance >= pullThreshold) {
+                        requestedForGesture = true
+                        currentLoadMore()
+                    }
+                } else {
+                    pullDistance = 0f
+                }
+                return Offset.Zero
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                pullDistance = 0f
+                requestedForGesture = false
+                return Velocity.Zero
+            }
+        }
+    }
+    LaunchedEffect(exploreSearchUiState.linovelibSearchKeyword) {
+        resultListState.scrollToItem(0)
+    }
     LifecycleEventEffect(Lifecycle.Event.ON_START) {
         init.invoke()
     }
     LaunchedEffect(
         exploreSearchUiState.linovelibSearchRequest,
         exploreSearchUiState.isLoadingComplete,
-        exploreSearchUiState.errorMessage
+        exploreSearchUiState.errorMessage,
+        exploreSearchUiState.linovelibSearchLoadMoreError
     ) {
         if (exploreSearchUiState.linovelibSearchKeyword != null && exploreSearchUiState.isLoadingComplete &&
-            (exploreSearchUiState.linovelibSearchRequest == null || exploreSearchUiState.errorMessage.isNotEmpty())
+            (exploreSearchUiState.linovelibSearchRequest == null || exploreSearchUiState.errorMessage.isNotEmpty() ||
+                exploreSearchUiState.linovelibSearchLoadMoreError.isNotEmpty())
         ) {
             // 等待 WebView 移除或隐藏后的焦点恢复，避免结果和错误被搜索建议遮住。
             withFrameNanos { }
@@ -145,7 +192,8 @@ fun ExploreSearchScreen(
                     inputField = {
                         SearchBarDefaults.InputField(
                             enabled = exploreSearchUiState.linovelibSearchRequest == null ||
-                                exploreSearchUiState.errorMessage.isNotEmpty(),
+                                exploreSearchUiState.errorMessage.isNotEmpty() ||
+                                exploreSearchUiState.linovelibSearchLoadMoreError.isNotEmpty(),
                             query = searchKeyword,
                             onQueryChange = {
                                 searchKeyword = it
@@ -405,7 +453,10 @@ fun ExploreSearchScreen(
                 val titleHeight = with(density) {
                     (lineHeight * 2.2f).toDp()
                 }
-                LazyColumn {
+                LazyColumn(
+                    state = resultListState,
+                    modifier = Modifier.nestedScroll(loadMoreConnection)
+                ) {
                     stickyHeader {
                         Box(
                             modifier = Modifier
@@ -417,9 +468,10 @@ fun ExploreSearchScreen(
                                 modifier = Modifier.padding(vertical = 12.dp, horizontal = 20.dp),
                                 text = stringResource(
                                     R.string.search_results_title,
-                                    searchKeyword,
+                                    exploreSearchUiState.linovelibSearchKeyword ?: searchKeyword,
                                     exploreSearchUiState.searchResult.size,
-                                    if (exploreSearchUiState.isLoadingComplete) "" else "..."
+                                    exploreSearchUiState.linovelibSearchTotalCount?.let { "/$it" }
+                                        ?: if (exploreSearchUiState.isLoadingComplete) "" else "..."
                                 ),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.W600,
@@ -465,6 +517,32 @@ fun ExploreSearchScreen(
                                     }
                                 }
                             }
+                        }
+                        if (exploreSearchUiState.linovelibSearchLoadMoreError.isNotEmpty()) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = exploreSearchUiState.linovelibSearchLoadMoreError,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                TextButton(onClick = loadMoreLinovelibSearchResults) {
+                                    Text(stringResource(R.string.retry))
+                                }
+                            }
+                        } else if (exploreSearchUiState.linovelibSearchKeyword != null &&
+                            exploreSearchUiState.isLoadingComplete && exploreSearchUiState.searchResult.isNotEmpty()
+                        ) {
+                            Text(
+                                text = stringResource(
+                                    if (exploreSearchUiState.linovelibSearchHasNextPage) R.string.linovelib_search_pull_more
+                                    else R.string.linovelib_search_no_more
+                                ),
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
                         }
                     }
                 }

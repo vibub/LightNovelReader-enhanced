@@ -689,6 +689,8 @@
     <string name="linovelib_search_load_failed">網頁搜尋載入失敗</string>
     <string name="linovelib_search_blank_page">站點傳回了空白頁面，未自動重新整理。可重試載入，或開啟獨立的行動版網頁搜尋。</string>
     <string name="linovelib_search_load_error">網頁載入失敗（錯誤碼 %1$d），未自動重試。</string>
+    <string name="linovelib_search_pull_more">繼續上滑載入下一頁</string>
+    <string name="linovelib_search_no_more">沒有更多結果</string>
     <string name="linovelib_search_open_mobile">開啟獨立網頁搜尋（行動版）</string>
     <string name="linovelib_web_back">返回</string>
     <string name="linovelib_web_forward">前進</string>

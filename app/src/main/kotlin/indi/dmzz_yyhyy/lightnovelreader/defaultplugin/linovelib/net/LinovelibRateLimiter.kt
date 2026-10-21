@@ -27,10 +27,16 @@ internal object LinovelibRateLimiter {
     private var requestIntervalMillis = INITIAL_REQUEST_INTERVAL_MILLIS
     private var successStreak = 0
 
-    suspend fun <T> run(block: suspend () -> T): T {
-        synchronized(lock) { throwIfCoolingDown(System.currentTimeMillis()) }
+    /** 用户操作仅跳过失败冷却拒绝，不清除共享暂停，也不绕过并发和请求间隔。 */
+    suspend fun <T> run(
+        ignoreFailureCooldown: Boolean = false,
+        block: suspend () -> T
+    ): T {
+        if (!ignoreFailureCooldown) {
+            synchronized(lock) { throwIfCoolingDown(System.currentTimeMillis()) }
+        }
         return semaphore.withPermit {
-            waitForTurn()
+            waitForTurn(ignoreFailureCooldown)
             try {
                 block().also { recordSuccess() }
             } catch (throwable: Throwable) {
@@ -115,11 +121,11 @@ internal object LinovelibRateLimiter {
         throw LinovelibHttpException(429, message, remainingMillis)
     }
 
-    private suspend fun waitForTurn() {
+    private suspend fun waitForTurn(ignoreFailureCooldown: Boolean) {
         while (true) {
             val waitMillis = synchronized(lock) {
                 val now = System.currentTimeMillis()
-                throwIfCoolingDown(now)
+                if (!ignoreFailureCooldown) throwIfCoolingDown(now)
                 val wait = (nextRequestAllowedAt - now).coerceAtLeast(0L)
                 if (wait == 0L) {
                     nextRequestAllowedAt = now + requestIntervalMillis +

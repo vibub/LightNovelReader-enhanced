@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.ui.LinovelibSearchLoader
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.ui.LinovelibWebBookScreen
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.ui.LinovelibWebSearchScreen
@@ -17,6 +18,7 @@ import indi.dmzz_yyhyy.lightnovelreader.ui.navigation.Navigator
 import indi.dmzz_yyhyy.lightnovelreader.ui.navigation.NavEntryScope
 import indi.dmzz_yyhyy.lightnovelreader.ui.book.detail.navigateToBookDetailDestination
 import indi.dmzz_yyhyy.lightnovelreader.ui.dialog.navigateToAddBookToBookshelfDialog
+import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.ExploreUiState
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.ExploreViewModel
 import indi.dmzz_yyhyy.lightnovelreader.utils.activityHiltViewModel
 import io.nightfish.lightnovelreader.api.Route
@@ -26,26 +28,42 @@ fun NavEntryScope.exploreSearchDestination() {
         val navigator = LocalNavigator.current
         val exploreViewModel = activityHiltViewModel<ExploreViewModel>()
         val exploreSearchViewModel = hiltViewModel<ExploreSearchViewModel>()
+        val exploreUiState = exploreViewModel.uiState
+        val isLinovelib = exploreUiState.sourceId == LinovelibConstants.SOURCE_ID
+        val searchExploreUiState = remember(exploreUiState, isLinovelib) {
+            if (isLinovelib) {
+                // 搜索由当前结果页决定成败，不能被后台首页探测的离线状态遮住。
+                object : ExploreUiState by exploreUiState {
+                    override val isOffLine: Boolean = false
+                }
+            } else {
+                exploreUiState
+            }
+        }
         val request = exploreSearchViewModel.uiState.linovelibSearchRequest
+        val search: (String) -> Unit = { keyword ->
+            exploreSearchViewModel.search(
+                keyword = keyword,
+                navigateToSingleBook = navigator::navigateToBookDetailDestination,
+                openLinovelibWebSearch = navigator::navigateToLinovelibWebSearchDestination
+            )
+        }
         var showLinovelibSearchBrowser by remember(request?.id) { mutableStateOf(false) }
         Box(Modifier.fillMaxSize()) {
             ExploreSearchScreen(
-                exploreUiState = exploreViewModel.uiState,
+                exploreUiState = searchExploreUiState,
                 exploreSearchUiState = exploreSearchViewModel.uiState,
-                refresh = exploreViewModel::refresh,
+                refresh = {
+                    val keyword = exploreSearchViewModel.uiState.linovelibSearchKeyword
+                    if (isLinovelib && keyword != null) search(keyword) else exploreViewModel.refresh()
+                },
                 requestAddBookToBookshelf = {
                     navigator.navigateToAddBookToBookshelfDialog(it)
                 },
                 onClickBack = { navigator.popBackStack() },
                 init = exploreSearchViewModel::init,
                 onChangeSearchType = { exploreSearchViewModel.changeSearchType(it) },
-                onSearch = {
-                    exploreSearchViewModel.search(
-                        keyword = it,
-                        navigateToSingleBook = navigator::navigateToBookDetailDestination,
-                        openLinovelibWebSearch = navigator::navigateToLinovelibWebSearchDestination
-                    )
-                },
+                onSearch = search,
                 onClickDeleteHistory = { exploreSearchViewModel.deleteHistory(it) },
                 onClickClearAllHistory = exploreSearchViewModel::clearAllHistory,
                 onClickBook = navigator::navigateToBookDetailDestination,
@@ -54,7 +72,8 @@ fun NavEntryScope.exploreSearchDestination() {
                     request?.let { exploreSearchViewModel.cancelLinovelibSearch(it.id) }
                     navigator.navigateToLinovelibWebSearchDestination(keyword)
                 },
-                openLinovelibSearchBrowser = { showLinovelibSearchBrowser = true }
+                openLinovelibSearchBrowser = { showLinovelibSearchBrowser = true },
+                loadMoreLinovelibSearchResults = exploreSearchViewModel::loadMoreLinovelibSearchResults
             )
             request?.let {
                 key(request.id) {

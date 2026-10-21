@@ -22,6 +22,9 @@ interface ExploreSearchUiState {
     val errorMessage: String
     val linovelibSearchRequest: LinovelibWebSearchRequest?
     val linovelibSearchKeyword: String?
+    val linovelibSearchTotalCount: Int?
+    val linovelibSearchHasNextPage: Boolean
+    val linovelibSearchLoadMoreError: String
     val historyList: List<String>
     val suggestions: List<String>
     val searchTypeIdList: List<String>
@@ -43,6 +46,9 @@ class MutableExploreSearchUiState : ExploreSearchUiState {
     override var errorMessage: String by mutableStateOf("")
     override var linovelibSearchRequest: LinovelibWebSearchRequest? by mutableStateOf(null)
     override var linovelibSearchKeyword: String? by mutableStateOf(null)
+    override var linovelibSearchTotalCount: Int? by mutableStateOf(null)
+    override var linovelibSearchHasNextPage: Boolean by mutableStateOf(false)
+    override var linovelibSearchLoadMoreError: String by mutableStateOf("")
     override var historyList: List<String> by mutableStateOf(emptyList())
     override var suggestions: List<String> by mutableStateOf(emptyList())
     override var searchTypeIdList = mutableStateListOf<String>()
