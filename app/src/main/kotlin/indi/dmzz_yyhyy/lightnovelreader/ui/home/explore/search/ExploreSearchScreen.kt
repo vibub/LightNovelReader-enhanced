@@ -88,11 +88,15 @@ fun ExploreSearchScreen(
     LifecycleEventEffect(Lifecycle.Event.ON_START) {
         init.invoke()
     }
-    LaunchedEffect(exploreSearchUiState.linovelibSearchRequest, exploreSearchUiState.isLoadingComplete) {
-        if (exploreSearchUiState.linovelibSearchKeyword != null &&
-            exploreSearchUiState.linovelibSearchRequest == null && exploreSearchUiState.isLoadingComplete
+    LaunchedEffect(
+        exploreSearchUiState.linovelibSearchRequest,
+        exploreSearchUiState.isLoadingComplete,
+        exploreSearchUiState.errorMessage
+    ) {
+        if (exploreSearchUiState.linovelibSearchKeyword != null && exploreSearchUiState.isLoadingComplete &&
+            (exploreSearchUiState.linovelibSearchRequest == null || exploreSearchUiState.errorMessage.isNotEmpty())
         ) {
-            // 等待 WebView 移除后的焦点恢复，避免结果被重新展开的搜索建议遮住。
+            // 等待 WebView 移除或隐藏后的焦点恢复，避免结果和错误被搜索建议遮住。
             withFrameNanos { }
             focusManager.clearFocus(force = true)
             exploreSearchUiState.setSearchBarExpandedState(false)
@@ -140,7 +144,8 @@ fun ExploreSearchScreen(
                         .semantics { traversalIndex = 0f },
                     inputField = {
                         SearchBarDefaults.InputField(
-                            enabled = exploreSearchUiState.linovelibSearchRequest == null,
+                            enabled = exploreSearchUiState.linovelibSearchRequest == null ||
+                                exploreSearchUiState.errorMessage.isNotEmpty(),
                             query = searchKeyword,
                             onQueryChange = {
                                 searchKeyword = it
@@ -360,8 +365,32 @@ fun ExploreSearchScreen(
                 EmptyPage(
                     icon = painterResource(R.drawable.error_24px),
                     title = "搜索出现了错误",
-                    description = exploreSearchUiState.errorMessage
-                )
+                    description = if (exploreSearchUiState.linovelibSearchRequest != null &&
+                        exploreSearchUiState.linovelibSearchCooldownMillis > 0
+                    ) {
+                        stringResource(
+                            R.string.linovelib_search_cooldown,
+                            exploreSearchUiState.linovelibSearchCooldownMillis / 1_000 + 1
+                        )
+                    } else exploreSearchUiState.errorMessage
+                ) {
+                    exploreSearchUiState.linovelibSearchRequest?.let { request ->
+                        TextButton(
+                            enabled = exploreSearchUiState.linovelibSearchCooldownMillis == 0L,
+                            onClick = {
+                                searchKeyword = request.keyword
+                                focusManager.clearFocus()
+                                exploreSearchUiState.setSearchBarExpandedState(false)
+                                onSearch(request.keyword)
+                            }
+                        ) {
+                            Text(stringResource(R.string.retry))
+                        }
+                        TextButton(onClick = { openLinovelibWebSearch(request.keyword) }) {
+                            Text(stringResource(R.string.linovelib_search_open_mobile))
+                        }
+                    }
+                }
             }
             AnimatedVisibility(
                 visible = exploreSearchUiState.isLoadingComplete && exploreSearchUiState.searchResult.isEmpty() && exploreSearchUiState.errorMessage.isEmpty(),

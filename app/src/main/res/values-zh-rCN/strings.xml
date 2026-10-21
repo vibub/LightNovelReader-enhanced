@@ -779,6 +779,7 @@
     <string name="linovelib_search_load_failed">网页搜索加载失败</string>
     <string name="linovelib_search_blank_page">站点返回了空白页面，未自动刷新。可重试加载，或打开独立的移动端网页搜索。</string>
     <string name="linovelib_search_load_error">网页加载失败（错误码 %1$d），未自动重试。</string>
+    <string name="linovelib_search_paused">搜索已暂停，站点请求恢复后可手动重试。</string>
     <string name="linovelib_search_cooldown">站点请求已暂停，请至少等待 %1$d 秒后再重试。</string>
     <string name="linovelib_search_open_mobile">打开独立网页搜索（移动端）</string>
     <string name="linovelib_web_back">后退</string>

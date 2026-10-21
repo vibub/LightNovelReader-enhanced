@@ -12,9 +12,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -27,7 +25,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -39,7 +36,6 @@ import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstan
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibJsoup
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibRateLimiter
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.search.LinovelibWebSearchRequest
-import indi.dmzz_yyhyy.lightnovelreader.ui.components.EmptyPage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
@@ -59,7 +55,7 @@ fun LinovelibSearchLoader(
     onShowBrowser: () -> Unit,
     onPageReady: suspend (url: String, html: String) -> Boolean,
     onCancel: () -> Unit,
-    onOpenMobileSearch: () -> Unit,
+    onSearchStateChanged: (errorMessage: String?, cooldownMillis: Long) -> Unit,
     onBookDetected: (String) -> Unit
 ) {
     var webView: WebView? by remember { mutableStateOf(null) }
@@ -77,6 +73,7 @@ fun LinovelibSearchLoader(
     val context = LocalContext.current
     val currentOnPageReady by rememberUpdatedState(onPageReady)
     val currentOnShowBrowser by rememberUpdatedState(onShowBrowser)
+    val currentOnSearchStateChanged by rememberUpdatedState(onSearchStateChanged)
     val currentOnBookDetected by rememberUpdatedState(onBookDetected)
     val lifecycleOwner = LocalLifecycleOwner.current
     val initialUrl = LinovelibConstants.BASE_URL
@@ -88,10 +85,9 @@ fun LinovelibSearchLoader(
     val showLoadError: (String) -> Unit = { message ->
         pageLoading = false
         pageError = message
-        currentOnShowBrowser()
     }
     val cooldownMessage: () -> String = {
-        context.getString(R.string.linovelib_search_cooldown, cooldownMillis / 1_000 + 1)
+        context.getString(R.string.linovelib_search_paused)
     }
     val retrySearch: () -> Unit = {
         cooldownMillis = LinovelibRateLimiter.remainingCooldownMillis()
@@ -146,13 +142,18 @@ fun LinovelibSearchLoader(
         }
     }
 
+    LaunchedEffect(pageError, cooldownMillis) {
+        currentOnSearchStateChanged(pageError, cooldownMillis)
+    }
     LaunchedEffect(webView, showBrowser) {
         webView?.apply {
-            visibility = if (showBrowser) View.VISIBLE else View.INVISIBLE
+            // 后台只隐藏 Compose 呈现层，避免改变网页可见性和脚本调度条件。
+            visibility = View.VISIBLE
             isFocusable = showBrowser
             isFocusableInTouchMode = showBrowser
-            // 只隐藏呈现层，不暂停页面执行；显示后重排并重绘，不重新发网络请求。
-            settings.blockNetworkImage = !showBrowser
+            importantForAccessibility = if (showBrowser) View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+                else View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            settings.blockNetworkImage = false
             if (showBrowser) {
                 requestLayout()
                 invalidate()
@@ -161,22 +162,20 @@ fun LinovelibSearchLoader(
             }
         }
     }
-    LaunchedEffect(webView, pageLoading) {
+    LaunchedEffect(webView, searchAttempt, verificationPaused) {
         val view = webView ?: return@LaunchedEffect
-        if (pageLoading) {
-            delay(30_000)
+        if (verificationPaused) return@LaunchedEffect
+        delay(30_000)
+        if (pageError == null) {
             view.stopLoading()
             showLoadError(context.getString(R.string.linovelib_search_load_error, -8))
         }
-    }
-    LaunchedEffect(request.id) {
-        delay(12_000)
-        currentOnShowBrowser()
     }
     LaunchedEffect(webView, lifecycleOwner, searchAttempt) {
         val view = webView ?: return@LaunchedEffect
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             var lastSnapshot: String? = null
+            var lastSnapshotLoading = true
             var blankSnapshots = 0
             while (true) {
                 cooldownMillis = LinovelibRateLimiter.remainingCooldownMillis()
@@ -194,8 +193,11 @@ fun LinovelibSearchLoader(
                 } else {
                     blankSnapshots = 0
                 }
-                if (snapshot != null && snapshot != lastSnapshot && pageError == null) {
+                if (snapshot != null && pageError == null &&
+                    (snapshot != lastSnapshot || pageLoading != lastSnapshotLoading || httpError != null)
+                ) {
                     lastSnapshot = snapshot
+                    lastSnapshotLoading = pageLoading
                     if (page?.get("blocked")?.jsonPrimitive?.booleanOrNull == true) {
                         if (!verificationPaused) {
                             verificationPaused = true
@@ -204,13 +206,13 @@ fun LinovelibSearchLoader(
                         pageLoading = false
                         httpError = null
                         currentOnShowBrowser()
-                    } else if (httpError != null) {
+                    } else if (httpError != null && !pageLoading) {
                         showLoadError(httpError!!)
                     } else {
                         val url = page?.get("url")?.jsonPrimitive?.contentOrNull
                         val html = page?.get("html")?.jsonPrimitive?.contentOrNull
-                        if (url != null && html != null && currentOnPageReady(url, html)) return@repeatOnLifecycle
-                        if (!searchSubmitted && page?.get("formReady")?.jsonPrimitive?.booleanOrNull == true) {
+                        if (!pageLoading && url != null && html != null && currentOnPageReady(url, html)) return@repeatOnLifecycle
+                        if (!pageLoading && !searchSubmitted && page?.get("formReady")?.jsonPrimitive?.booleanOrNull == true) {
                             submitSearch(view)
                         }
                     }
@@ -259,10 +261,13 @@ fun LinovelibSearchLoader(
                     initialUrl = if (cooldownMillis > 0) "about:blank" else initialUrl,
                     mode = LinovelibWebViewMode.DesktopBrowsing,
                     onWebViewCreated = { view ->
-                        view.visibility = if (showBrowser) View.VISIBLE else View.INVISIBLE
+                        view.visibility = View.VISIBLE
                         view.isFocusable = showBrowser
                         view.isFocusableInTouchMode = showBrowser
-                        view.settings.blockNetworkImage = !showBrowser
+                        view.importantForAccessibility = if (showBrowser) View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+                            else View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+                        view.settings.blockNetworkImage = false
+                        view.settings.loadsImagesAutomatically = true
                         webView = view
                         if (cooldownMillis > 0) showLoadError(cooldownMessage())
                     },
@@ -287,19 +292,16 @@ fun LinovelibSearchLoader(
                         updateNavigationState(view)
                     },
                     onPageError = { code, retryAfter ->
-                        pageLoading = false
                         val message = context.getString(R.string.linovelib_search_load_error, code)
                         if (code in listOf(403, 429, 503)) {
                             val requestedDelay = LinovelibJsoup.parseRetryAfterMillis(retryAfter)
                             val pause = if (code == 429) requestedDelay ?: 60_000 else maxOf(requestedDelay ?: 0, 60_000)
                             LinovelibRateLimiter.coolDown("网页 HTTP $code", pause, blocked = code != 429)
                             cooldownMillis = LinovelibRateLimiter.remainingCooldownMillis()
-                            verificationPaused = true
                         }
                         if (code > 0) {
                             // 403 也可能带有可操作的验证页，先检查 DOM 再决定是否显示错误。
                             httpError = message
-                            currentOnShowBrowser()
                         } else {
                             showLoadError(message)
                         }
@@ -307,25 +309,6 @@ fun LinovelibSearchLoader(
                 )
                 if (showBrowser && pageLoading) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
-                }
-                if (showBrowser && pageError != null) {
-                    Surface(Modifier.fillMaxSize()) {
-                        EmptyPage(
-                            icon = painterResource(R.drawable.error_24px),
-                            title = stringResource(R.string.linovelib_search_load_failed),
-                            description = if (cooldownMillis > 0) cooldownMessage() else pageError.orEmpty()
-                        ) {
-                            TextButton(
-                                enabled = !pageLoading && cooldownMillis == 0L,
-                                onClick = retrySearch
-                            ) {
-                                Text(stringResource(R.string.retry))
-                            }
-                            TextButton(onClick = onOpenMobileSearch) {
-                                Text(stringResource(R.string.linovelib_search_open_mobile))
-                            }
-                        }
-                    }
                 }
             }
         }

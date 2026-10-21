@@ -50,7 +50,10 @@ fun NavEntryScope.exploreSearchDestination() {
                 onClickClearAllHistory = exploreSearchViewModel::clearAllHistory,
                 onClickBook = navigator::navigateToBookDetailDestination,
                 updateSuggestions = exploreSearchViewModel::updateSuggestions,
-                openLinovelibWebSearch = navigator::navigateToLinovelibWebSearchDestination,
+                openLinovelibWebSearch = { keyword ->
+                    request?.let { exploreSearchViewModel.cancelLinovelibSearch(it.id) }
+                    navigator.navigateToLinovelibWebSearchDestination(keyword)
+                },
                 openLinovelibSearchBrowser = { showLinovelibSearchBrowser = true }
             )
             request?.let {
@@ -63,9 +66,9 @@ fun NavEntryScope.exploreSearchDestination() {
                             exploreSearchViewModel.acceptLinovelibSearchPage(request.id, url, html)
                         },
                         onCancel = { exploreSearchViewModel.cancelLinovelibSearch(request.id) },
-                        onOpenMobileSearch = {
-                            exploreSearchViewModel.cancelLinovelibSearch(request.id)
-                            navigator.navigateToLinovelibWebSearchDestination(request.keyword)
+                        onSearchStateChanged = { errorMessage, cooldownMillis ->
+                            if (errorMessage != null) showLinovelibSearchBrowser = false
+                            exploreSearchViewModel.updateLinovelibSearchState(request.id, errorMessage, cooldownMillis)
                         },
                         onBookDetected = { bookId ->
                             if (exploreSearchViewModel.acceptLinovelibSearchBook(request.id, bookId)) {
