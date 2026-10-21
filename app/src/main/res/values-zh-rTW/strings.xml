@@ -686,6 +686,11 @@
     <string name="linovelib_search_loading">正在載入搜尋結果…</string>
     <string name="linovelib_search_open_web">開啟網頁搜尋</string>
     <string name="linovelib_search_verification_hint">如需站點驗證，請在下方完成。辨識到目前關鍵字的結果後會自動返回原生列表，也可直接在網頁中搜尋和瀏覽。</string>
+    <string name="linovelib_search_load_failed">網頁搜尋載入失敗</string>
+    <string name="linovelib_search_blank_page">站點傳回了空白頁面，未自動重新整理。可重試載入，或開啟獨立的行動版網頁搜尋。</string>
+    <string name="linovelib_search_load_error">網頁載入失敗（錯誤碼 %1$d），未自動重試。</string>
+    <string name="linovelib_search_cooldown">站點請求已暫停，請至少等待 %1$d 秒後再重試。</string>
+    <string name="linovelib_search_open_mobile">開啟獨立網頁搜尋（行動版）</string>
     <string name="linovelib_web_back">返回</string>
     <string name="linovelib_web_forward">前進</string>
     <string name="linovelib_refresh">重新整理</string>

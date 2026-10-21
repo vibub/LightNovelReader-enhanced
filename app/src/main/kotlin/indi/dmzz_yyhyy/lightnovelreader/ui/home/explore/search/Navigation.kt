@@ -63,6 +63,10 @@ fun NavEntryScope.exploreSearchDestination() {
                             exploreSearchViewModel.acceptLinovelibSearchPage(request.id, url, html)
                         },
                         onCancel = { exploreSearchViewModel.cancelLinovelibSearch(request.id) },
+                        onOpenMobileSearch = {
+                            exploreSearchViewModel.cancelLinovelibSearch(request.id)
+                            navigator.navigateToLinovelibWebSearchDestination(request.keyword)
+                        },
                         onBookDetected = { bookId ->
                             if (exploreSearchViewModel.acceptLinovelibSearchBook(request.id, bookId)) {
                                 navigator.navigateToBookDetailDestination(bookId)

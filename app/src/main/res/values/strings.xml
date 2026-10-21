@@ -814,6 +814,11 @@
     <string name="linovelib_search_loading">Loading search results…</string>
     <string name="linovelib_search_open_web">Open web search</string>
     <string name="linovelib_search_verification_hint">If the site asks for verification, complete it below. Recognized results for your keyword will return to the native list automatically. You can also search and browse here.</string>
+    <string name="linovelib_search_load_failed">Web search could not load</string>
+    <string name="linovelib_search_blank_page">The site returned a blank page. No automatic refresh was attempted. Retry loading or open the separate mobile web search.</string>
+    <string name="linovelib_search_load_error">The page failed to load (code %1$d). No automatic retry was attempted.</string>
+    <string name="linovelib_search_cooldown">Site requests are paused. Wait at least %1$d seconds before retrying.</string>
+    <string name="linovelib_search_open_mobile">Open separate mobile web search</string>
     <string name="linovelib_web_back">Back</string>
     <string name="linovelib_web_forward">Forward</string>
     <string name="linovelib_refresh">Refresh</string>

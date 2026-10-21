@@ -1,11 +1,14 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.ui
 
 import android.annotation.SuppressLint
+import android.graphics.Bitmap
 import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.webkit.CookieManager
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
@@ -176,7 +179,9 @@ fun LinovelibWebNavigationActions(
     canGoForward: Boolean,
     updateNavigationState: (WebView?) -> Unit,
     onBeforeGoBack: () -> Unit = {},
-    onBeforeGoForward: () -> Unit = {}
+    onBeforeGoForward: () -> Unit = {},
+    onReload: () -> Unit = { webView?.reload() },
+    reloadEnabled: Boolean = true
 ) {
     IconButton(
         enabled = canGoBack,
@@ -212,7 +217,7 @@ fun LinovelibWebNavigationActions(
             contentDescription = stringResource(R.string.linovelib_web_forward)
         )
     }
-    IconButton(onClick = { webView?.reload() }) {
+    IconButton(enabled = reloadEnabled, onClick = onReload) {
         Icon(
             painter = painterResource(R.drawable.refresh_24px),
             contentDescription = stringResource(R.string.linovelib_refresh)
@@ -500,11 +505,15 @@ fun LinovelibWebView(
     mode: LinovelibWebViewMode = LinovelibWebViewMode.Browsing,
     onWebViewCreated: (WebView) -> Unit = {},
     onUrlChanged: (String) -> Unit = {},
-    onPageFinished: (WebView, String) -> Unit = { _, _ -> }
+    onPageFinished: (WebView, String) -> Unit = { _, _ -> },
+    onPageStarted: (WebView, String) -> Unit = { _, _ -> },
+    onPageError: (code: Int, retryAfter: String?) -> Unit = { _, _ -> }
 ) {
     val currentOnWebViewCreated by rememberUpdatedState(onWebViewCreated)
     val currentOnUrlChanged by rememberUpdatedState(onUrlChanged)
     val currentOnPageFinished by rememberUpdatedState(onPageFinished)
+    val currentOnPageStarted by rememberUpdatedState(onPageStarted)
+    val currentOnPageError by rememberUpdatedState(onPageError)
 
     AndroidView(
         modifier = modifier,
@@ -540,9 +549,31 @@ fun LinovelibWebView(
                 isFocusableInTouchMode = true
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                 webViewClient = object : WebViewClient() {
-                    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
-                        mode == LinovelibWebViewMode.DesktopBrowsing && request.isForMainFrame &&
+                    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                        val blocked = mode == LinovelibWebViewMode.DesktopBrowsing && request.isForMainFrame &&
                             !LinovelibConstants.isDesktopPageUrl(request.url.toString())
+                        if (blocked) currentOnPageError(0, null)
+                        return blocked
+                    }
+
+                    override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+                        super.onPageStarted(view, url, favicon)
+                        currentOnPageStarted(view, url)
+                    }
+
+                    override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+                        super.onReceivedError(view, request, error)
+                        if (request.isForMainFrame) currentOnPageError(error.errorCode, null)
+                    }
+
+                    override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
+                        super.onReceivedHttpError(view, request, response)
+                        if (request.isForMainFrame) {
+                            val retryAfter = response.responseHeaders?.entries
+                                ?.firstOrNull { it.key.equals("Retry-After", ignoreCase = true) }?.value
+                            currentOnPageError(response.statusCode, retryAfter)
+                        }
+                    }
 
                     override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
                         super.doUpdateVisitedHistory(view, url, isReload)

@@ -16,6 +16,7 @@ import coil3.request.SuccessResult
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibImageRequestPolicy
 import indi.dmzz_yyhyy.lightnovelreader.utils.network.UserAgentGenerator
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +32,11 @@ data class EncodedImageFormat(
     val extension: String,
     val mediaType: String
 )
+
+class EncodedImageHttpException(
+    val statusCode: Int,
+    val retryAfter: String?
+) : IOException("图片请求失败：HTTP $statusCode")
 
 object ImageUtils {
     private val encodedImageHttpClient = OkHttpClient()
@@ -100,18 +106,20 @@ object ImageUtils {
                         }.build())
                         .get()
                         .build()
-                    encodedImageHttpClient.newCall(request).execute().use { response ->
-                        if (!response.isSuccessful) {
-                            throw IOException("图片请求失败：HTTP ${response.code}")
-                        }
-                        val body = response.body
-                        body.byteStream().use { input ->
-                            copyAndDetect(
-                                input = input,
-                                targetFile = targetFile,
-                                fallbackMimeType = body.contentType()?.toString(),
-                                fallbackName = imageUri.lastPathSegment
-                            )
+                    LinovelibImageRequestPolicy.run(imageUri.toString()) {
+                        encodedImageHttpClient.newCall(request).execute().use { response ->
+                            if (!response.isSuccessful) {
+                                throw EncodedImageHttpException(response.code, response.header("Retry-After"))
+                            }
+                            val body = response.body
+                            body.byteStream().use { input ->
+                                copyAndDetect(
+                                    input = input,
+                                    targetFile = targetFile,
+                                    fallbackMimeType = body.contentType()?.toString(),
+                                    fallbackName = imageUri.lastPathSegment
+                                )
+                            }
                         }
                     }
                 }

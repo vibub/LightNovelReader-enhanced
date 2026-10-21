@@ -8,7 +8,10 @@ import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.onOk
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibBlockedException
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibHttpException
 import indi.dmzz_yyhyy.lightnovelreader.utils.EncodedImageFormat
+import indi.dmzz_yyhyy.lightnovelreader.utils.EncodedImageHttpException
 import indi.dmzz_yyhyy.lightnovelreader.utils.ImageUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -101,6 +104,11 @@ class ImageDownloader(
                 }
                 .onErr { error ->
                     lastError = error
+                    if (error is LinovelibBlockedException ||
+                        error is LinovelibHttpException && (error.statusCode == 429 || error.retryAfterMillis != null) ||
+                        error is EncodedImageHttpException &&
+                        (error.statusCode in 400..499 || error.statusCode == 503 || error.retryAfter != null)
+                    ) return result
                     if (error is SocketTimeoutException ||
                         error is ConnectException ||
                         error is IOException

@@ -34,6 +34,8 @@ import indi.dmzz_yyhyy.lightnovelreader.data.storage.StorageUsageRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceManager
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
 import indi.dmzz_yyhyy.lightnovelreader.data.web.proxy.PriorityWebBookDataSource
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibRateLimiter
 import indi.dmzz_yyhyy.lightnovelreader.utils.convertOldId
 import indi.dmzz_yyhyy.lightnovelreader.utils.toLegacyCompatibleSourceId
 import io.nightfish.lightnovelreader.api.book.BookVolumes
@@ -314,6 +316,31 @@ class CacheBookWork @AssistedInject constructor(
             }
             val fetchedContent = fetchResult.content
             if (fetchedContent == null) {
+                val cooldown = if (sourceId == LinovelibConstants.LEGACY_SOURCE_ID) {
+                    LinovelibRateLimiter.remainingCooldownMillis()
+                } else 0L
+                if (cooldown > 0) {
+                    // 拦截后暂停整本缓存，不能按后续章节继续穷举或等到冷却结束自动重放。
+                    val message = "站点请求已暂停，请至少等待 ${cooldown / 1_000 + 1} 秒后手动恢复缓存"
+                    chapterDownloadRepository.resetDownloading(sourceId, bookId)
+                    val processed = completedCount + partialCount + failedCount + skippedCount
+                    val progress = processed.toFloat() / chaptersToDownload.size
+                    downloadTaskRepository.markPaused(
+                        sourceId = sourceId,
+                        bookId = bookId,
+                        progress = progress,
+                        total = chaptersToDownload.size,
+                        processed = processed,
+                        sourceKey = sourceKey,
+                        waitingReason = message,
+                        writtenBytes = writtenBytes,
+                        currentChapterId = chapterInformation.id,
+                        currentChapterTitle = chapterInformation.title
+                    )
+                    downloadItem.progress = progress
+                    downloadItem.state = DownloadItemState.PAUSED
+                    return@withContext Result.failure(workDataOf("bookId" to bookId, "error" to message))
+                }
                 lastErrorMessage = fetchResult.errorMessage.takeIf(String::isNotBlank)
                 val existing = localBookDataSource.getChapterContent(
                     sourceId,
@@ -574,6 +601,9 @@ class CacheBookWork @AssistedInject constructor(
                 if (content != null) errorMessage = "数据源返回了无效章节内容"
             }
             lastError = errorMessage
+            if (sourceId == LinovelibConstants.LEGACY_SOURCE_ID &&
+                LinovelibRateLimiter.remainingCooldownMillis() > 0
+            ) return ChapterFetchResult(null, lastError)
             if (attempt + 1 < MAX_CHAPTER_ATTEMPTS) {
                 if (shouldStopTask(sourceId, bookId)) {
                     return ChapterFetchResult(null, "下载任务已暂停")

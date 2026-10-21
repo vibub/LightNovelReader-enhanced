@@ -154,8 +154,8 @@ class LinovelibJsoup(
                     val response = connection.execute()
                     val body = response.bodyAsBytes().toString(Charsets.UTF_8)
                     val statusCode = response.statusCode()
+                    val retryAfterMillis = parseRetryAfterMillis(response.header("Retry-After"))
                     if (statusCode == 429) {
-                        val retryAfterMillis = parseRetryAfterMillis(response.header("Retry-After"))
                         LinovelibRateLimiter.coolDown(
                             reason = "HTTP 429 $url",
                             delayMillis = retryAfterMillis ?: LinovelibRateLimiter.DEFAULT_RATE_LIMIT_COOLDOWN_MILLIS
@@ -163,9 +163,23 @@ class LinovelibJsoup(
                         throw LinovelibHttpException(statusCode, url, retryAfterMillis)
                     }
                     if (isCloudflareBlocked(statusCode, body)) {
-                        throw LinovelibBlockedException("Linovelib request was blocked by Cloudflare: $url")
+                        val reason = "Linovelib request was blocked (HTTP $statusCode): $url"
+                        LinovelibRateLimiter.coolDown(
+                            reason = reason,
+                            delayMillis = maxOf(
+                                retryAfterMillis ?: 0L,
+                                LinovelibRateLimiter.DEFAULT_RATE_LIMIT_COOLDOWN_MILLIS
+                            ),
+                            blocked = true
+                        )
+                        throw LinovelibBlockedException(reason)
                     }
-                    if (statusCode !in 200..299) throw LinovelibHttpException(statusCode, url)
+                    if (statusCode !in 200..299) {
+                        if (statusCode >= 500 && retryAfterMillis != null) {
+                            LinovelibRateLimiter.coolDown("HTTP $statusCode $url", retryAfterMillis)
+                        }
+                        throw LinovelibHttpException(statusCode, url, retryAfterMillis)
+                    }
                     body
                 }
                 return@withContext body
@@ -178,7 +192,7 @@ class LinovelibJsoup(
                 throw e
             }
             if (attempt < retryTime) {
-                val retryDelay = retryDelayMillis(lastError, delayMillis)
+                val retryDelay = retryDelayMillis(delayMillis)
                 Log.w(TAG, "request failed, retrying in ${retryDelay}ms: $url", lastError)
                 delay(retryDelay.milliseconds)
                 delayMillis = (retryDelay * 2).coerceAtMost(MAX_RETRY_DELAY_MILLIS)
@@ -189,39 +203,52 @@ class LinovelibJsoup(
 
     private fun shouldRetry(error: Throwable?): Boolean = when (error) {
         is LinovelibBlockedException -> false
-        is LinovelibHttpException -> error.statusCode == 429 || error.statusCode >= 500
+        is LinovelibHttpException -> error.statusCode >= 500 && error.retryAfterMillis == null
         else -> true
     }
 
-    private fun retryDelayMillis(error: Throwable?, currentDelayMillis: Long): Long {
-        val baseDelay = when (error) {
-            is LinovelibHttpException -> if (error.statusCode == 429) {
-                maxOf(currentDelayMillis, error.retryAfterMillis ?: RATE_LIMIT_RETRY_DELAY_MILLIS)
-            } else {
-                currentDelayMillis
-            }
-            else -> currentDelayMillis
-        }
-        val cappedBaseDelay = baseDelay.coerceAtMost(MAX_RETRY_DELAY_MILLIS)
+    private fun retryDelayMillis(currentDelayMillis: Long): Long {
+        // 这里只限制客户端自己的网络错误退避；服务器冷却由共享 limiter 保留并快速失败。
+        val cappedBaseDelay = currentDelayMillis.coerceAtMost(MAX_RETRY_DELAY_MILLIS)
         val jitterBound = (MAX_RETRY_DELAY_MILLIS - cappedBaseDelay).coerceIn(0L, RETRY_JITTER_MILLIS)
         return cappedBaseDelay + if (jitterBound > 0L) Random.nextLong(jitterBound + 1) else 0L
     }
 
     companion object {
         private const val TAG = "LinovelibJsoup"
-        private const val RATE_LIMIT_RETRY_DELAY_MILLIS = 5_000L
         private const val MAX_RETRY_DELAY_MILLIS = 30_000L
         private const val RETRY_JITTER_MILLIS = 1_000L
 
         fun isCloudflareBlocked(statusCode: Int, body: String): Boolean {
             if (statusCode == 403 || statusCode == 503) return true
             val text = body.lowercase()
-            return ("cloudflare" in text && (
-                "cf-chl" in text ||
-                    "checking your browser" in text ||
-                    "just a moment" in text ||
-                    "attention required" in text
-                )) || "请稍候" in body && "正在检查您的浏览器" in body
+            if (("cloudflare" in text && (
+                    "cf-chl" in text ||
+                        "checking your browser" in text ||
+                        "just a moment" in text ||
+                        "attention required" in text
+                    )) || "请稍候" in body && "正在检查您的浏览器" in body
+            ) return true
+
+            val document = Jsoup.parse(body)
+            if (document.selectFirst(
+                    "#challenge-running, #challenge-stage, .cf-turnstile, " +
+                        "iframe[src*=challenges.cloudflare.com]"
+                ) != null
+            ) return true
+            // 真正的失效登录页仍允许章节层匿名回退，不能与独立验证页混为一谈。
+            if (document.selectFirst("input[type=password], form[action*=login], .login-form") != null) {
+                return false
+            }
+            val title = document.title().lowercase()
+            val pageText = document.text()
+            return title.contains("verify") || title.contains("verification") ||
+                title.contains("安全验证") || title.contains("安全驗證") ||
+                document.selectFirst(".verify, #verify, .verification") != null ||
+                pageText.length < 3_000 && (
+                    pageText.contains("验证后继续") ||
+                        pageText.contains("checking your browser", ignoreCase = true)
+                    )
         }
 
         fun parseRetryAfterMillis(value: String?, nowMillis: Long = System.currentTimeMillis()): Long? {

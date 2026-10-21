@@ -3,6 +3,8 @@ package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book
 import android.net.Uri
 import androidx.core.net.toUri
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibBlockedException
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibHttpException
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibJsoup
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.BookVolumes
@@ -24,6 +26,12 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.coroutines.cancellation.CancellationException
+
+private fun Throwable.rethrowIfLinovelibRequestPaused() {
+    if (this is CancellationException || this is LinovelibBlockedException ||
+        this is LinovelibHttpException && statusCode == 429
+    ) throw this
+}
 
 class LinovelibWebsiteDataSource(
     private val jsoup: LinovelibJsoup
@@ -154,12 +162,12 @@ class LinovelibWebsiteDataSource(
                 useCookie = true
             )
         } catch (throwable: Throwable) {
-            if (throwable is CancellationException) throw throwable
+            throwable.rethrowIfLinovelibRequestPaused()
             throwable
         }
 
-        // 登录态失效时尝试匿名访问；匿名结果仍需经过同一套页面和正文结构校验，
-        // 登录页、验证页或空正文不会被写入章节缓存。
+        // 登录态失效时尝试匿名访问；阻断和限流必须停止，不能切换登录态自动重放。
+        // 匿名结果仍需经过页面和正文结构校验，不会缓存登录页、验证页或空正文。
         return try {
             getChapterContentFromSite(
                 bookId = normalizedBookId,
@@ -431,7 +439,7 @@ class LinovelibWebsiteDataSource(
                 ?.let { extractLinovelibChapterPageId(bookId, it) }
                 ?.toLinovelibAdjacentChapterId(nextChapterId.substringBefore('_'))
         }.getOrElse { error ->
-            if (error is CancellationException) throw error
+            error.rethrowIfLinovelibRequestPaused()
             null
         }
 
@@ -461,7 +469,7 @@ class LinovelibWebsiteDataSource(
         }
         null
     }.getOrElse { error ->
-        if (error is CancellationException) throw error
+        error.rethrowIfLinovelibRequestPaused()
         null
     }
 

@@ -3,13 +3,18 @@ package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.ui
 import android.view.View
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -21,6 +26,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -29,7 +36,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibJsoup
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibRateLimiter
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.search.LinovelibWebSearchRequest
+import indi.dmzz_yyhyy.lightnovelreader.ui.components.EmptyPage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
@@ -49,6 +59,7 @@ fun LinovelibSearchLoader(
     onShowBrowser: () -> Unit,
     onPageReady: suspend (url: String, html: String) -> Boolean,
     onCancel: () -> Unit,
+    onOpenMobileSearch: () -> Unit,
     onBookDetected: (String) -> Unit
 ) {
     var webView: WebView? by remember { mutableStateOf(null) }
@@ -56,6 +67,14 @@ fun LinovelibSearchLoader(
     var canGoForward by remember { mutableStateOf(false) }
     var lastBookUrl by remember { mutableStateOf<String?>(null) }
     var searchSubmitted by remember { mutableStateOf(false) }
+    var searchAttempt by remember { mutableStateOf(0) }
+    var submissionInProgress by remember { mutableStateOf(false) }
+    var pageLoading by remember { mutableStateOf(true) }
+    var pageError by remember { mutableStateOf<String?>(null) }
+    var httpError by remember { mutableStateOf<String?>(null) }
+    var verificationPaused by remember { mutableStateOf(false) }
+    var cooldownMillis by remember { mutableStateOf(LinovelibRateLimiter.remainingCooldownMillis()) }
+    val context = LocalContext.current
     val currentOnPageReady by rememberUpdatedState(onPageReady)
     val currentOnShowBrowser by rememberUpdatedState(onShowBrowser)
     val currentOnBookDetected by rememberUpdatedState(onBookDetected)
@@ -64,6 +83,49 @@ fun LinovelibSearchLoader(
     val updateNavigationState: (WebView?) -> Unit = { view ->
         canGoBack = view?.canGoBack() == true
         canGoForward = view?.canGoForward() == true
+    }
+
+    val showLoadError: (String) -> Unit = { message ->
+        pageLoading = false
+        pageError = message
+        currentOnShowBrowser()
+    }
+    val cooldownMessage: () -> String = {
+        context.getString(R.string.linovelib_search_cooldown, cooldownMillis / 1_000 + 1)
+    }
+    val retrySearch: () -> Unit = {
+        cooldownMillis = LinovelibRateLimiter.remainingCooldownMillis()
+        if (cooldownMillis > 0) {
+            showLoadError(cooldownMessage())
+        } else if (!pageLoading) {
+            webView?.let { view ->
+                pageError = null
+                httpError = null
+                searchSubmitted = false
+                searchAttempt++
+                submissionInProgress = false
+                pageLoading = true
+                view.stopLoading()
+                // 从首页重新走站内表单，不能 reload 空白文档或重放上一次 POST。
+                view.loadUrl(initialUrl)
+            }
+        }
+    }
+    val submitSearch: (WebView) -> Unit = { view ->
+        if (!searchSubmitted && !submissionInProgress && !verificationPaused &&
+            pageError == null && httpError == null
+        ) {
+            cooldownMillis = LinovelibRateLimiter.remainingCooldownMillis()
+            if (cooldownMillis > 0) {
+                showLoadError(cooldownMessage())
+            } else {
+                submissionInProgress = true
+                view.submitLinovelibDesktopSearch(request.keyword) { submitted ->
+                    submissionInProgress = false
+                    if (submitted) searchSubmitted = true
+                }
+            }
+        }
     }
 
     BackHandler(enabled = showBrowser) {
@@ -89,32 +151,68 @@ fun LinovelibSearchLoader(
             visibility = if (showBrowser) View.VISIBLE else View.INVISIBLE
             isFocusable = showBrowser
             isFocusableInTouchMode = showBrowser
-            if (!showBrowser) clearFocus()
+            // 只隐藏呈现层，不暂停页面执行；显示后重排并重绘，不重新发网络请求。
+            settings.blockNetworkImage = !showBrowser
+            if (showBrowser) {
+                requestLayout()
+                invalidate()
+            } else {
+                clearFocus()
+            }
+        }
+    }
+    LaunchedEffect(webView, pageLoading) {
+        val view = webView ?: return@LaunchedEffect
+        if (pageLoading) {
+            delay(30_000)
+            view.stopLoading()
+            showLoadError(context.getString(R.string.linovelib_search_load_error, -8))
         }
     }
     LaunchedEffect(request.id) {
         delay(12_000)
         currentOnShowBrowser()
     }
-    LaunchedEffect(webView, lifecycleOwner) {
+    LaunchedEffect(webView, lifecycleOwner, searchAttempt) {
         val view = webView ?: return@LaunchedEffect
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             var lastSnapshot: String? = null
+            var blankSnapshots = 0
             while (true) {
+                cooldownMillis = LinovelibRateLimiter.remainingCooldownMillis()
+                if (pageError != null) {
+                    delay(1_000)
+                    continue
+                }
                 val snapshot = withTimeoutOrNull(3_000) { view.searchPageSnapshot() }
-                if (snapshot != null && snapshot != lastSnapshot) {
+                val page = snapshot?.let { runCatching { Json.parseToJsonElement(it).jsonObject }.getOrNull() }
+                if (!pageLoading && page?.get("blank")?.jsonPrimitive?.booleanOrNull == true) {
+                    blankSnapshots++
+                    if (blankSnapshots >= 2) {
+                        showLoadError(httpError ?: context.getString(R.string.linovelib_search_blank_page))
+                    }
+                } else {
+                    blankSnapshots = 0
+                }
+                if (snapshot != null && snapshot != lastSnapshot && pageError == null) {
                     lastSnapshot = snapshot
-                    val page = runCatching { Json.parseToJsonElement(snapshot).jsonObject }.getOrNull()
                     if (page?.get("blocked")?.jsonPrimitive?.booleanOrNull == true) {
-                        currentOnShowBrowser()
-                    } else if (!searchSubmitted && page?.get("formReady")?.jsonPrimitive?.booleanOrNull == true) {
-                        view.submitLinovelibDesktopSearch(request.keyword) { submitted ->
-                            if (submitted) searchSubmitted = true else currentOnShowBrowser()
+                        if (!verificationPaused) {
+                            verificationPaused = true
+                            LinovelibRateLimiter.coolDown("网页需要手动验证", 60_000, blocked = true)
                         }
+                        pageLoading = false
+                        httpError = null
+                        currentOnShowBrowser()
+                    } else if (httpError != null) {
+                        showLoadError(httpError!!)
                     } else {
                         val url = page?.get("url")?.jsonPrimitive?.contentOrNull
                         val html = page?.get("html")?.jsonPrimitive?.contentOrNull
                         if (url != null && html != null && currentOnPageReady(url, html)) return@repeatOnLifecycle
+                        if (!searchSubmitted && page?.get("formReady")?.jsonPrimitive?.booleanOrNull == true) {
+                            submitSearch(view)
+                        }
                     }
                 }
                 delay(1_000)
@@ -138,7 +236,9 @@ fun LinovelibSearchLoader(
                             webView = webView,
                             canGoBack = canGoBack,
                             canGoForward = canGoForward,
-                            updateNavigationState = updateNavigationState
+                            updateNavigationState = updateNavigationState,
+                            onReload = retrySearch,
+                            reloadEnabled = !pageLoading && cooldownMillis == 0L
                         )
                     }
                 )
@@ -153,31 +253,81 @@ fun LinovelibSearchLoader(
                     style = MaterialTheme.typography.bodySmall
                 )
             }
-            LinovelibWebView(
-                modifier = Modifier.fillMaxSize(),
-                initialUrl = initialUrl,
-                mode = LinovelibWebViewMode.DesktopBrowsing,
-                onWebViewCreated = { view ->
-                    view.visibility = if (showBrowser) View.VISIBLE else View.INVISIBLE
-                    view.isFocusable = showBrowser
-                    view.isFocusableInTouchMode = showBrowser
-                    webView = view
-                },
-                onUrlChanged = { url ->
-                    if (url != lastBookUrl) {
-                        lastBookUrl = url
-                        LinovelibConstants.extractBookIdFromUrl(url)?.let(currentOnBookDetected)
+            Box(Modifier.weight(1f)) {
+                LinovelibWebView(
+                    modifier = Modifier.fillMaxSize(),
+                    initialUrl = if (cooldownMillis > 0) "about:blank" else initialUrl,
+                    mode = LinovelibWebViewMode.DesktopBrowsing,
+                    onWebViewCreated = { view ->
+                        view.visibility = if (showBrowser) View.VISIBLE else View.INVISIBLE
+                        view.isFocusable = showBrowser
+                        view.isFocusableInTouchMode = showBrowser
+                        view.settings.blockNetworkImage = !showBrowser
+                        webView = view
+                        if (cooldownMillis > 0) showLoadError(cooldownMessage())
+                    },
+                    onUrlChanged = { url ->
+                        if (url != lastBookUrl) {
+                            lastBookUrl = url
+                            LinovelibConstants.extractBookIdFromUrl(url)?.let(currentOnBookDetected)
+                        }
+                    },
+                    onPageStarted = { _, url ->
+                        if (url == "about:blank" && cooldownMillis > 0) {
+                            showLoadError(cooldownMessage())
+                        } else {
+                            pageLoading = true
+                            pageError = null
+                            httpError = null
+                            verificationPaused = false
+                        }
+                    },
+                    onPageFinished = { view, _ ->
+                        pageLoading = false
+                        updateNavigationState(view)
+                    },
+                    onPageError = { code, retryAfter ->
+                        pageLoading = false
+                        val message = context.getString(R.string.linovelib_search_load_error, code)
+                        if (code in listOf(403, 429, 503)) {
+                            val requestedDelay = LinovelibJsoup.parseRetryAfterMillis(retryAfter)
+                            val pause = if (code == 429) requestedDelay ?: 60_000 else maxOf(requestedDelay ?: 0, 60_000)
+                            LinovelibRateLimiter.coolDown("网页 HTTP $code", pause, blocked = code != 429)
+                            cooldownMillis = LinovelibRateLimiter.remainingCooldownMillis()
+                            verificationPaused = true
+                        }
+                        if (code > 0) {
+                            // 403 也可能带有可操作的验证页，先检查 DOM 再决定是否显示错误。
+                            httpError = message
+                            currentOnShowBrowser()
+                        } else {
+                            showLoadError(message)
+                        }
                     }
-                },
-                onPageFinished = { view, _ ->
-                    updateNavigationState(view)
-                    if (!searchSubmitted) {
-                        view.submitLinovelibDesktopSearch(request.keyword) { submitted ->
-                            if (submitted) searchSubmitted = true
+                )
+                if (showBrowser && pageLoading) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+                if (showBrowser && pageError != null) {
+                    Surface(Modifier.fillMaxSize()) {
+                        EmptyPage(
+                            icon = painterResource(R.drawable.error_24px),
+                            title = stringResource(R.string.linovelib_search_load_failed),
+                            description = if (cooldownMillis > 0) cooldownMessage() else pageError.orEmpty()
+                        ) {
+                            TextButton(
+                                enabled = !pageLoading && cooldownMillis == 0L,
+                                onClick = retrySearch
+                            ) {
+                                Text(stringResource(R.string.retry))
+                            }
+                            TextButton(onClick = onOpenMobileSearch) {
+                                Text(stringResource(R.string.linovelib_search_open_mobile))
+                            }
                         }
                     }
                 }
-            )
+            }
         }
     }
 }
@@ -270,6 +420,10 @@ private val SEARCH_PAGE_SNAPSHOT_SCRIPT = """
         '#challenge-running, #challenge-stage, .cf-turnstile, iframe[src*="challenges.cloudflare.com"]'
     ) || /Just a moment|Attention Required|安全验证|安全驗證/.test(document.title);
     if (blocked) return {url: location.href, blocked: true};
+    if (document.readyState === 'complete' && typeof document.body.innerText === 'string' &&
+        !document.body.innerText.trim() && !document.querySelector('form, img, svg, canvas, iframe, video')) {
+        return {url: location.href, blank: true};
+    }
     var input = document.querySelector('form input[name="searchkey"]');
     var formReady = !!input && document.readyState === 'complete';
     var knownSearchPath = /^(?:\/search\.(?:html|php)|\/modules\/article\/search\.php|\/S\d+\/?|\/search\/[^/]+_\d+\.html)${'$'}/.test(location.pathname);
