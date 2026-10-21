@@ -31,6 +31,13 @@ object LinovelibConstants {
         return "$BASE_URL/S6/${encodedKeyword}_$page.html"
     }
 
+    /** 搜索控制器的查询参数入口；部分站点的路径式分页会返回空正文。 */
+    fun desktopSearchRequestUrl(keyword: String, page: Int = 1): String {
+        require(keyword.isNotBlank() && page > 0)
+        val encodedKeyword = URLEncoder.encode(keyword, Charsets.UTF_8.name()).replace("+", "%20")
+        return "$BASE_URL/S6/?searchkey=$encodedKeyword&page=$page"
+    }
+
     fun detailUrl(bookId: String): String = "$BASE_URL/novel/${bookId.normalizeBookId()}.html"
     fun catalogUrl(bookId: String): String = "$BASE_URL/novel/${bookId.normalizeBookId()}/catalog"
     fun chapterUrl(bookId: String, chapterId: String): String =

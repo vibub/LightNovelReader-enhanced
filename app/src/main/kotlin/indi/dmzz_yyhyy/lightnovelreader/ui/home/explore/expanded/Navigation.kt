@@ -1,11 +1,16 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.expanded
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.ui.LinovelibFilterLoader
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import indi.dmzz_yyhyy.lightnovelreader.ui.LocalNavigator
 import indi.dmzz_yyhyy.lightnovelreader.ui.navigation.Navigator
@@ -35,31 +40,46 @@ fun NavEntryScope.exploreExpandDestination() {
             }
         }
         var dialog: @Composable () -> Unit by remember { mutableStateOf(@Composable {}) }
-        ExpandedPageScreen(
-            exploreUiState = expandedExploreUiState,
-            expandedPageUiState = exploreExpandedPageHomeViewModel.uiState,
-            refresh = {
-                // 只刷新筛选结果；额外探测首页既非本次筛选，也可能触发共享冷却拒绝。
-                if (!isLinovelib) exploreViewModel.refresh()
-                exploreExpandedPageHomeViewModel.refreshCurrentResults()
-            },
-            dialog = { newDialog -> dialog = newDialog },
-            expandedPageDataSourceId = entry.expandedPageDataSourceId,
-            init = exploreExpandedPageHomeViewModel::init,
-            loadMore = exploreExpandedPageHomeViewModel::loadMore,
-            retry = exploreExpandedPageHomeViewModel::retry,
-            refreshResult = exploreExpandedPageHomeViewModel::loadBookResult,
-            requestAddBookToBookshelf = {
-                navigator.navigateToAddBookToBookshelfDialog(it)
-            },
-            onClickBack = {
-                exploreExpandedPageHomeViewModel.clear()
-                navigator.popBackStack()
-            },
-            onClickBook = {
-                navigator.navigateToBookDetailDestination(it)
+        Box(Modifier.fillMaxSize()) {
+            ExpandedPageScreen(
+                exploreUiState = expandedExploreUiState,
+                expandedPageUiState = exploreExpandedPageHomeViewModel.uiState,
+                refresh = {
+                    // 只刷新筛选结果；额外探测首页既非本次筛选，也可能触发共享冷却拒绝。
+                    if (!isLinovelib) exploreViewModel.refresh()
+                    exploreExpandedPageHomeViewModel.refreshCurrentResults()
+                },
+                dialog = { newDialog -> dialog = newDialog },
+                expandedPageDataSourceId = entry.expandedPageDataSourceId,
+                init = exploreExpandedPageHomeViewModel::init,
+                loadMore = exploreExpandedPageHomeViewModel::loadMore,
+                retry = exploreExpandedPageHomeViewModel::retry,
+                refreshResult = exploreExpandedPageHomeViewModel::loadBookResult,
+                requestAddBookToBookshelf = {
+                    navigator.navigateToAddBookToBookshelfDialog(it)
+                },
+                onClickBack = {
+                    exploreExpandedPageHomeViewModel.clear()
+                    navigator.popBackStack()
+                },
+                onClickBook = {
+                    navigator.navigateToBookDetailDestination(it)
+                }
+            )
+            exploreExpandedPageHomeViewModel.uiState.linovelibFilterRequest?.let { request ->
+                key(request.id) {
+                    LinovelibFilterLoader(
+                        request = request,
+                        onPageReady = { url, html ->
+                            exploreExpandedPageHomeViewModel.acceptLinovelibFilterPage(request.id, url, html)
+                        },
+                        onFailure = { message ->
+                            exploreExpandedPageHomeViewModel.failLinovelibFilterRequest(request.id, message)
+                        }
+                    )
+                }
             }
-        )
+        }
         dialog.invoke()
     }
 }

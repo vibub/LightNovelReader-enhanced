@@ -10,6 +10,8 @@ import indi.dmzz_yyhyy.lightnovelreader.data.explore.ExploreBookSummaryProvider
 import indi.dmzz_yyhyy.lightnovelreader.data.explore.ExploreRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.explore.ManagedExploreExpandedPageDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.text.TextProcessingRepository
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.explore.LinovelibFilterBrowserDataSource
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.explore.LinovelibFilterDocumentLoader
 import io.nightfish.lightnovelreader.api.web.explore.ExploreExpandedPageDataSource
 import io.nightfish.lightnovelreader.api.web.explore.ExplorePageProvider
 import io.nightfish.lightnovelreader.api.web.explore.filter.Filter
@@ -30,6 +32,8 @@ class ExpandedPageViewModel @Inject constructor(
     private var expandedPageDataSource: ExploreExpandedPageDataSource? = null
     private var exploreExpandedPageBookListCollectJob: Job? = null
     private var pageMetadataJob: Job? = null
+    private var filterRequestJob: Job? = null
+    private var filterDocumentLoader: LinovelibFilterDocumentLoader? = null
     private var lastExpandedPageDataSourceId: String = ""
     private val _uiState = MutableExpandedPageUiState()
     val uiState: ExpandedPageUiState = _uiState
@@ -58,6 +62,15 @@ class ExpandedPageViewModel @Inject constructor(
             }
 
         _uiState.filters.clear()
+        filterRequestJob?.cancel()
+        _uiState.linovelibFilterRequest = null
+        filterDocumentLoader = (expandedPageDataSource as? LinovelibFilterBrowserDataSource)
+            ?.filterDocumentLoader
+        filterRequestJob = filterDocumentLoader?.let { loader ->
+            viewModelScope.launch {
+                loader.requests.collect { _uiState.linovelibFilterRequest = it }
+            }
+        }
         pageMetadataJob = viewModelScope.launch(Dispatchers.IO) {
             expandedPageDataSource?.let { dataSource ->
                 _uiState.pageTitle = textProcessingRepository.processText { dataSource.title }
@@ -97,10 +110,20 @@ class ExpandedPageViewModel @Inject constructor(
         }
     }
 
+    suspend fun acceptLinovelibFilterPage(requestId: Long, url: String, html: String): Boolean =
+        filterDocumentLoader?.acceptPage(requestId, url, html) == true
+
+    fun failLinovelibFilterRequest(requestId: Long, message: String) {
+        filterDocumentLoader?.fail(requestId, message)
+    }
+
     fun clear() {
         lastExpandedPageDataSourceId = ""
         exploreExpandedPageBookListCollectJob?.cancel()
         pageMetadataJob?.cancel()
+        filterRequestJob?.cancel()
+        filterDocumentLoader = null
+        _uiState.linovelibFilterRequest = null
         expandedPageDataSource = null
     }
 

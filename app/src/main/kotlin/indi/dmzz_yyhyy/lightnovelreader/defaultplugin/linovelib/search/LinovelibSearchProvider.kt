@@ -39,13 +39,17 @@ class LinovelibSearchProvider(
 
     /** null 表示尚未识别到当前页结果，不能把验证页或其他页当成空结果。 */
     fun parseWebSearchPage(request: LinovelibWebSearchRequest, url: String, html: String): LinovelibWebSearchPage? {
-        val address = parseSearchAddress(url) ?: return null
-        if (address.first != request.keyword || address.second != request.page) return null
+        val address = parseSearchAddress(url)
+        val submittedResult = LinovelibConstants.isDesktopPageUrl(url) &&
+            runCatching { URI(url).run { rawPath in listOf("/S6/", "/S6") && rawQuery == null } }.getOrDefault(false)
+        if (address == null && (!submittedResult || request.page != 1)) return null
+        if (address != null && (address.first != request.keyword || address.second != request.page)) return null
         val document = Jsoup.parse(html, url)
         val text = document.body().text()
         val summary = Regex(
             """共\s*(?:搜索|搜尋)\s*到\s*(\d+)\s*[部本]\s*[与與]\s*[“"'「『](.*?)[”"'」』]\s*(?:相关|相關)\s*(?:结果|結果)"""
         ).find(text)
+        if (submittedResult && summary == null) return null
         if (summary != null && summary.groupValues[2] != request.keyword) return null
         val resultCount = summary?.groupValues?.get(1)?.toIntOrNull()
             ?: Regex("(?:相关共有|相關共有|共有?|总共|總共)\\s*(\\d+)\\s*(?:[条條][记記][录錄]|本[书書]|[个個][结結]果)")
@@ -72,6 +76,7 @@ class LinovelibSearchProvider(
             .firstNotNullOfOrNull { it.text().trim().toIntOrNull() }
             ?: pageStats?.groupValues?.get(1)?.toIntOrNull()
             ?: request.page
+        if (submittedResult && currentPage != request.page) return null
         val linkedPages = document.select("a[href]").mapNotNull { link ->
             parseSearchAddress(link.absUrl("href"))?.takeIf { it.first == request.keyword }?.second
         }
@@ -95,7 +100,7 @@ class LinovelibSearchProvider(
             return@flow
         }
         val request = LinovelibWebSearchRequest(0, trimmedKeyword)
-        val url = LinovelibConstants.desktopSearchUrl(trimmedKeyword)
+        val url = LinovelibConstants.desktopSearchRequestUrl(trimmedKeyword)
         try {
             val document = jsoup.getDocument(
                 url = url,
@@ -129,7 +134,21 @@ class LinovelibSearchProvider(
 
         private fun parseSearchAddress(url: String): Pair<String, Int>? = runCatching {
             if (!LinovelibConstants.isDesktopPageUrl(url)) return null
-            val match = Regex("/S6/(.+)_(\\d+)\\.html").matchEntire(URI(url).rawPath) ?: return null
+            val uri = URI(url)
+            if (uri.rawPath in listOf("/S6/", "/S6")) {
+                val parameters = uri.rawQuery?.split('&')?.map { pair ->
+                    val parts = pair.split('=', limit = 2)
+                    URLDecoder.decode(parts[0], Charsets.UTF_8.name()) to
+                        URLDecoder.decode(parts.getOrElse(1) { "" }, Charsets.UTF_8.name())
+                } ?: return null
+                val keywords = parameters.filter { it.first == "searchkey" }
+                val pages = parameters.filter { it.first == "page" }
+                if (keywords.size != 1 || pages.size != 1) return null
+                val keyword = keywords.single().second.takeIf { it.isNotBlank() } ?: return null
+                val page = pages.single().second.toIntOrNull()?.takeIf { it > 0 } ?: return null
+                return keyword to page
+            }
+            val match = Regex("/S6/(.+)_(\\d+)\\.html").matchEntire(uri.rawPath) ?: return null
             val keyword = URLDecoder.decode(match.groupValues[1].replace("+", "%2B"), Charsets.UTF_8.name())
             val page = match.groupValues[2].toIntOrNull()?.takeIf { it > 0 } ?: return null
             keyword to page

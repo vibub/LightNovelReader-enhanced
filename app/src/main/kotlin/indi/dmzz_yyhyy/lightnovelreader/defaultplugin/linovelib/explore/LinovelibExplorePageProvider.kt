@@ -18,10 +18,16 @@ import org.jsoup.nodes.Document
 
 class LinovelibExplorePageProvider internal constructor(
     private val homepageLoader: LinovelibExploreHomepageLoader,
-    loadFilterDocument: suspend (String) -> Document
+    loadFilterDocument: suspend (String) -> Document,
+    private val filterDocumentLoader: LinovelibFilterDocumentLoader? = null
 ) : AbstractDefaultExplorePageProvider() {
     private val filterPageCache = LinovelibFilterPageCache(loadFilterDocument)
-    constructor(jsoup: LinovelibJsoup) : this(
+    constructor(jsoup: LinovelibJsoup) : this(jsoup, LinovelibFilterDocumentLoader())
+
+    private constructor(
+        jsoup: LinovelibJsoup,
+        filterDocumentLoader: LinovelibFilterDocumentLoader
+    ) : this(
         homepageLoader = LinovelibExploreHomepageLoader(
             loadDesktopSnapshot = {
                 LinovelibExploreHomepageParser.parse(
@@ -34,16 +40,9 @@ class LinovelibExplorePageProvider internal constructor(
                 )
             }
         ),
-        loadFilterDocument = { url ->
-            // 此加载器仅由 ExpandedPage 的进入、筛选、刷新、翻页及手动重试触发。
-            jsoup.getDocument(
-                url = url,
-                referer = LinovelibConstants.BASE_URL,
-                retryTime = 0,
-                userAgentMode = LinovelibJsoup.UserAgentMode.Desktop,
-                requestIntent = LinovelibJsoup.RequestIntent.UserInitiated
-            )
-        }
+        // metadata 与结果均直接加载各自真实 URL，不先触发注定失败的 Jsoup 请求。
+        loadFilterDocument = filterDocumentLoader::loadDocument,
+        filterDocumentLoader = filterDocumentLoader
     )
 
     init {
@@ -66,7 +65,8 @@ class LinovelibExplorePageProvider internal constructor(
                 id = publishingHouse.expandedPageDataSourceId,
                 exploreExpandedPageDataSource = LinovelibFilterPageDataSource(
                     initialPublishingHouse = publishingHouse.title,
-                    pageCache = filterPageCache
+                    pageCache = filterPageCache,
+                    filterDocumentLoader = filterDocumentLoader
                 )
             )
         }

@@ -7,12 +7,6 @@ object UserAgentGenerator {
     private const val SAFARI_VERSION = "537.36"
     private const val CHROME_MAJOR_VERSION = 153
 
-    private val desktopPlatforms = listOf(
-        "Windows NT 10.0; Win64; x64",
-        "Macintosh; Intel Mac OS X 10_15_7",
-        "X11; Linux x86_64"
-    )
-
     private val cachedUserAgent by lazy {
         buildUserAgent(
             androidVersion = Build.VERSION.RELEASE.orEmpty().ifBlank { "10" },
@@ -21,15 +15,17 @@ object UserAgentGenerator {
         )
     }
 
-    private val cachedDesktopUserAgent by lazy {
-        "Mozilla/5.0 (${desktopPlatforms.random()}) " +
-                "AppleWebKit/$APPLE_WEBKIT_VERSION (KHTML, like Gecko) " +
-                "Chrome/$CHROME_MAJOR_VERSION.0.0.0 Safari/$SAFARI_VERSION"
-    }
-
     fun generate(): String = cachedUserAgent
 
-    fun generateDesktop(): String = cachedDesktopUserAgent
+    // 桌面模式保留设备实际网页内核版本，平台不再随进程随机变化。
+    fun generateDesktop(
+        webViewUserAgent: String = "Mozilla/5.0 (X11; Linux x86_64) " +
+            "AppleWebKit/$APPLE_WEBKIT_VERSION (KHTML, like Gecko) " +
+            "Chrome/$CHROME_MAJOR_VERSION.0.0.0 Safari/$SAFARI_VERSION"
+    ): String = webViewUserAgent
+        .replaceFirst(Regex("\\([^)]*\\)"), "(X11; Linux x86_64)")
+        .replace("Version/4.0 ", "")
+        .replace(" Mobile ", " ")
 
     internal fun buildUserAgent(
         androidVersion: String,

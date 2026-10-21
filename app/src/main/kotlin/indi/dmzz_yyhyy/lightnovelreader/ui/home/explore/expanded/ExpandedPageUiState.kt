@@ -7,6 +7,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import com.github.michaelbull.result.Result
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.mutableIntStateOf
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.explore.LinovelibFilterWebRequest
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.error.WebRequestError
 import io.nightfish.lightnovelreader.api.web.explore.filter.Filter
@@ -24,6 +26,7 @@ interface ExpandedPageUiState {
     val isEmptyResult: Boolean
     val errorMessage: String?
     val resultVersion: Int
+    val linovelibFilterRequest: LinovelibFilterWebRequest?
 }
 
 class MutableExpandedPageUiState : ExpandedPageUiState {
@@ -37,5 +40,6 @@ class MutableExpandedPageUiState : ExpandedPageUiState {
     override var isRefreshing: Boolean by mutableStateOf(false)
     override var isEmptyResult: Boolean by mutableStateOf(false)
     override var errorMessage: String? by mutableStateOf(null)
-    override var resultVersion: Int by mutableStateOf(0)
+    override var resultVersion: Int by mutableIntStateOf(0)
+    override var linovelibFilterRequest: LinovelibFilterWebRequest? by mutableStateOf(null)
 }

@@ -523,7 +523,7 @@ fun LinovelibWebView(
                     settings.loadWithOverviewMode = true
                     settings.useWideViewPort = true
                     settings.userAgentString = if (mode == LinovelibWebViewMode.DesktopBrowsing) {
-                        UserAgentGenerator.generateDesktop()
+                        UserAgentGenerator.generateDesktop(settings.userAgentString)
                     } else {
                         settings.userAgentString
                             .replace("; wv", "")

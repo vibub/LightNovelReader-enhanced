@@ -14,6 +14,8 @@ import io.nightfish.lightnovelreader.api.web.explore.filter.SingleChoiceFilter
 import io.nightfish.lightnovelreader.api.web.search.SearchResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -266,8 +268,10 @@ internal class LinovelibFilterPageCache(
 
 internal class LinovelibFilterPageDataSource(
     private val initialPublishingHouse: String,
-    private val pageCache: LinovelibFilterPageCache
-) : ExploreExpandedPageDataSource, ManagedExploreExpandedPageDataSource, ExploreBookSummaryProvider {
+    private val pageCache: LinovelibFilterPageCache,
+    override val filterDocumentLoader: LinovelibFilterDocumentLoader? = null
+) : ExploreExpandedPageDataSource, ManagedExploreExpandedPageDataSource, ExploreBookSummaryProvider,
+    LinovelibFilterBrowserDataSource {
     override val title: String = "筛选"
 
     private val initializationMutex = Mutex()
@@ -323,6 +327,7 @@ internal class LinovelibFilterPageDataSource(
                     forceRefreshFirstPage && page == 1
                 }
                 val result = pageCache.getPage(pageUrl, forceRefresh)
+                currentCoroutineContext().ensureActive()
                 synchronized(stateLock) {
                     if (forceRefresh && page == 1) forceRefreshFirstPage = false
                     loadedPage = page
@@ -385,6 +390,7 @@ internal class LinovelibFilterPageDataSource(
         if (synchronized(stateLock) { initialized }) return@withLock
 
         val metadata = pageCache.getMetadata()
+        currentCoroutineContext().ensureActive()
         val publishingHouseGroup = metadata.filters.firstOrNull {
             it.key == LinovelibFilterKey.Parameter(
                 LinovelibFilterUrl.PUBLISHING_HOUSE_PARAMETER_INDEX

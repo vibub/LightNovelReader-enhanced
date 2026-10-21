@@ -75,22 +75,23 @@ fun NavEntryScope.exploreSearchDestination() {
                 openLinovelibSearchBrowser = { showLinovelibSearchBrowser = true },
                 loadMoreLinovelibSearchResults = exploreSearchViewModel::loadMoreLinovelibSearchResults
             )
-            request?.let {
-                key(request.id) {
+            exploreSearchViewModel.uiState.linovelibSearchKeyword?.takeIf { isLinovelib }?.let { keyword ->
+                key(keyword) {
+                    // 同一关键词的分页保留网页会话，但只在用户请求时读取新一页。
                     LinovelibSearchLoader(
                         request = request,
                         showBrowser = showLinovelibSearchBrowser,
                         onShowBrowser = { showLinovelibSearchBrowser = true },
-                        onPageReady = { url, html ->
-                            exploreSearchViewModel.acceptLinovelibSearchPage(request.id, url, html)
+                        onPageReady = exploreSearchViewModel::acceptLinovelibSearchPage,
+                        onCancel = {
+                            request?.let { exploreSearchViewModel.cancelLinovelibSearch(it.id) }
                         },
-                        onCancel = { exploreSearchViewModel.cancelLinovelibSearch(request.id) },
-                        onSearchStateChanged = { errorMessage ->
+                        onSearchStateChanged = { requestId, errorMessage ->
                             if (errorMessage != null) showLinovelibSearchBrowser = false
-                            exploreSearchViewModel.updateLinovelibSearchState(request.id, errorMessage)
+                            exploreSearchViewModel.updateLinovelibSearchState(requestId, errorMessage)
                         },
-                        onBookDetected = { bookId ->
-                            if (exploreSearchViewModel.acceptLinovelibSearchBook(request.id, bookId)) {
+                        onBookDetected = { requestId, bookId ->
+                            if (exploreSearchViewModel.acceptLinovelibSearchBook(requestId, bookId)) {
                                 navigator.navigateToBookDetailDestination(bookId)
                             }
                         }
