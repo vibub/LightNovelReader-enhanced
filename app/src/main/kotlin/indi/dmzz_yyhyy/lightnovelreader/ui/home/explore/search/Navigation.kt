@@ -66,9 +66,9 @@ fun NavEntryScope.exploreSearchDestination() {
                             exploreSearchViewModel.acceptLinovelibSearchPage(request.id, url, html)
                         },
                         onCancel = { exploreSearchViewModel.cancelLinovelibSearch(request.id) },
-                        onSearchStateChanged = { errorMessage, cooldownMillis ->
+                        onSearchStateChanged = { errorMessage ->
                             if (errorMessage != null) showLinovelibSearchBrowser = false
-                            exploreSearchViewModel.updateLinovelibSearchState(request.id, errorMessage, cooldownMillis)
+                            exploreSearchViewModel.updateLinovelibSearchState(request.id, errorMessage)
                         },
                         onBookDetected = { bookId ->
                             if (exploreSearchViewModel.acceptLinovelibSearchBook(request.id, bookId)) {

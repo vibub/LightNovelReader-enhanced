@@ -55,7 +55,7 @@ fun LinovelibSearchLoader(
     onShowBrowser: () -> Unit,
     onPageReady: suspend (url: String, html: String) -> Boolean,
     onCancel: () -> Unit,
-    onSearchStateChanged: (errorMessage: String?, cooldownMillis: Long) -> Unit,
+    onSearchStateChanged: (errorMessage: String?) -> Unit,
     onBookDetected: (String) -> Unit
 ) {
     var webView: WebView? by remember { mutableStateOf(null) }
@@ -69,7 +69,6 @@ fun LinovelibSearchLoader(
     var pageError by remember { mutableStateOf<String?>(null) }
     var httpError by remember { mutableStateOf<String?>(null) }
     var verificationPaused by remember { mutableStateOf(false) }
-    var cooldownMillis by remember { mutableStateOf(LinovelibRateLimiter.remainingCooldownMillis()) }
     val context = LocalContext.current
     val currentOnPageReady by rememberUpdatedState(onPageReady)
     val currentOnShowBrowser by rememberUpdatedState(onShowBrowser)
@@ -86,20 +85,16 @@ fun LinovelibSearchLoader(
         pageLoading = false
         pageError = message
     }
-    val cooldownMessage: () -> String = {
-        context.getString(R.string.linovelib_search_paused)
-    }
+    // 用户主动搜索与重试不受共享冷却限制，也不清除后台自动请求的保护状态。
     val retrySearch: () -> Unit = {
-        cooldownMillis = LinovelibRateLimiter.remainingCooldownMillis()
-        if (cooldownMillis > 0) {
-            showLoadError(cooldownMessage())
-        } else if (!pageLoading) {
+        if (!pageLoading) {
             webView?.let { view ->
                 pageError = null
                 httpError = null
                 searchSubmitted = false
                 searchAttempt++
                 submissionInProgress = false
+                verificationPaused = false
                 pageLoading = true
                 view.stopLoading()
                 // 从首页重新走站内表单，不能 reload 空白文档或重放上一次 POST。
@@ -111,15 +106,10 @@ fun LinovelibSearchLoader(
         if (!searchSubmitted && !submissionInProgress && !verificationPaused &&
             pageError == null && httpError == null
         ) {
-            cooldownMillis = LinovelibRateLimiter.remainingCooldownMillis()
-            if (cooldownMillis > 0) {
-                showLoadError(cooldownMessage())
-            } else {
-                submissionInProgress = true
-                view.submitLinovelibDesktopSearch(request.keyword) { submitted ->
-                    submissionInProgress = false
-                    if (submitted) searchSubmitted = true
-                }
+            submissionInProgress = true
+            view.submitLinovelibDesktopSearch(request.keyword) { submitted ->
+                submissionInProgress = false
+                if (submitted) searchSubmitted = true
             }
         }
     }
@@ -142,8 +132,8 @@ fun LinovelibSearchLoader(
         }
     }
 
-    LaunchedEffect(pageError, cooldownMillis) {
-        currentOnSearchStateChanged(pageError, cooldownMillis)
+    LaunchedEffect(pageError) {
+        currentOnSearchStateChanged(pageError)
     }
     LaunchedEffect(webView, showBrowser) {
         webView?.apply {
@@ -178,7 +168,6 @@ fun LinovelibSearchLoader(
             var lastSnapshotLoading = true
             var blankSnapshots = 0
             while (true) {
-                cooldownMillis = LinovelibRateLimiter.remainingCooldownMillis()
                 if (pageError != null) {
                     delay(1_000)
                     continue
@@ -240,7 +229,7 @@ fun LinovelibSearchLoader(
                             canGoForward = canGoForward,
                             updateNavigationState = updateNavigationState,
                             onReload = retrySearch,
-                            reloadEnabled = !pageLoading && cooldownMillis == 0L
+                            reloadEnabled = !pageLoading
                         )
                     }
                 )
@@ -258,7 +247,7 @@ fun LinovelibSearchLoader(
             Box(Modifier.weight(1f)) {
                 LinovelibWebView(
                     modifier = Modifier.fillMaxSize(),
-                    initialUrl = if (cooldownMillis > 0) "about:blank" else initialUrl,
+                    initialUrl = initialUrl,
                     mode = LinovelibWebViewMode.DesktopBrowsing,
                     onWebViewCreated = { view ->
                         view.visibility = View.VISIBLE
@@ -269,7 +258,6 @@ fun LinovelibSearchLoader(
                         view.settings.blockNetworkImage = false
                         view.settings.loadsImagesAutomatically = true
                         webView = view
-                        if (cooldownMillis > 0) showLoadError(cooldownMessage())
                     },
                     onUrlChanged = { url ->
                         if (url != lastBookUrl) {
@@ -277,15 +265,11 @@ fun LinovelibSearchLoader(
                             LinovelibConstants.extractBookIdFromUrl(url)?.let(currentOnBookDetected)
                         }
                     },
-                    onPageStarted = { _, url ->
-                        if (url == "about:blank" && cooldownMillis > 0) {
-                            showLoadError(cooldownMessage())
-                        } else {
-                            pageLoading = true
-                            pageError = null
-                            httpError = null
-                            verificationPaused = false
-                        }
+                    onPageStarted = { _, _ ->
+                        pageLoading = true
+                        pageError = null
+                        httpError = null
+                        verificationPaused = false
                     },
                     onPageFinished = { view, _ ->
                         pageLoading = false
@@ -296,8 +280,8 @@ fun LinovelibSearchLoader(
                         if (code in listOf(403, 429, 503)) {
                             val requestedDelay = LinovelibJsoup.parseRetryAfterMillis(retryAfter)
                             val pause = if (code == 429) requestedDelay ?: 60_000 else maxOf(requestedDelay ?: 0, 60_000)
+                            // 只暂停后台自动请求，不限制用户再次搜索或手动重试。
                             LinovelibRateLimiter.coolDown("网页 HTTP $code", pause, blocked = code != 429)
-                            cooldownMillis = LinovelibRateLimiter.remainingCooldownMillis()
                         }
                         if (code > 0) {
                             // 403 也可能带有可操作的验证页，先检查 DOM 再决定是否显示错误。

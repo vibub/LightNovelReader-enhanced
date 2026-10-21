@@ -22,7 +22,6 @@ interface ExploreSearchUiState {
     val errorMessage: String
     val linovelibSearchRequest: LinovelibWebSearchRequest?
     val linovelibSearchKeyword: String?
-    val linovelibSearchCooldownMillis: Long
     val historyList: List<String>
     val suggestions: List<String>
     val searchTypeIdList: List<String>
@@ -44,7 +43,6 @@ class MutableExploreSearchUiState : ExploreSearchUiState {
     override var errorMessage: String by mutableStateOf("")
     override var linovelibSearchRequest: LinovelibWebSearchRequest? by mutableStateOf(null)
     override var linovelibSearchKeyword: String? by mutableStateOf(null)
-    override var linovelibSearchCooldownMillis: Long by mutableStateOf(0L)
     override var historyList: List<String> by mutableStateOf(emptyList())
     override var suggestions: List<String> by mutableStateOf(emptyList())
     override var searchTypeIdList = mutableStateListOf<String>()

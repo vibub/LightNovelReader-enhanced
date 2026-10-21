@@ -365,18 +365,10 @@ fun ExploreSearchScreen(
                 EmptyPage(
                     icon = painterResource(R.drawable.error_24px),
                     title = "搜索出现了错误",
-                    description = if (exploreSearchUiState.linovelibSearchRequest != null &&
-                        exploreSearchUiState.linovelibSearchCooldownMillis > 0
-                    ) {
-                        stringResource(
-                            R.string.linovelib_search_cooldown,
-                            exploreSearchUiState.linovelibSearchCooldownMillis / 1_000 + 1
-                        )
-                    } else exploreSearchUiState.errorMessage
+                    description = exploreSearchUiState.errorMessage
                 ) {
                     exploreSearchUiState.linovelibSearchRequest?.let { request ->
                         TextButton(
-                            enabled = exploreSearchUiState.linovelibSearchCooldownMillis == 0L,
                             onClick = {
                                 searchKeyword = request.keyword
                                 focusManager.clearFocus()

@@ -102,7 +102,6 @@ class ExploreSearchViewModel @Inject constructor(
         searchJob?.cancel()
         _uiState.linovelibSearchRequest = null
         _uiState.linovelibSearchKeyword = null
-        _uiState.linovelibSearchCooldownMillis = 0L
         _uiState.isLoading = true
         _uiState.isLoadingComplete = false
         _uiState.errorMessage = ""
@@ -181,12 +180,11 @@ class ExploreSearchViewModel @Inject constructor(
         return true
     }
 
-    fun updateLinovelibSearchState(requestId: Long, errorMessage: String?, cooldownMillis: Long) {
+    fun updateLinovelibSearchState(requestId: Long, errorMessage: String?) {
         if (_uiState.linovelibSearchRequest?.id != requestId ||
             exploreRepository.currentSourceId != LinovelibConstants.SOURCE_ID
         ) return
         _uiState.errorMessage = errorMessage.orEmpty()
-        _uiState.linovelibSearchCooldownMillis = cooldownMillis
         _uiState.isLoadingComplete = errorMessage != null
         if (errorMessage != null) _uiState.searchBarExpanded = false
     }
