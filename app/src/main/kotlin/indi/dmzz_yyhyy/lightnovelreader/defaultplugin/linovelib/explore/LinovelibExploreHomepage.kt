@@ -277,7 +277,7 @@ private fun List<Element>.exploreBookCoverUrl(): String = asSequence()
     .firstOrNull(String::isNotBlank)
     .orEmpty()
 
-private fun Element.realExploreImageUrl(): String {
+internal fun Element.realExploreImageUrl(): String {
     EXPLORE_IMAGE_URL_ATTRS.forEach { attrName ->
         val url = absUrl(attrName).ifBlank { attr(attrName) }.toRealExploreImageUrl()
         if (url.isNotBlank()) return url

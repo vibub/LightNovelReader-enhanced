@@ -10,19 +10,15 @@ import io.nightfish.lightnovelreader.api.explore.ExploreBooksRow
 import io.nightfish.lightnovelreader.api.explore.ExploreDisplayBook
 import io.nightfish.lightnovelreader.api.web.explore.AbstractDefaultExplorePageProvider
 import io.nightfish.lightnovelreader.api.web.explore.ExploreTapPageDataSource
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import org.jsoup.nodes.Document
 
 class LinovelibExplorePageProvider internal constructor(
     private val homepageLoader: LinovelibExploreHomepageLoader,
-    loadFilterDocument: suspend (String) -> Document,
-    private val authorResolver: LinovelibExploreAuthorResolver = LinovelibExploreAuthorResolver { "" }
+    loadFilterDocument: suspend (String) -> Document
 ) : AbstractDefaultExplorePageProvider() {
     private val filterPageCache = LinovelibFilterPageCache(loadFilterDocument)
     constructor(
@@ -58,9 +54,6 @@ class LinovelibExplorePageProvider internal constructor(
                 retryTime = 0,
                 userAgentMode = LinovelibJsoup.UserAgentMode.Mobile
             )
-        },
-        authorResolver = LinovelibExploreAuthorResolver { bookId ->
-            websiteDataSource.getBookInformation(bookId).author
         }
     )
 
@@ -71,7 +64,6 @@ class LinovelibExplorePageProvider internal constructor(
                 LinovelibExploreTapPage(
                     page = page,
                     homepageLoader = homepageLoader,
-                    authorResolver = authorResolver,
                     onPublishingHousesLoaded = ::registerPublishingHousePages
                 )
             )
@@ -95,7 +87,6 @@ class LinovelibExplorePageProvider internal constructor(
 private class LinovelibExploreTapPage(
     private val page: LinovelibExplorePage,
     private val homepageLoader: LinovelibExploreHomepageLoader,
-    private val authorResolver: LinovelibExploreAuthorResolver,
     private val onPublishingHousesLoaded: (List<LinovelibExplorePublishingHouse>) -> Unit
 ) : ExploreTapPageDataSource, RefreshableExploreTapPageDataSource {
     override val title: String = page.title
@@ -105,18 +96,11 @@ private class LinovelibExploreTapPage(
         when (page) {
             LinovelibExplorePage.Home -> emit(snapshot.sections(page).toExploreRows())
             LinovelibExplorePage.Ranking -> {
-                val rankingSections = snapshot.sections(page)
-                    .map { (section, books) -> section to books.toMutableList() }
-                emit(rankingSections.toExploreRows())
-                rankingSections.forEach { (_, books) ->
-                    books.forEachIndexed { index, book ->
-                        if (book.author.isNotBlank()) return@forEachIndexed
-                        val author = authorResolver.resolve(book.id)
-                        if (author.isBlank()) return@forEachIndexed
-                        books[index] = book.copy(author = author)
-                        emit(rankingSections.toExploreRows())
-                    }
-                }
+                emit(
+                    snapshot.sections(page).map { (section, books) ->
+                        section to books.map { it.copy(author = "") }
+                    }.toExploreRows()
+                )
             }
             LinovelibExplorePage.PublishingHouse -> {
                 onPublishingHousesLoaded(snapshot.publishingHouses)
@@ -140,26 +124,6 @@ private class LinovelibExploreTapPage(
 
     override fun invalidateCache() {
         homepageLoader.invalidate()
-    }
-}
-
-internal class LinovelibExploreAuthorResolver(
-    private val loadAuthor: suspend (String) -> String
-) {
-    private val mutex = Mutex()
-    private val authorCache = mutableMapOf<String, String>()
-
-    suspend fun resolve(bookId: String): String = mutex.withLock {
-        authorCache[bookId]?.let { return@withLock it }
-        val author = try {
-            loadAuthor(bookId).trim()
-        } catch (error: CancellationException) {
-            throw error
-        } catch (_: Throwable) {
-            ""
-        }
-        authorCache[bookId] = author
-        author
     }
 }
 

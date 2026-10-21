@@ -2,9 +2,11 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.expanded
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.michaelbull.result.Ok
 import dagger.hilt.android.lifecycle.HiltViewModel
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
+import indi.dmzz_yyhyy.lightnovelreader.data.explore.ExploreBookSummaryProvider
 import indi.dmzz_yyhyy.lightnovelreader.data.explore.ExploreRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.explore.ManagedExploreExpandedPageDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.text.TextProcessingRepository
@@ -14,6 +16,7 @@ import io.nightfish.lightnovelreader.api.web.explore.filter.Filter
 import io.nightfish.lightnovelreader.api.web.search.SearchResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -139,9 +142,14 @@ class ExpandedPageViewModel @Inject constructor(
 
     private fun addBook(bookId: String) {
         if (_uiState.bookList.none { it.first == bookId }) {
-            _uiState.bookList.add(
-                bookId to bookRepository.getBookInformationFlow(bookId)
-            )
+            val summaryProvider = expandedPageDataSource as? ExploreBookSummaryProvider
+            val informationFlow = if (summaryProvider != null) {
+                val summary = summaryProvider.getBookSummary(bookId) ?: return
+                flowOf(Ok(summary))
+            } else {
+                bookRepository.getBookInformationFlow(bookId)
+            }
+            _uiState.bookList.add(bookId to informationFlow)
         }
         _uiState.isInitialLoading = false
         _uiState.isEmptyResult = false

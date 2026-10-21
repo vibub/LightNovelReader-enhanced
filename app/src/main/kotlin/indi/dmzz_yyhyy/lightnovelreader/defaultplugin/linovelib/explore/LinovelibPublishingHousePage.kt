@@ -1,8 +1,12 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.explore
 
+import androidx.core.net.toUri
+import indi.dmzz_yyhyy.lightnovelreader.data.explore.ExploreBookSummaryProvider
 import indi.dmzz_yyhyy.lightnovelreader.data.explore.ManagedExploreExpandedPageDataSource
 import indi.dmzz_yyhyy.lightnovelreader.data.explore.MultiChoiceExploreFilter
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
+import io.nightfish.lightnovelreader.api.book.BookInformation
+import io.nightfish.lightnovelreader.api.book.WordCount
 import io.nightfish.lightnovelreader.api.util.local
 import io.nightfish.lightnovelreader.api.web.explore.ExploreExpandedPageDataSource
 import io.nightfish.lightnovelreader.api.web.explore.filter.Filter
@@ -20,6 +24,8 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Comment
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import java.time.LocalDate
+import java.time.LocalDateTime
 
 internal sealed interface LinovelibFilterKey {
     data object Sort : LinovelibFilterKey
@@ -133,11 +139,40 @@ internal data class LinovelibFilterGroup(
     val maxSelections: Int = 1
 )
 
+internal data class LinovelibFilterBook(
+    val id: String,
+    val title: String,
+    val coverUrl: String,
+    val author: String,
+    val description: String,
+    val tags: List<String>,
+    val publishingHouse: String,
+    val wordCount: Int,
+    val lastUpdated: LocalDateTime,
+    val isComplete: Boolean
+) {
+    fun toBookInformation(): BookInformation = BookInformation(
+        id = id,
+        title = title,
+        coverUri = coverUrl.toUri(),
+        author = author,
+        description = description,
+        tags = tags,
+        publishingHouse = publishingHouse,
+        wordCount = WordCount(wordCount),
+        lastUpdated = lastUpdated,
+        isComplete = isComplete
+    )
+}
+
 internal data class LinovelibFilterPage(
     val filters: List<LinovelibFilterGroup>,
-    val bookIds: List<String>,
+    val books: List<LinovelibFilterBook>,
     val hasNextPage: Boolean
-)
+) {
+    val bookIds: List<String>
+        get() = books.map(LinovelibFilterBook::id)
+}
 
 internal object LinovelibFilterPageParser {
     fun parse(
@@ -151,7 +186,7 @@ internal object LinovelibFilterPageParser {
             ?: error("无法解析 Linovelib 筛选页地址：$pageUrl")
         return LinovelibFilterPage(
             filters = document.parseFilterGroups(currentUrl),
-            bookIds = document.parseFilterBookIds(),
+            books = document.parseFilterBooks(),
             hasNextPage = document.hasNextFilterPage(currentUrl)
         )
     }
@@ -233,11 +268,12 @@ internal class LinovelibFilterPageCache(
 internal class LinovelibFilterPageDataSource(
     private val initialPublishingHouse: String,
     private val pageCache: LinovelibFilterPageCache
-) : ExploreExpandedPageDataSource, ManagedExploreExpandedPageDataSource {
+) : ExploreExpandedPageDataSource, ManagedExploreExpandedPageDataSource, ExploreBookSummaryProvider {
     override val title: String = "筛选"
 
     private val initializationMutex = Mutex()
     private val stateLock = Any()
+    private val bookSummaries = mutableMapOf<String, LinovelibFilterBook>()
     private val loadMoreRequests = Channel<Unit>(Channel.CONFLATED)
     private val mutableFiltersFlow = MutableStateFlow<List<Filter<*>>>(emptyList())
 
@@ -294,13 +330,16 @@ internal class LinovelibFilterPageDataSource(
                     hasNextPage = result.hasNextPage
                 }
 
-                if (page == 1 && result.bookIds.isEmpty()) {
+                if (page == 1 && result.books.isEmpty()) {
                     emit(SearchResult.Empty())
                     return@flow
                 }
-                result.bookIds
-                    .filter(emittedBookIds::add)
-                    .forEach { emit(SearchResult.MultipleBook(it)) }
+                result.books
+                    .filter { emittedBookIds.add(it.id) }
+                    .forEach { book ->
+                        synchronized(stateLock) { bookSummaries[book.id] = book }
+                        emit(SearchResult.MultipleBook(book.id))
+                    }
 
                 page++
                 if (!result.hasNextPage) {
@@ -314,6 +353,9 @@ internal class LinovelibFilterPageDataSource(
             emit(SearchResult.Error(error))
         }
     }
+
+    override fun getBookSummary(bookId: String): BookInformation? =
+        synchronized(stateLock) { bookSummaries[bookId] }?.toBookInformation()
 
     override fun loadMore() {
         requestLoadMore()
@@ -470,6 +512,7 @@ internal class LinovelibFilterPageDataSource(
     }
 
     private fun resetPagingLocked() {
+        bookSummaries.clear()
         loadedPage = 0
         requestedPage = 1
         hasNextPage = true
@@ -605,7 +648,7 @@ private fun String.defaultFilterGroupTitle(): String = when (lowercase()) {
     else -> "筛选"
 }
 
-private fun Document.parseFilterBookIds(): List<String> {
+private fun Document.parseFilterBooks(): List<LinovelibFilterBook> {
     val containers = FILTER_BOOK_CONTAINER_SELECTORS
         .asSequence()
         .map(::select)
@@ -615,10 +658,77 @@ private fun Document.parseFilterBookIds(): List<String> {
             }
         }
         .orEmpty()
-    return containers
-        .flatMap { it.select("a[href]") }
-        .mapNotNull(Element::filterBookId)
-        .distinct()
+    return containers.mapNotNull { container ->
+        val link = container.select("a[href]").firstOrNull { it.filterBookId() != null }
+            ?: return@mapNotNull null
+        val id = link.filterBookId() ?: return@mapNotNull null
+        val image = container.selectFirst("img")
+        val titleElement = container.selectFirst(".book-title, .bookname, .book-name, h3, h4")
+        val title = titleElement?.selectFirst("a[title]")?.attr("title")
+            ?.takeIf(String::isNotBlank)
+            ?: titleElement?.text()?.takeIf(String::isNotBlank)
+            ?: link.attr("title").takeIf(String::isNotBlank)
+            ?: image?.attr("alt")?.takeIf(String::isNotBlank)
+            ?: link.ownText().takeIf(String::isNotBlank)
+            ?: return@mapNotNull null
+        val metadata = container.selectFirst(
+            ".book-meta, .bookother, .bookinfo .author, .bookinfo .info"
+        )?.text().orEmpty()
+        val metadataParts = metadata.split('|', '｜').map(String::trim)
+            .takeIf { it.size >= 2 }.orEmpty()
+        val author = container.selectFirst(".book-author, .author, .au-name")
+            ?.text()?.substringBefore('|')?.substringBefore('｜')
+            ?: metadataParts.firstOrNull().orEmpty()
+        val updateText = container.selectFirst("time[datetime]")?.attr("datetime")
+            ?: container.selectFirst(".uptime, .update-time, .lastupdate, .book-update")?.text()
+            ?: metadata
+        LinovelibFilterBook(
+            id = id,
+            title = title.cleanFilterText(),
+            coverUrl = image?.realExploreImageUrl()?.takeIf(String::isNotBlank)
+                ?: inferLinovelibCoverUrl(id),
+            author = author.removePrefix("作者：").removePrefix("作者:").cleanFilterText(),
+            description = container.selectFirst(
+                ".book-desc, .bookintro, .book-intro, .intro, .desc"
+            )?.text()?.cleanFilterText().orEmpty(),
+            tags = container.select(".tag-small.yellow, .book-tags a, .tags a, .book-tag")
+                .flatMap { it.text().cleanFilterText().split(' ') }
+                .filter(String::isNotBlank)
+                .distinct(),
+            publishingHouse = container.selectFirst(
+                ".book-publisher, .publisher, .book-category, .cat"
+            )?.text()?.cleanFilterText() ?: metadataParts.getOrNull(1).orEmpty(),
+            wordCount = container.selectFirst(".tag-small.blue, .words, .wordcount, .book-word-count")
+                ?.text()?.parseFilterWordCount() ?: 0,
+            lastUpdated = updateText.parseFilterUpdateTime(),
+            isComplete = Regex("(?<!未)(?:完结|完結|完本|全本)").containsMatchIn(
+                container.selectFirst(".tag-small.red, .book-status, .status")?.text() ?: metadata
+            )
+        )
+    }.distinctBy(LinovelibFilterBook::id)
+}
+
+private fun String.parseFilterWordCount(): Int {
+    val match = Regex("([\\d,]+(?:\\.\\d+)?)\\s*([万萬wW千kK]?)").find(this) ?: return 0
+    val count = match.groupValues[1].replace(",", "").toDoubleOrNull() ?: return 0
+    val multiplier = when (match.groupValues[2].lowercase()) {
+        "万", "萬", "w" -> 10_000
+        "千", "k" -> 1_000
+        else -> 1
+    }
+    return (count * multiplier).coerceAtMost(Int.MAX_VALUE.toDouble()).toInt()
+}
+
+private fun String.parseFilterUpdateTime(): LocalDateTime {
+    val match = Regex("(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})").find(this)
+        ?: return LocalDateTime.MIN
+    return runCatching {
+        LocalDate.of(
+            match.groupValues[1].toInt(),
+            match.groupValues[2].toInt(),
+            match.groupValues[3].toInt()
+        ).atStartOfDay()
+    }.getOrDefault(LocalDateTime.MIN)
 }
 
 private fun Document.hasNextFilterPage(currentUrl: LinovelibFilterUrl): Boolean {

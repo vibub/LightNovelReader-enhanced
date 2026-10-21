@@ -15,6 +15,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDateTime
 import kotlin.time.Duration.Companion.seconds
 
 class LinovelibPublishingHousePageTest {
@@ -49,6 +50,24 @@ class LinovelibPublishingHousePageTest {
         )
         assertEquals(4, page.filters.single { it.title == "作品主题" }.maxSelections)
         assertEquals(listOf("7001", "7002", "7003"), page.bookIds)
+        val firstBook = page.books.first()
+        assertEquals("筛选小说一", firstBook.title)
+        assertEquals("作者一", firstBook.author)
+        assertEquals("列表页已经提供的简介。", firstBook.description)
+        assertEquals(listOf("奇幻", "冒险"), firstBook.tags)
+        assertEquals(2_154_000, firstBook.wordCount)
+        assertEquals(
+            "${LinovelibConstants.FILTER_BASE_URL}/files/article/image/7/7001/7001s.jpg",
+            firstBook.coverUrl
+        )
+        assertEquals(LocalDateTime.MIN, firstBook.lastUpdated)
+        val secondBook = page.books[1]
+        assertEquals("作者二", secondBook.author)
+        assertEquals("电击文库", secondBook.publishingHouse)
+        assertEquals(LocalDateTime.of(2026, 10, 20, 0, 0), secondBook.lastUpdated)
+        assertTrue(secondBook.isComplete)
+        assertEquals(0, page.books[2].wordCount)
+        assertEquals(LocalDateTime.MIN, page.books[2].lastUpdated)
         assertTrue(page.hasNextPage)
     }
 
