@@ -72,8 +72,11 @@ fun LinovelibSearchLoader(
     var pageError by remember { mutableStateOf<String?>(null) }
     var httpError by remember { mutableStateOf<String?>(null) }
     var verificationPaused by remember { mutableStateOf(false) }
+    var showVerificationDialog by remember(request?.id) { mutableStateOf(false) }
+    var verificationApproved by remember(request?.id) { mutableStateOf(false) }
     val currentResources by rememberUpdatedState(LocalResources.current)
     val currentRequest by rememberUpdatedState(request)
+    val currentShowBrowser by rememberUpdatedState(showBrowser)
     val currentOnPageReady by rememberUpdatedState(onPageReady)
     val currentOnShowBrowser by rememberUpdatedState(onShowBrowser)
     val currentOnSearchStateChanged by rememberUpdatedState(onSearchStateChanged)
@@ -145,9 +148,9 @@ fun LinovelibSearchLoader(
             } else clearFocus()
         }
     }
-    LaunchedEffect(webView, request?.id, searchAttempt, verificationPaused) {
+    LaunchedEffect(webView, request?.id, searchAttempt, verificationPaused, showVerificationDialog) {
         val view = webView ?: return@LaunchedEffect
-        if (request == null || verificationPaused) return@LaunchedEffect
+        if (request == null || verificationPaused || showVerificationDialog) return@LaunchedEffect
         delay(45.seconds)
         if (pageError == null) {
             view.stopLoading()
@@ -162,7 +165,7 @@ fun LinovelibSearchLoader(
             var lastSnapshotLoading = true
             var blankSnapshots = 0
             while (isActive) {
-                if (pageError != null) {
+                if (pageError != null || showVerificationDialog) {
                     delay(1.seconds)
                     continue
                 }
@@ -185,7 +188,11 @@ fun LinovelibSearchLoader(
                         }
                         pageLoading = false
                         httpError = null
-                        currentOnShowBrowser()
+                        if (currentShowBrowser || verificationApproved) {
+                            currentOnShowBrowser()
+                        } else {
+                            showVerificationDialog = true
+                        }
                     } else if (httpError != null && !pageLoading) {
                         showLoadError(httpError!!)
                     } else if (!pageLoading && initializeSearch && !formSubmitted &&
@@ -290,6 +297,22 @@ fun LinovelibSearchLoader(
             }
         }
     }
+
+    if (showVerificationDialog && request != null) {
+        LinovelibVerificationDialog(
+            onConfirm = {
+                verificationApproved = true
+                showVerificationDialog = false
+                // 直接展示当前验证文档，不重新导航或重放搜索表单。
+                currentOnShowBrowser()
+            },
+            onDismiss = {
+                showVerificationDialog = false
+                webView?.stopLoading()
+                onCancel()
+            }
+        )
+    }
 }
 
 private suspend fun WebView.evaluateSearchScript(script: String): String = suspendCancellableCoroutine { continuation ->
@@ -331,7 +354,11 @@ private val SEARCH_PAGE_SNAPSHOT_SCRIPT = $$"""
     var blocked = !!document.querySelector(
         '#challenge-running, #challenge-stage, .cf-turnstile, iframe[src*="challenges.cloudflare.com"]'
     ) || /Just a moment|Attention Required|安全验证|安全驗證/.test(document.title);
-    if (blocked) return {url: location.href, blocked: true};
+    var challengePending = !!document.querySelector('.main-wrapper .main-content') &&
+        typeof window._cf_chl_opt === 'object' &&
+        !!document.querySelector('script[src*="/cdn-cgi/challenge-platform/"]') &&
+        !document.querySelector('.search-tips');
+    if (blocked || challengePending) return {url: location.href, blocked: true};
     if (document.readyState === 'complete' && typeof document.body.innerText === 'string' &&
         !document.body.innerText.trim() && !document.querySelector('form, img, svg, canvas, iframe, video')) {
         return {url: location.href, blank: true};

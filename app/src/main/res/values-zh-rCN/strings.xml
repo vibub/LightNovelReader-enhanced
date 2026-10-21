@@ -776,6 +776,11 @@
     <string name="linovelib_search_loading">正在加载搜索结果…</string>
     <string name="linovelib_search_open_web">打开网页搜索</string>
     <string name="linovelib_search_verification_hint">如需站点验证，请在下方完成。识别到当前关键词的结果后会自动返回原生列表，也可直接在网页中搜索和浏览。</string>
+    <string name="linovelib_verification_title">需要完成网站验证</string>
+    <string name="linovelib_verification_message">网站要求进行 Cloudflare 等安全验证。是否显示当前网页进行验证？验证通过后，将尝试继续本次加载。</string>
+    <string name="linovelib_verification_confirm">前往验证</string>
+    <string name="linovelib_verification_cancelled">已取消网站验证，请重试。</string>
+    <string name="linovelib_verification_timeout">网站验证在 2 分钟内未完成，本次加载已停止，未自动重试。请检查网络或 WebView 兼容性后手动重试。</string>
     <string name="linovelib_search_load_failed">网页搜索加载失败</string>
     <string name="linovelib_search_blank_page">站点返回了空白页面，未自动刷新。可重试加载，或打开独立的移动端网页搜索。</string>
     <string name="linovelib_search_load_error">网页加载失败（错误码 %1$d），未自动重试。</string>

@@ -686,6 +686,11 @@
     <string name="linovelib_search_loading">正在載入搜尋結果…</string>
     <string name="linovelib_search_open_web">開啟網頁搜尋</string>
     <string name="linovelib_search_verification_hint">如需站點驗證，請在下方完成。辨識到目前關鍵字的結果後會自動返回原生列表，也可直接在網頁中搜尋和瀏覽。</string>
+    <string name="linovelib_verification_title">需要完成網站驗證</string>
+    <string name="linovelib_verification_message">網站要求進行 Cloudflare 等安全驗證。是否顯示目前網頁進行驗證？驗證通過後，將嘗試繼續本次載入。</string>
+    <string name="linovelib_verification_confirm">前往驗證</string>
+    <string name="linovelib_verification_cancelled">已取消網站驗證，請重試。</string>
+    <string name="linovelib_verification_timeout">網站驗證在 2 分鐘內未完成，本次載入已停止，未自動重試。請檢查網路或 WebView 相容性後手動重試。</string>
     <string name="linovelib_search_load_failed">網頁搜尋載入失敗</string>
     <string name="linovelib_search_blank_page">站點傳回了空白頁面，未自動重新整理。可重試載入，或開啟獨立的行動版網頁搜尋。</string>
     <string name="linovelib_search_load_error">網頁載入失敗（錯誤碼 %1$d），未自動重試。</string>

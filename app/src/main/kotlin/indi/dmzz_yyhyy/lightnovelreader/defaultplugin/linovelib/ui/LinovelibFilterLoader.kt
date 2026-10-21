@@ -54,12 +54,16 @@ fun LinovelibFilterLoader(
 ) {
     var webView: WebView? by remember { mutableStateOf(null) }
     var showBrowser by remember { mutableStateOf(false) }
+    var showVerificationDialog by remember { mutableStateOf(false) }
+    var verificationApproved by remember { mutableStateOf(false) }
     var waitingForVerification by remember { mutableStateOf(false) }
     var pageLoading by remember { mutableStateOf(true) }
     var httpError by remember { mutableStateOf<String?>(null) }
     var finished by remember { mutableStateOf(false) }
     var attempt by remember { mutableIntStateOf(0) }
     val lifecycleOwner = LocalLifecycleOwner.current
+    val verificationCancelledMessage = stringResource(R.string.linovelib_verification_cancelled)
+    val verificationTimeoutMessage = stringResource(R.string.linovelib_verification_timeout)
     val currentOnPageReady by rememberUpdatedState(onPageReady)
     val currentOnFailure by rememberUpdatedState(onFailure)
     val fail: (String) -> Unit = { message ->
@@ -93,15 +97,25 @@ fun LinovelibFilterLoader(
             if (!showBrowser) clearFocus()
         }
     }
-    LaunchedEffect(webView, attempt, waitingForVerification) {
-        if (webView == null || waitingForVerification || finished) return@LaunchedEffect
+    LaunchedEffect(webView, attempt, waitingForVerification, showVerificationDialog) {
+        if (webView == null || waitingForVerification || showVerificationDialog || finished) return@LaunchedEffect
         delay(30.seconds)
         fail("筛选网页加载超时，未自动重试，请重试")
+    }
+    LaunchedEffect(webView, attempt, verificationApproved) {
+        if (webView == null || !verificationApproved || finished) return@LaunchedEffect
+        // 从用户确认起独立计时，不因验证页自身的导航反复重置。
+        delay(120.seconds)
+        fail(verificationTimeoutMessage)
     }
     LaunchedEffect(webView, lifecycleOwner, attempt) {
         val view = webView ?: return@LaunchedEffect
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (!finished) {
+                if (showVerificationDialog) {
+                    delay(1.seconds)
+                    continue
+                }
                 val snapshot = withTimeoutOrNull(3.seconds) { view.filterPageSnapshot() }
                 val page = snapshot?.let {
                     runCatching { Json.parseToJsonElement(it).jsonObject }.getOrNull()
@@ -111,7 +125,11 @@ fun LinovelibFilterLoader(
                 ) {
                     // 已确认的验证文档也需保留，等待站点脚本插入控件，不能提前交给结果解析器。
                     waitingForVerification = true
-                    showBrowser = true
+                    if (verificationApproved) {
+                        showBrowser = true
+                    } else {
+                        showVerificationDialog = true
+                    }
                     pageLoading = false
                     httpError = null
                 } else if (!pageLoading && page?.get("ready")?.jsonPrimitive?.booleanOrNull == true) {
@@ -210,6 +228,21 @@ fun LinovelibFilterLoader(
                 }
             )
         }
+    }
+
+    if (showVerificationDialog && !finished) {
+        LinovelibVerificationDialog(
+            onConfirm = {
+                verificationApproved = true
+                showVerificationDialog = false
+                // 保留当前页面和浏览器会话，只切换到用户可见状态。
+                showBrowser = true
+            },
+            onDismiss = {
+                showVerificationDialog = false
+                fail(verificationCancelledMessage)
+            }
+        )
     }
 }
 
