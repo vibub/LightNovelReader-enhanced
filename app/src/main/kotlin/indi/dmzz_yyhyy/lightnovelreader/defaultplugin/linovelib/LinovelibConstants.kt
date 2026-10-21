@@ -4,11 +4,11 @@ import io.nightfish.lightnovelreader.api.identifier.Identifier
 import java.net.URI
 
 object LinovelibConstants {
-    /** 桌面端 URL，用于 Jsoup 数据抓取（目录、章节、详情） */
+    /** 桌面端 URL，用于后台详情、目录、章节、探索、筛选与原生搜索。 */
     const val BASE_URL = "https://www.linovelib.com"
     /** 移动端 URL，用于 WebView 浏览、登录、搜索、书架 */
     const val MOBILE_BASE_URL = "https://m.bilinovel.com"
-    /** 文库筛选 URL；桌面地址会触发 Cloudflare，并在浏览器中重定向到该站点 */
+    /** 移动网页入口站点，仅用于可见网页搜索；后台筛选使用 BASE_URL。 */
     const val FILTER_BASE_URL = "https://www.bilinovel.net"
     const val SOURCE_NAME = "Linovelib"
     const val SEARCH_BLOCKED_MESSAGE = "Linovelib 搜索入口被 Cloudflare 拦截。请在网页中搜索并点进小说详情页。"
@@ -35,7 +35,7 @@ object LinovelibConstants {
             "&pid=${page.coerceAtLeast(1)}" +
             "&ajax_request=1"
 
-    // ── 移动端 URL（WebView 浏览与解析回退）──
+    // ── 移动端 URL（用户可见的 WebView 浏览）──
     fun mobileDetailUrl(bookId: String): String = "$MOBILE_BASE_URL/novel/${bookId.normalizeBookId()}.html"
     fun mobileCatalogUrl(bookId: String): String = "$MOBILE_BASE_URL/novel/${bookId.normalizeBookId()}/catalog"
     fun mobileChapterUrl(bookId: String, chapterId: String): String =

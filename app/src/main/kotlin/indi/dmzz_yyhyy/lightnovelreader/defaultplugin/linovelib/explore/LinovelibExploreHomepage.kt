@@ -58,12 +58,6 @@ internal data class LinovelibExploreSnapshot(
 
     companion object {
         fun empty(): LinovelibExploreSnapshot = LinovelibExploreSnapshot(emptyMap())
-
-        fun recommended(
-            books: List<LinovelibWebsiteDataSource.LinovelibExploreBook>
-        ): LinovelibExploreSnapshot = LinovelibExploreSnapshot(
-            mapOf(LinovelibExploreSection.HomeRecommended to books)
-        )
     }
 }
 
@@ -107,7 +101,6 @@ internal object LinovelibExploreHomepageParser {
 
 internal class LinovelibExploreHomepageLoader(
     private val loadDesktopSnapshot: suspend () -> LinovelibExploreSnapshot,
-    private val loadMobileRecommendations: suspend () -> List<LinovelibWebsiteDataSource.LinovelibExploreBook>,
     private val currentTimeMillis: () -> Long = System::currentTimeMillis,
     private val cacheDurationMillis: Long = DEFAULT_CACHE_DURATION_MILLIS,
     private val onError: (Throwable) -> Unit = { it.printStackTrace() }
@@ -138,7 +131,7 @@ internal class LinovelibExploreHomepageLoader(
             throw error
         } catch (error: Throwable) {
             onError(error)
-            previousSnapshot ?: loadMobileFallback()
+            previousSnapshot ?: LinovelibExploreSnapshot.empty()
         }
 
         cachedSnapshot = snapshot
@@ -147,23 +140,8 @@ internal class LinovelibExploreHomepageLoader(
         snapshot
     }
 
-    private suspend fun loadMobileFallback(): LinovelibExploreSnapshot = try {
-        LinovelibExploreSnapshot.recommended(
-            loadMobileRecommendations()
-                .filter { it.id.isNotBlank() }
-                .distinctBy { it.id }
-                .take(MOBILE_RECOMMENDATION_LIMIT)
-        )
-    } catch (error: CancellationException) {
-        throw error
-    } catch (error: Throwable) {
-        onError(error)
-        LinovelibExploreSnapshot.empty()
-    }
-
     companion object {
         internal const val DEFAULT_CACHE_DURATION_MILLIS = 10 * 60 * 1000L
-        private const val MOBILE_RECOMMENDATION_LIMIT = 12
     }
 }
 

@@ -138,51 +138,68 @@ class LinovelibJsoup(
         var delayMillis = 1_500L
         repeat(retryTime + 1) { attempt ->
             try {
-                val body = LinovelibRateLimiter.run {
-                    val connection = Jsoup.connect(url)
-                        .ignoreContentType(true)
-                        .ignoreHttpErrors(true)
-                        .followRedirects(true)
-                        .timeout(15_000)
-                        .method(method)
-                        .headers(
-                            defaultHeaders(referer, useCookie, userAgentMode) +
-                                ("Accept" to accept) +
-                                extraHeaders
-                        )
-                    if (formData.isNotEmpty()) connection.data(formData)
-                    val response = connection.execute()
-                    val body = response.bodyAsBytes().toString(Charsets.UTF_8)
-                    val statusCode = response.statusCode()
-                    val retryAfterMillis = parseRetryAfterMillis(response.header("Retry-After"))
-                    if (statusCode == 429) {
-                        LinovelibRateLimiter.coolDown(
-                            reason = "HTTP 429 $url",
-                            delayMillis = retryAfterMillis ?: LinovelibRateLimiter.DEFAULT_RATE_LIMIT_COOLDOWN_MILLIS
-                        )
-                        throw LinovelibHttpException(statusCode, url, retryAfterMillis)
+                val session = Jsoup.newSession()
+                    .ignoreContentType(true)
+                    .ignoreHttpErrors(true)
+                    .followRedirects(userAgentMode == UserAgentMode.Mobile)
+                    .timeout(15_000)
+                    .headers(
+                        defaultHeaders(referer, useCookie, userAgentMode) +
+                            ("Accept" to accept) + extraHeaders
+                    )
+                var requestUrl = url
+                var redirectCount = 0
+                while (true) {
+                    if (userAgentMode == UserAgentMode.Desktop && !LinovelibConstants.isDesktopPageUrl(requestUrl)) {
+                        throw LinovelibBlockedException("Linovelib 后台请求只允许电脑端地址，请使用网页浏览打开其他站点")
                     }
-                    if (isCloudflareBlocked(statusCode, body)) {
-                        val reason = "Linovelib request was blocked (HTTP $statusCode): $url"
-                        LinovelibRateLimiter.coolDown(
-                            reason = reason,
-                            delayMillis = maxOf(
-                                retryAfterMillis ?: 0L,
-                                LinovelibRateLimiter.DEFAULT_RATE_LIMIT_COOLDOWN_MILLIS
-                            ),
-                            blocked = true
-                        )
-                        throw LinovelibBlockedException(reason)
-                    }
-                    if (statusCode !in 200..299) {
-                        if (statusCode >= 500 && retryAfterMillis != null) {
-                            LinovelibRateLimiter.coolDown("HTTP $statusCode $url", retryAfterMillis)
+                    var redirectUrl: String? = null
+                    val body = LinovelibRateLimiter.run {
+                        val connection = session.newRequest().url(requestUrl).method(method)
+                        if (formData.isNotEmpty()) connection.data(formData)
+                        val response = connection.execute()
+                        val body = response.bodyAsBytes().toString(Charsets.UTF_8)
+                        val statusCode = response.statusCode()
+                        if (userAgentMode == UserAgentMode.Desktop && statusCode in REDIRECT_STATUS_CODES) {
+                            // 每一跳分别限频；不跟随移动域名，也不自动重放重定向后的 POST。
+                            if (method != Connection.Method.GET || redirectCount >= MAX_REDIRECTS) {
+                                throw LinovelibBlockedException("Linovelib 后台请求重定向异常，请使用网页浏览处理")
+                            }
+                            redirectUrl = resolveDesktopRedirect(requestUrl, response.header("Location").orEmpty())
+                            return@run ""
                         }
-                        throw LinovelibHttpException(statusCode, url, retryAfterMillis)
+                        val retryAfterMillis = parseRetryAfterMillis(response.header("Retry-After"))
+                        if (statusCode == 429) {
+                            LinovelibRateLimiter.coolDown(
+                                reason = "HTTP 429 $requestUrl",
+                                delayMillis = retryAfterMillis ?: LinovelibRateLimiter.DEFAULT_RATE_LIMIT_COOLDOWN_MILLIS
+                            )
+                            throw LinovelibHttpException(statusCode, requestUrl, retryAfterMillis)
+                        }
+                        if (isCloudflareBlocked(statusCode, body)) {
+                            val reason = "Linovelib request was blocked (HTTP $statusCode): $requestUrl"
+                            LinovelibRateLimiter.coolDown(
+                                reason = reason,
+                                delayMillis = maxOf(
+                                    retryAfterMillis ?: 0L,
+                                    LinovelibRateLimiter.DEFAULT_RATE_LIMIT_COOLDOWN_MILLIS
+                                ),
+                                blocked = true
+                            )
+                            throw LinovelibBlockedException(reason)
+                        }
+                        if (statusCode !in 200..299) {
+                            if (statusCode >= 500 && retryAfterMillis != null) {
+                                LinovelibRateLimiter.coolDown("HTTP $statusCode $requestUrl", retryAfterMillis)
+                            }
+                            throw LinovelibHttpException(statusCode, requestUrl, retryAfterMillis)
+                        }
+                        body
                     }
-                    body
+                    val nextUrl = redirectUrl ?: return@withContext body
+                    requestUrl = nextUrl
+                    redirectCount++
                 }
-                return@withContext body
             } catch (e: SocketTimeoutException) {
                 lastError = e
             } catch (e: IOException) {
@@ -218,6 +235,16 @@ class LinovelibJsoup(
         private const val TAG = "LinovelibJsoup"
         private const val MAX_RETRY_DELAY_MILLIS = 30_000L
         private const val RETRY_JITTER_MILLIS = 1_000L
+        private const val MAX_REDIRECTS = 5
+        private val REDIRECT_STATUS_CODES = setOf(301, 302, 303, 307, 308)
+
+        internal fun resolveDesktopRedirect(currentUrl: String, location: String): String {
+            val target = runCatching { URI(currentUrl).resolve(location.trim()).toString() }.getOrNull()
+            if (location.isBlank() || target == null || !LinovelibConstants.isDesktopPageUrl(target)) {
+                throw LinovelibBlockedException("Linovelib 后台请求被重定向到非电脑端地址，请使用网页浏览处理")
+            }
+            return target
+        }
 
         fun isCloudflareBlocked(statusCode: Int, body: String): Boolean {
             if (statusCode == 403 || statusCode == 503) return true

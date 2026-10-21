@@ -55,7 +55,7 @@ class LinovelibApi(
         websiteDataSource,
         cache
     )
-    override val explorePageProvider: ExplorePageProvider = LinovelibExplorePageProvider(jsoup, websiteDataSource)
+    override val explorePageProvider: ExplorePageProvider = LinovelibExplorePageProvider(jsoup)
 
     override val imageHeader: Map<String, String>
         get() = jsoup.defaultHeaders(useCookie = false)

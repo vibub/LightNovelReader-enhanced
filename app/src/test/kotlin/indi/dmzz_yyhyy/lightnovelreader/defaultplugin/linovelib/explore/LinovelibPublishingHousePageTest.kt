@@ -24,7 +24,7 @@ class LinovelibPublishingHousePageTest {
     private val filterDocument by lazy {
         Jsoup.parse(
             checkNotNull(javaClass.getResource("/linovelib/explore/filter-page.html")).readText(),
-            LinovelibConstants.FILTER_BASE_URL
+            LinovelibConstants.BASE_URL
         )
     }
 
@@ -57,14 +57,16 @@ class LinovelibPublishingHousePageTest {
         assertEquals(listOf("奇幻", "冒险"), firstBook.tags)
         assertEquals(2_154_000, firstBook.wordCount)
         assertEquals(
-            "${LinovelibConstants.FILTER_BASE_URL}/files/article/image/7/7001/7001s.jpg",
+            "${LinovelibConstants.BASE_URL}/files/article/image/7/7001/7001s.jpg",
             firstBook.coverUrl
         )
         assertEquals(LocalDateTime.MIN, firstBook.lastUpdated)
         val secondBook = page.books[1]
         assertEquals("作者二", secondBook.author)
         assertEquals("电击文库", secondBook.publishingHouse)
-        assertEquals(LocalDateTime.of(2026, 10, 20, 0, 0), secondBook.lastUpdated)
+        assertEquals(LocalDateTime.of(2026, 10, 20, 13, 42, 5), secondBook.lastUpdated)
+        assertEquals(325_000, secondBook.wordCount)
+        assertEquals("包含更新时间的列表摘要。", secondBook.description)
         assertTrue(secondBook.isComplete)
         assertEquals(0, page.books[2].wordCount)
         assertEquals(LocalDateTime.MIN, page.books[2].lastUpdated)
@@ -74,7 +76,7 @@ class LinovelibPublishingHousePageTest {
     @Test
     fun filterUrlSupportsMultipleThemesAndPublishingHouseRegionDependency() {
         val multiThemeUrl = LinovelibFilterUrl.parse(
-            "${LinovelibConstants.FILTER_BASE_URL}/wenku/lastupdate_64-48-63_0_0_0_0_0_0_4_0.html"
+            "${LinovelibConstants.BASE_URL}/wenku/lastupdate_64-48-63_0_0_0_0_0_0_4_0.html"
         )!!
         assertEquals("64-48-63", multiThemeUrl.parameters[0])
         assertEquals(4, multiThemeUrl.page)
@@ -87,7 +89,7 @@ class LinovelibPublishingHousePageTest {
             relatedRegion = "1"
         )
         assertEquals(
-            "${LinovelibConstants.FILTER_BASE_URL}/wenku/lastupdate_0_0_0_1_1_0_0_1_0.html",
+            "${LinovelibConstants.BASE_URL}/wenku/lastupdate_0_0_0_1_1_0_0_1_0.html",
             LinovelibFilterUrl.Default.withPage(3)
                 .withOption(
                     LinovelibFilterKey.Parameter(
@@ -127,7 +129,7 @@ class LinovelibPublishingHousePageTest {
         )
         assertTrue(
             requestedUrls.contains(
-                "${LinovelibConstants.FILTER_BASE_URL}/wenku/lastupdate_0_0_0_1_1_0_0_1_0.html"
+                "${LinovelibConstants.BASE_URL}/wenku/lastupdate_0_0_0_1_1_0_0_1_0.html"
             )
         )
     }
@@ -195,7 +197,7 @@ class LinovelibPublishingHousePageTest {
         dataSource.getResultFlow().takeWhile { it !is SearchResult.End }.toList()
 
         assertEquals(
-            "${LinovelibConstants.FILTER_BASE_URL}/wenku/lastupdate_64-48-63-27_0_0_1_1_0_0_1_0.html",
+            "${LinovelibConstants.BASE_URL}/wenku/lastupdate_64-48-63-27_0_0_1_1_0_0_1_0.html",
             requestedUrls.last()
         )
     }
@@ -343,7 +345,7 @@ class LinovelibPublishingHousePageTest {
             <body>Performing security verification</body>
             </html>
             """.trimIndent(),
-            LinovelibConstants.FILTER_BASE_URL
+            LinovelibConstants.BASE_URL
         )
 
         assertThrows(IllegalStateException::class.java) {
@@ -376,7 +378,7 @@ class LinovelibPublishingHousePageTest {
         val books = bookIds.joinToString("\n") { bookId ->
             """
             <li class="book-li">
-                <a class="book-layout" href="${LinovelibConstants.FILTER_BASE_URL}/novel/$bookId.html">
+                <a class="book-layout" href="${LinovelibConstants.BASE_URL}/novel/$bookId.html">
                     <h4 class="book-title">小说 $bookId</h4>
                 </a>
             </li>
@@ -401,7 +403,7 @@ class LinovelibPublishingHousePageTest {
             </body>
             </html>
             """.trimIndent(),
-            LinovelibConstants.FILTER_BASE_URL
+            LinovelibConstants.BASE_URL
         )
     }
 }

@@ -123,22 +123,19 @@ class LinovelibWebsiteDataSource(
                 url = LinovelibConstants.catalogUrl(bookId),
                 referer = LinovelibConstants.detailUrl(bookId),
                 retryTime = 2
-            ),
-            useMobile = false
+            )
         )
     }
 
     private suspend fun parseBookVolumes(
         bookId: String,
-        document: Document,
-        useMobile: Boolean
+        document: Document
     ): BookVolumes {
         val volumes = parseVolumes(document, bookId) { previousChapterId, nextChapterId ->
             resolveMissingCatalogChapterId(
                 bookId = bookId,
                 previousChapterId = previousChapterId,
-                nextChapterId = nextChapterId,
-                useMobile = useMobile
+                nextChapterId = nextChapterId
             )
         }
         require(isUsableLinovelibCatalog(volumes)) {
@@ -158,7 +155,6 @@ class LinovelibWebsiteDataSource(
             return getChapterContentFromSite(
                 bookId = normalizedBookId,
                 chapterId = normalizedChapterId,
-                useMobile = false,
                 useCookie = true
             )
         } catch (throwable: Throwable) {
@@ -172,7 +168,6 @@ class LinovelibWebsiteDataSource(
             getChapterContentFromSite(
                 bookId = normalizedBookId,
                 chapterId = normalizedChapterId,
-                useMobile = false,
                 useCookie = false
             )
         } catch (anonymousError: Throwable) {
@@ -185,7 +180,6 @@ class LinovelibWebsiteDataSource(
     private suspend fun getChapterContentFromSite(
         bookId: String,
         chapterId: String,
-        useMobile: Boolean,
         useCookie: Boolean
     ): ChapterContent {
         val normalizedBookId = bookId
@@ -210,7 +204,6 @@ class LinovelibWebsiteDataSource(
             val document = getChapterDocument(
                 bookId = normalizedBookId,
                 chapterId = currentPageChapterId,
-                useMobile = useMobile,
                 useCookie = useCookie,
                 retryTime = if (page == 1) 2 else 1
             )
@@ -386,53 +379,37 @@ class LinovelibWebsiteDataSource(
     private suspend fun getChapterDocument(
         bookId: String,
         chapterId: String,
-        useMobile: Boolean,
         useCookie: Boolean = true,
         retryTime: Int
     ): Document = jsoup.getDocument(
-        url = if (useMobile) {
-            LinovelibConstants.mobileChapterUrl(bookId, chapterId)
-        } else {
-            LinovelibConstants.chapterUrl(bookId, chapterId)
-        },
-        referer = if (useMobile) {
-            LinovelibConstants.mobileCatalogUrl(bookId)
-        } else {
-            LinovelibConstants.catalogUrl(bookId)
-        },
+        url = LinovelibConstants.chapterUrl(bookId, chapterId),
+        referer = LinovelibConstants.catalogUrl(bookId),
         useCookie = useCookie,
         retryTime = retryTime,
-        userAgentMode = if (useMobile) {
-            LinovelibJsoup.UserAgentMode.Mobile
-        } else {
-            LinovelibJsoup.UserAgentMode.Desktop
-        }
+        userAgentMode = LinovelibJsoup.UserAgentMode.Desktop
     )
 
     private suspend fun resolveMissingCatalogChapterId(
         bookId: String,
         previousChapterId: String?,
-        nextChapterId: String?,
-        useMobile: Boolean = false
+        nextChapterId: String?
     ): String? {
         nextChapterId?.let { id ->
-            resolveMissingCatalogChapterIdFromNext(bookId, id, useMobile)?.let { return it }
+            resolveMissingCatalogChapterIdFromNext(bookId, id)?.let { return it }
         }
         return previousChapterId?.let {
-            resolveMissingCatalogChapterIdFromPrevious(bookId, it, useMobile)
+            resolveMissingCatalogChapterIdFromPrevious(bookId, it)
         }
     }
 
     private suspend fun resolveMissingCatalogChapterIdFromNext(
         bookId: String,
-        nextChapterId: String,
-        useMobile: Boolean
+        nextChapterId: String
     ): String? =
         runCatching {
             val document = getChapterDocument(
                 bookId = bookId,
                 chapterId = nextChapterId,
-                useMobile = useMobile,
                 retryTime = 1
             )
             extractLinovelibScriptPage(document, "prevpage")
@@ -445,8 +422,7 @@ class LinovelibWebsiteDataSource(
 
     private suspend fun resolveMissingCatalogChapterIdFromPrevious(
         bookId: String,
-        previousChapterId: String,
-        useMobile: Boolean
+        previousChapterId: String
     ): String? = runCatching {
         val baseChapterId = previousChapterId.substringBefore('_')
         var page = 1
@@ -455,7 +431,6 @@ class LinovelibWebsiteDataSource(
             val document = getChapterDocument(
                 bookId = bookId,
                 chapterId = pageChapterId,
-                useMobile = useMobile,
                 retryTime = if (page == 1) 0 else 1
             )
             val scriptNextPageId = extractLinovelibScriptPage(document, "nextpage")

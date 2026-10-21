@@ -21,10 +21,7 @@ class LinovelibExplorePageProvider internal constructor(
     loadFilterDocument: suspend (String) -> Document
 ) : AbstractDefaultExplorePageProvider() {
     private val filterPageCache = LinovelibFilterPageCache(loadFilterDocument)
-    constructor(
-        jsoup: LinovelibJsoup,
-        websiteDataSource: LinovelibWebsiteDataSource
-    ) : this(
+    constructor(jsoup: LinovelibJsoup) : this(
         homepageLoader = LinovelibExploreHomepageLoader(
             loadDesktopSnapshot = {
                 LinovelibExploreHomepageParser.parse(
@@ -35,24 +32,14 @@ class LinovelibExplorePageProvider internal constructor(
                         userAgentMode = LinovelibJsoup.UserAgentMode.Desktop
                     )
                 )
-            },
-            loadMobileRecommendations = {
-                websiteDataSource.parseExploreBooks(
-                    jsoup.getDocument(
-                        url = LinovelibConstants.MOBILE_BASE_URL,
-                        referer = LinovelibConstants.MOBILE_BASE_URL,
-                        retryTime = 0,
-                        userAgentMode = LinovelibJsoup.UserAgentMode.Mobile
-                    )
-                )
             }
         ),
         loadFilterDocument = { url ->
             jsoup.getDocument(
                 url = url,
-                referer = LinovelibConstants.FILTER_BASE_URL,
+                referer = LinovelibConstants.BASE_URL,
                 retryTime = 0,
-                userAgentMode = LinovelibJsoup.UserAgentMode.Mobile
+                userAgentMode = LinovelibJsoup.UserAgentMode.Desktop
             )
         }
     )

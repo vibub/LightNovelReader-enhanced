@@ -18,10 +18,7 @@ class LinovelibExplorePageProviderTest {
     @Test
     fun providerRegistersThreeTopPagesInSpecifiedOrder() {
         val jsoup = LinovelibJsoup()
-        val provider = LinovelibExplorePageProvider(
-            jsoup = jsoup,
-            websiteDataSource = LinovelibWebsiteDataSource(jsoup)
-        )
+        val provider = LinovelibExplorePageProvider(jsoup)
 
         assertEquals(
             LinovelibExplorePage.entries.map { it.pageId },
@@ -39,7 +36,6 @@ class LinovelibExplorePageProviderTest {
         val provider = LinovelibExplorePageProvider(
             homepageLoader = LinovelibExploreHomepageLoader(
                 loadDesktopSnapshot = { snapshot(emptyMap()) },
-                loadMobileRecommendations = { emptyList() },
                 onError = {}
             ),
             loadFilterDocument = { filterDocument }
@@ -78,7 +74,6 @@ class LinovelibExplorePageProviderTest {
                     )
                 )
             },
-            loadMobileRecommendations = { error("mobile fallback should not be called") },
             onError = {}
         )
 
@@ -99,7 +94,6 @@ class LinovelibExplorePageProviderTest {
                     )
                 )
             },
-            loadMobileRecommendations = { emptyList() },
             onError = {}
         )
 
@@ -126,7 +120,6 @@ class LinovelibExplorePageProviderTest {
                     error("desktop failed")
                 }
             },
-            loadMobileRecommendations = { error("mobile fallback should not replace old cache") },
             currentTimeMillis = { now },
             onError = {}
         )
@@ -138,38 +131,27 @@ class LinovelibExplorePageProviderTest {
     }
 
     @Test
-    fun firstDesktopFailureCachesMobileRecommendationsOnlyForHomepageRecommendation() = runBlocking {
+    fun firstDesktopFailureCachesEmptySnapshotWithoutMobileFallback() = runBlocking {
         var desktopLoads = 0
-        var mobileLoads = 0
         val loader = LinovelibExploreHomepageLoader(
             loadDesktopSnapshot = {
                 desktopLoads++
                 error("desktop failed")
             },
-            loadMobileRecommendations = {
-                mobileLoads++
-                listOf(book(""), book("4"), book("4", "duplicate"), book("5"))
-            },
             onError = {}
         )
 
         val snapshot = loader.getSnapshot()
-        assertEquals(
-            listOf("4", "5"),
-            snapshot[LinovelibExploreSection.HomeRecommended].map { it.id }
-        )
-        assertTrue(snapshot[LinovelibExploreSection.NewBooks].isEmpty())
-        assertTrue(snapshot[LinovelibExploreSection.StrongRecommended].isEmpty())
+        assertTrue(!snapshot.hasBooks)
         assertTrue(snapshot.publishingHouses.isEmpty())
+        assertEquals(snapshot, loader.getSnapshot())
         assertEquals(1, desktopLoads)
-        assertEquals(1, mobileLoads)
     }
 
     @Test
     fun cancellationIsNotSwallowed() {
         val loader = LinovelibExploreHomepageLoader(
             loadDesktopSnapshot = { throw CancellationException("cancelled") },
-            loadMobileRecommendations = { emptyList() },
             onError = {}
         )
 
@@ -198,6 +180,6 @@ class LinovelibExplorePageProviderTest {
 
     private fun loadFilterFixture() = Jsoup.parse(
         checkNotNull(javaClass.getResource("/linovelib/explore/filter-page.html")).readText(),
-        LinovelibConstants.FILTER_BASE_URL
+        LinovelibConstants.BASE_URL
     )
 }

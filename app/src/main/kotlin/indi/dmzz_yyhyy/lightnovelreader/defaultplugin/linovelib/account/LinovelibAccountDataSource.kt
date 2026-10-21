@@ -33,6 +33,7 @@ class LinovelibAccountDataSource(
         val visitedUrls = mutableSetOf<String>()
         var expectedGroupCount: Int? = null
         var pagesFetched = 0
+        // 桌面书架契约尚未确认；现有书签解析依赖移动 DOM，不能仅替换域名。
         var nextUrl: String? = LinovelibConstants.bookcaseUrl()
         var lastError: Throwable? = null
 

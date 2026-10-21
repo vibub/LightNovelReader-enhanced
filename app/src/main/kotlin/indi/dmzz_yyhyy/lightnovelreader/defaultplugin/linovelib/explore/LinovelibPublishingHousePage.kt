@@ -24,7 +24,6 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Comment
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import java.time.LocalDate
 import java.time.LocalDateTime
 
 internal sealed interface LinovelibFilterKey {
@@ -83,7 +82,7 @@ internal data class LinovelibFilterUrl(
     }.withPage(1)
 
     fun toAbsoluteUrl(): String = buildString {
-        append(LinovelibConstants.FILTER_BASE_URL)
+        append(LinovelibConstants.BASE_URL)
         append("/wenku/")
         append(sort)
         append('_')
@@ -672,22 +671,31 @@ private fun Document.parseFilterBooks(): List<LinovelibFilterBook> {
             ?: link.ownText().takeIf(String::isNotBlank)
             ?: return@mapNotNull null
         val metadata = container.selectFirst(
-            ".book-meta, .bookother, .bookinfo .author, .bookinfo .info"
+            ".book-meta, .bookother, .bookinfo .author, .bookinfo .info, " +
+                ".book-mid-info .author, .book-info .author, p.author"
         )?.text().orEmpty()
         val metadataParts = metadata.split('|', '｜').map(String::trim)
             .takeIf { it.size >= 2 }.orEmpty()
-        val author = container.selectFirst(".book-author, .author, .au-name")
-            ?.text()?.substringBefore('|')?.substringBefore('｜')
-            ?: metadataParts.firstOrNull().orEmpty()
+        val author = container.selectFirst(
+            ".book-author, .author .name, .au-name, a[href*=/author/], " +
+                ".book-mid-info .author a:first-of-type, .book-info .author a:first-of-type"
+        )
+            ?.text()
+            ?: metadataParts.firstOrNull()
+            ?: container.selectFirst(".author")?.text().orEmpty()
         val updateText = container.selectFirst("time[datetime]")?.attr("datetime")
-            ?: container.selectFirst(".uptime, .update-time, .lastupdate, .book-update")?.text()
+            ?: container.selectFirst(".uptime, .update-time, .lastupdate, .book-update, .update")?.text()
             ?: metadata
+        val wordText = container.selectFirst(".tag-small.blue, .words, .wordcount, .book-word-count")
+            ?.text()
+            ?: Regex("[\\d,.]+\\s*(?:[万萬wW千kK]字?|字)").find(metadata)?.value.orEmpty()
         LinovelibFilterBook(
             id = id,
             title = title.cleanFilterText(),
             coverUrl = image?.realExploreImageUrl()?.takeIf(String::isNotBlank)
                 ?: inferLinovelibCoverUrl(id),
-            author = author.removePrefix("作者：").removePrefix("作者:").cleanFilterText(),
+            author = author.substringBefore('|').substringBefore('｜')
+                .cleanFilterText().removePrefix("作者：").removePrefix("作者:").trim(),
             description = container.selectFirst(
                 ".book-desc, .bookintro, .book-intro, .intro, .desc"
             )?.text()?.cleanFilterText().orEmpty(),
@@ -696,13 +704,12 @@ private fun Document.parseFilterBooks(): List<LinovelibFilterBook> {
                 .filter(String::isNotBlank)
                 .distinct(),
             publishingHouse = container.selectFirst(
-                ".book-publisher, .publisher, .book-category, .cat"
+                ".book-publisher, .publisher, .book-category, .cat, .author a[href*=/wenku/]"
             )?.text()?.cleanFilterText() ?: metadataParts.getOrNull(1).orEmpty(),
-            wordCount = container.selectFirst(".tag-small.blue, .words, .wordcount, .book-word-count")
-                ?.text()?.parseFilterWordCount() ?: 0,
+            wordCount = wordText.parseFilterWordCount(),
             lastUpdated = updateText.parseFilterUpdateTime(),
             isComplete = Regex("(?<!未)(?:完结|完結|完本|全本)").containsMatchIn(
-                container.selectFirst(".tag-small.red, .book-status, .status")?.text() ?: metadata
+                container.select(".tag-small.red, .book-status, .status, .author span").text() + " " + metadata
             )
         )
     }.distinctBy(LinovelibFilterBook::id)
@@ -720,14 +727,18 @@ private fun String.parseFilterWordCount(): Int {
 }
 
 private fun String.parseFilterUpdateTime(): LocalDateTime {
-    val match = Regex("(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})").find(this)
-        ?: return LocalDateTime.MIN
+    val match = Regex(
+        "(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})(?:[T\\s]+(\\d{1,2}):(\\d{2})(?::(\\d{2}))?)?"
+    ).find(this) ?: return LocalDateTime.MIN
     return runCatching {
-        LocalDate.of(
+        LocalDateTime.of(
             match.groupValues[1].toInt(),
             match.groupValues[2].toInt(),
-            match.groupValues[3].toInt()
-        ).atStartOfDay()
+            match.groupValues[3].toInt(),
+            match.groupValues[4].toIntOrNull() ?: 0,
+            match.groupValues[5].toIntOrNull() ?: 0,
+            match.groupValues[6].toIntOrNull() ?: 0
+        )
     }.getOrDefault(LocalDateTime.MIN)
 }
 
@@ -783,6 +794,7 @@ private val FILTER_BOOK_PAGE_REGEX = Regex("/novel/(\\d+)\\.html(?:[?#].*)?$")
 private val PAGE_STATS_REGEX = Regex("(\\d+)\\s*/\\s*(\\d+)")
 private val FILTER_BOOK_CONTAINER_SELECTORS = listOf(
     ".book-ol .book-li",
+    ".book-img-text li",
     "div.mind-book",
     "div.bookbox",
     ".book-list .book-item",
