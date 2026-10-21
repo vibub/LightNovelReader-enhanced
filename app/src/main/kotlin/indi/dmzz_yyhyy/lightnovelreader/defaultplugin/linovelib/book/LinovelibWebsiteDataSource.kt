@@ -305,8 +305,9 @@ class LinovelibWebsiteDataSource(
                 .ifBlank { element.selectFirst("img")?.attr("alt")?.cleanText().orEmpty() }
             if (title.isBlank()) return@mapNotNull null
             val cover = element.selectFirst("img")?.imageUrl().orEmpty()
-            val authorElement = element.selectFirst(".book-author, .au-name, .author .name, a[href*=/author/]")
-                ?: element.selectFirst(".author")
+            val authorElement = element.selectFirst(
+                ".book-author, .au-name, .author .name, a[href*=/author/], .bookinfo a[href*=authorarticle.php]"
+            ) ?: element.selectFirst(".author")
             val author = authorElement?.clone()?.apply {
                 // 作者可能用内嵌 SVG text 显示，不能把文字和图标一起删掉。
                 select("svg").forEach { svg ->
