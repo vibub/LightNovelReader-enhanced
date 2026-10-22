@@ -161,8 +161,8 @@ fun ExploreHomeScreen(
         } else {
             EmptyPage(
                 icon = painterResource(id = R.drawable.error_24px),
-                title = "无探索页",
-                description = "数据源提供了空的探索页, 这通常是由于数据源未实现探索页面导致的"
+                title = stringResource(R.string.explore_empty_title),
+                description = stringResource(R.string.explore_empty_description)
             )
         }
     }

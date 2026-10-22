@@ -18,7 +18,7 @@ class LinovelibExplorePageProviderTest {
     @Test
     fun providerRegistersThreeTopPagesInSpecifiedOrder() {
         val jsoup = LinovelibJsoup()
-        val provider = LinovelibExplorePageProvider(jsoup)
+        val provider = LinovelibExplorePageProvider(jsoup) { error("此测试不应读取提示资源") }
 
         assertEquals(
             LinovelibExplorePage.entries.map { it.pageId },

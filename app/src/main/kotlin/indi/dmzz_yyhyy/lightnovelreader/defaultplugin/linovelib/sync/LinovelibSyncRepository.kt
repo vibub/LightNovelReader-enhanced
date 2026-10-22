@@ -1,6 +1,8 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.sync
 
+import android.content.Context
 import android.net.Uri
+import dagger.hilt.android.qualifiers.ApplicationContext
 import indi.dmzz_yyhyy.lightnovelreader.data.book.isUsableBookInformation
 import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.local.LocalBookDataSource
@@ -12,6 +14,7 @@ import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.account.Linoveli
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.account.LinovelibAccountStore
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book.LinovelibWebsiteDataSource
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibJsoup
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.linovelibUserMessage
 import io.nightfish.lightnovelreader.api.book.BookInformation
 import io.nightfish.lightnovelreader.api.book.BookVolumes
 import io.nightfish.lightnovelreader.api.book.WordCount
@@ -29,7 +32,8 @@ class LinovelibSyncRepository @Inject constructor(
     private val bookshelfRepository: BookshelfRepository,
     private val localBookDataSource: LocalBookDataSource,
     private val webBookDataSourceProvider: WebBookDataSourceProvider,
-    private val bookmarkRepository: LinovelibBookmarkRepository
+    private val bookmarkRepository: LinovelibBookmarkRepository,
+    @param:ApplicationContext private val context: Context
 ) {
     private val accountStore = LinovelibAccountStore(userDataRepository)
     private val jsoup = LinovelibJsoup(accountStore)
@@ -78,7 +82,8 @@ class LinovelibSyncRepository @Inject constructor(
         }.getOrElse { throwable ->
             LinovelibRemoteBookmarkResult(
                 success = false,
-                message = throwable.message ?: throwable.javaClass.simpleName
+                message = throwable.linovelibUserMessage(context.resources)
+                    ?: throwable.message ?: throwable.javaClass.simpleName
             )
         }
     }
@@ -163,7 +168,8 @@ class LinovelibSyncRepository @Inject constructor(
             )
         }.getOrElse { throwable ->
             throwable.printStackTrace()
-            val message = throwable.message ?: throwable.javaClass.simpleName
+            val message = throwable.linovelibUserMessage(context.resources)
+                ?: throwable.message ?: throwable.javaClass.simpleName
             accountStore.markSyncError(message)
             LinovelibSyncResult(error = message)
         }

@@ -184,7 +184,7 @@ fun LinovelibSearchLoader(
                     if (page?.get("blocked")?.jsonPrimitive?.booleanOrNull == true) {
                         if (!verificationPaused) {
                             verificationPaused = true
-                            LinovelibRateLimiter.coolDown("网页需要手动验证", 60_000, blocked = true)
+                            LinovelibRateLimiter.coolDown("Web search verification required", 60_000, blocked = true)
                         }
                         pageLoading = false
                         httpError = null
@@ -287,7 +287,7 @@ fun LinovelibSearchLoader(
                             if (code in listOf(403, 429, 503)) {
                                 val requestedDelay = LinovelibJsoup.parseRetryAfterMillis(retryAfter)
                                 val pause = if (code == 429) requestedDelay ?: 60_000 else maxOf(requestedDelay ?: 0, 60_000)
-                                LinovelibRateLimiter.coolDown("网页 HTTP $code", pause, blocked = code != 429)
+                                LinovelibRateLimiter.coolDown("Web search HTTP $code", pause, blocked = code != 429)
                             }
                             if (code > 0) httpError = message else showLoadError(message)
                         }

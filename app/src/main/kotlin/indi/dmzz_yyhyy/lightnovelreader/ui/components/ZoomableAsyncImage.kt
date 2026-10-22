@@ -59,6 +59,7 @@ import coil3.size.Dimension
 import coil3.size.Size
 import indi.dmzz_yyhyy.lightnovelreader.BuildConfig
 import indi.dmzz_yyhyy.lightnovelreader.R
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.linovelibUserMessage
 import indi.dmzz_yyhyy.lightnovelreader.data.image.ImageTransPostProcessingViewModel
 import indi.dmzz_yyhyy.lightnovelreader.utils.network.UserAgentGenerator
 import io.nightfish.lightnovelreader.api.image.ImagePostProcessingPipeline
@@ -234,7 +235,10 @@ private fun ZoomableImageContent(
                     .interceptorCoroutineContext(Dispatchers.Default)
                     .listener(
                         onSuccess = { _, _ -> lastError = null },
-                        onError = { _, result -> lastError = result.throwable.localizedMessage }
+                        onError = { _, result ->
+                            lastError = result.throwable.linovelibUserMessage(context.resources)
+                                ?: result.throwable.localizedMessage
+                        }
                     )
                     .httpHeaders(
                         NetworkHeaders.Builder().apply {
@@ -285,7 +289,7 @@ private fun ZoomableImageContent(
                             contentDescription = null
                         )
                         Spacer(Modifier.height(6.dp))
-                        Text("图片加载失败", style = typography.labelLarge)
+                        Text(stringResource(R.string.image_load_failed), style = typography.labelLarge)
                         lastError?.let {
                             Text(
                                 text = it,

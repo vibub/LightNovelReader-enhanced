@@ -12,6 +12,7 @@ import androidx.lifecycle.viewModelScope
 import com.github.michaelbull.result.get
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.content.ContentComponentRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.statistics.ReadingStatsUpdate
@@ -19,6 +20,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.statistics.StatsRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.linovelibUserMessage
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.book.targetLinovelibChapterPageId
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.comment.LinovelibChapterCommentRepository
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.sync.LinovelibBookmarkRepository
@@ -257,19 +259,19 @@ class ReaderViewModel @Inject constructor(
 
     fun bookmarkCurrentChapter(): Boolean {
         if (!_uiState.bookmarkUiState.isAvailable || bookId.isBlank()) {
-            showBookmarkToast(success = false, message = "当前数据源不可添加书签")
+            showBookmarkToast(success = false, message = applicationContext.getString(R.string.bookmark_source_unavailable))
             return false
         }
         val chapter = _uiState.contentUiState?.readingChapterContent?.get()
         if (chapter == null || chapter.id.isBlank()) {
-            showBookmarkToast(success = false, message = "当前章节不可添加书签")
+            showBookmarkToast(success = false, message = applicationContext.getString(R.string.bookmark_chapter_unavailable))
             return false
         }
         val currentBookId = bookId
         val localChapterId = chapter.id.substringBefore('_')
         val localReadingProgress = _uiState.contentUiState?.readingProgress ?: 0f
         val targetWebChapterId = currentLinovelibWebChapterId().ifBlank { chapter.id }
-        showToast("正在添加书签…")
+        showToast(applicationContext.getString(R.string.bookmark_adding))
         viewModelScope.launch(Dispatchers.IO) {
             val result = runCatching {
                 withTimeout(8.seconds) {
@@ -280,12 +282,13 @@ class ReaderViewModel @Inject constructor(
                 }
             }.getOrElse { throwable ->
                 if (throwable is TimeoutCancellationException) {
-                    showToast("添加书签超时，请稍后重试")
+                    showToast(applicationContext.getString(R.string.bookmark_timeout))
                     return@launch
                 }
                 LinovelibRemoteBookmarkResult(
                     success = false,
-                    message = throwable.message ?: throwable.javaClass.simpleName
+                    message = throwable.linovelibUserMessage(applicationContext.resources)
+                        ?: throwable.message ?: throwable.javaClass.simpleName
                 )
             }
             if (result.success) {
@@ -311,9 +314,11 @@ class ReaderViewModel @Inject constructor(
 
     private fun showBookmarkToast(success: Boolean, message: String = "") {
         val toastMessage = if (success) {
-            "添加书签成功"
+            applicationContext.getString(R.string.bookmark_success)
+        } else if (message.isBlank()) {
+            applicationContext.getString(R.string.bookmark_failed)
         } else {
-            "添加书签失败" + message.takeIf { it.isNotBlank() }?.let { "：$it" }.orEmpty()
+            applicationContext.getString(R.string.bookmark_failed_detail, message)
         }
         showToast(toastMessage)
     }

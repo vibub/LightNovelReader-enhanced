@@ -18,10 +18,19 @@ import java.time.format.DateTimeFormatter
 import kotlin.random.Random
 import kotlin.time.Duration.Companion.milliseconds
 
+/** message 仅用于诊断；展示给用户时根据 reason 和等待时间读取字符串资源。 */
 class LinovelibBlockedException(
     message: String,
-    cause: Throwable? = null
-) : IOException(message, cause)
+    cause: Throwable? = null,
+    val reason: Reason = Reason.Verification,
+    val retryAfterMillis: Long? = null
+) : IOException(message, cause) {
+    enum class Reason {
+        Verification,
+        UnsupportedSite,
+        Redirect
+    }
+}
 
 class LinovelibHttpException(
     val statusCode: Int,
@@ -163,7 +172,10 @@ class LinovelibJsoup(
                 var redirectCount = 0
                 while (true) {
                     if (userAgentMode == UserAgentMode.Desktop && !LinovelibConstants.isDesktopPageUrl(requestUrl)) {
-                        throw LinovelibBlockedException("Linovelib 后台请求只允许电脑端地址，请使用网页浏览打开其他站点")
+                        throw LinovelibBlockedException(
+                            "Unsupported background request URL: $requestUrl",
+                            reason = LinovelibBlockedException.Reason.UnsupportedSite
+                        )
                     }
                     var redirectUrl: String? = null
                     val body = LinovelibRateLimiter.run(ignoreFailureCooldown = userInitiated) {
@@ -175,7 +187,10 @@ class LinovelibJsoup(
                         if (userAgentMode == UserAgentMode.Desktop && statusCode in REDIRECT_STATUS_CODES) {
                             // 每一跳分别限频；不跟随移动域名，也不自动重放重定向后的 POST。
                             if (method != Connection.Method.GET || redirectCount >= MAX_REDIRECTS) {
-                                throw LinovelibBlockedException("Linovelib 后台请求重定向异常，请使用网页浏览处理")
+                                throw LinovelibBlockedException(
+                                    "Unexpected background request redirect: $method $requestUrl",
+                                    reason = LinovelibBlockedException.Reason.Redirect
+                                )
                             }
                             redirectUrl = resolveDesktopRedirect(requestUrl, response.header("Location").orEmpty())
                             return@run ""
@@ -183,7 +198,7 @@ class LinovelibJsoup(
                         val retryAfterMillis = parseRetryAfterMillis(response.header("Retry-After"))
                         if (statusCode == 429) {
                             LinovelibRateLimiter.coolDown(
-                                reason = "HTTP 429 $requestUrl",
+                                diagnosticReason = "HTTP 429 $requestUrl",
                                 delayMillis = retryAfterMillis ?: LinovelibRateLimiter.DEFAULT_RATE_LIMIT_COOLDOWN_MILLIS
                             )
                             throw LinovelibHttpException(statusCode, requestUrl, retryAfterMillis)
@@ -191,14 +206,14 @@ class LinovelibJsoup(
                         if (isCloudflareBlocked(statusCode, body)) {
                             val reason = "Linovelib request was blocked (HTTP $statusCode): $requestUrl"
                             LinovelibRateLimiter.coolDown(
-                                reason = reason,
+                                diagnosticReason = reason,
                                 delayMillis = maxOf(
                                     retryAfterMillis ?: 0L,
                                     LinovelibRateLimiter.DEFAULT_RATE_LIMIT_COOLDOWN_MILLIS
                                 ),
                                 blocked = true
                             )
-                            throw LinovelibBlockedException(reason)
+                            throw LinovelibBlockedException(reason, retryAfterMillis = retryAfterMillis)
                         }
                         if (statusCode !in 200..299) {
                             if (statusCode >= 500 && retryAfterMillis != null) {
@@ -253,7 +268,10 @@ class LinovelibJsoup(
         internal fun resolveDesktopRedirect(currentUrl: String, location: String): String {
             val target = runCatching { URI(currentUrl).resolve(location.trim()).toString() }.getOrNull()
             if (location.isBlank() || target == null || !LinovelibConstants.isDesktopPageUrl(target)) {
-                throw LinovelibBlockedException("Linovelib 后台请求被重定向到非电脑端地址，请使用网页浏览处理")
+                throw LinovelibBlockedException(
+                    "Background request redirected outside the desktop site: $currentUrl -> $location",
+                    reason = LinovelibBlockedException.Reason.Redirect
+                )
             }
             return target
         }

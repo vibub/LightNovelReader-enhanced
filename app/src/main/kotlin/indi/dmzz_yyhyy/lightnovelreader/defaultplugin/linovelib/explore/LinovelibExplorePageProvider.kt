@@ -22,7 +22,7 @@ class LinovelibExplorePageProvider internal constructor(
     private val filterDocumentLoader: LinovelibFilterDocumentLoader? = null
 ) : AbstractDefaultExplorePageProvider() {
     private val filterPageCache = LinovelibFilterPageCache(loadFilterDocument)
-    constructor(jsoup: LinovelibJsoup) : this(jsoup, LinovelibFilterDocumentLoader(jsoup))
+    constructor(jsoup: LinovelibJsoup, getString: (Int) -> String) : this(jsoup, LinovelibFilterDocumentLoader(jsoup, getString))
 
     private constructor(
         jsoup: LinovelibJsoup,

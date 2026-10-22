@@ -24,6 +24,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -33,6 +34,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.explore.LinovelibFilterWebRequest
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.linovelibUserMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -66,6 +68,7 @@ fun LinovelibFilterLoader(
     var finished by remember(request?.id) { mutableStateOf(false) }
     var attempt by remember(request?.id) { mutableIntStateOf(0) }
     val lifecycleOwner = LocalLifecycleOwner.current
+    val currentResources by rememberUpdatedState(LocalResources.current)
     val verificationCancelledMessage = stringResource(R.string.linovelib_verification_cancelled)
     val verificationTimeoutMessage = stringResource(R.string.linovelib_verification_timeout)
     val currentRequest by rememberUpdatedState(request)
@@ -87,7 +90,7 @@ fun LinovelibFilterLoader(
     DisposableEffect(Unit) {
         onDispose {
             // 离开页面时结束等待并销毁；请求之间则保留同一浏览器及其站点会话。
-            currentRequest?.let { currentOnFailure(it.id, "筛选网页已关闭，请重试") }
+            currentRequest?.let { currentOnFailure(it.id, currentResources.getString(R.string.linovelib_filter_closed)) }
             webView?.run {
                 stopLoading()
                 destroy()
@@ -127,7 +130,7 @@ fun LinovelibFilterLoader(
             return@LaunchedEffect
         }
         delay(30.seconds)
-        fail("筛选网页加载超时，未自动重试，请重试")
+        fail(currentResources.getString(R.string.linovelib_filter_timeout))
     }
     LaunchedEffect(request?.id, webView, attempt, verificationApproved) {
         if (request == null || webView == null || !verificationApproved || finished) return@LaunchedEffect
@@ -169,15 +172,17 @@ fun LinovelibFilterLoader(
                                 finished = true
                                 showBrowser = false
                             } else {
-                                fail("筛选网页地址已变化，请重试")
+                                fail(currentResources.getString(R.string.linovelib_filter_page_changed))
                             }
                         } catch (error: CancellationException) {
                             throw error
                         } catch (error: Throwable) {
-                            fail(error.message ?: "无法识别筛选网页，请重试")
+                            fail(error.linovelibUserMessage(currentResources)
+                                ?: error.message
+                                ?: currentResources.getString(R.string.linovelib_filter_parse_error))
                         }
                     } else {
-                        fail("未能读取移动端筛选网页，请重试")
+                        fail(currentResources.getString(R.string.linovelib_filter_read_error))
                     }
                 }
                 if (!finished) delay(1.seconds)
@@ -202,7 +207,7 @@ fun LinovelibFilterLoader(
             topBar = {
                 if (showBrowser) {
                     TopAppBar(
-                        title = { Text("筛选网页验证") },
+                        title = { Text(stringResource(R.string.linovelib_filter_verification_title)) },
                         navigationIcon = { LinovelibWebCloseButton { fail(verificationCancelledMessage) } },
                         actions = {
                             TextButton(
@@ -228,7 +233,7 @@ fun LinovelibFilterLoader(
             Column(Modifier.padding(padding).fillMaxSize()) {
                 if (showBrowser) {
                     Text(
-                        text = "请在下方网页中手动完成站点验证，识别到本次筛选结果后将自动返回列表。",
+                        text = stringResource(R.string.linovelib_filter_verification_hint),
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -258,7 +263,7 @@ fun LinovelibFilterLoader(
                     },
                     onPageError = { code, _ ->
                         if (request != null && loadedRequestId == request.id && !finished) {
-                            val message = "筛选网页加载失败（错误码 $code），未自动重试"
+                            val message = currentResources.getString(R.string.linovelib_filter_load_error, code)
                             if (code > 0) httpError = message else fail(message)
                         }
                     }

@@ -1,9 +1,12 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.expanded
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.michaelbull.result.Ok
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.explore.ExploreBookSummaryProvider
@@ -12,6 +15,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.explore.ManagedExploreExpandedPageD
 import indi.dmzz_yyhyy.lightnovelreader.data.text.TextProcessingRepository
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.explore.LinovelibFilterBrowserDataSource
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.explore.LinovelibFilterDocumentLoader
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.linovelibUserMessage
 import io.nightfish.lightnovelreader.api.web.explore.ExploreExpandedPageDataSource
 import io.nightfish.lightnovelreader.api.web.explore.ExplorePageProvider
 import io.nightfish.lightnovelreader.api.web.explore.filter.Filter
@@ -27,7 +31,8 @@ class ExpandedPageViewModel @Inject constructor(
     private val exploreRepository: ExploreRepository,
     private val bookshelfRepository: BookshelfRepository,
     private val textProcessingRepository: TextProcessingRepository,
-    private val bookRepository: BookRepository
+    private val bookRepository: BookRepository,
+    @param:ApplicationContext private val context: Context
 ) : ViewModel() {
     private var expandedPageDataSource: ExploreExpandedPageDataSource? = null
     private var exploreExpandedPageBookListCollectJob: Job? = null
@@ -156,9 +161,9 @@ class ExpandedPageViewModel @Inject constructor(
                     is SearchResult.SingleBook -> addBook(rawResult.bookId)
                     is SearchResult.MultipleBook -> addBook(rawResult.bookId)
                     is SearchResult.Error -> {
-                        _uiState.errorMessage = rawResult.error.message
-                            ?.takeIf(String::isNotBlank)
-                            ?: "加载失败"
+                        _uiState.errorMessage = rawResult.error.linovelibUserMessage(context.resources)
+                            ?: rawResult.error.message?.takeIf(String::isNotBlank)
+                            ?: context.getString(R.string.load_failed)
                         finishLoading()
                     }
                     is SearchResult.Empty -> {

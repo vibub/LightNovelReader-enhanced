@@ -26,12 +26,12 @@ internal object LinovelibImageRequestPolicy {
                         maxOf(retryAfter ?: 0L, LinovelibRateLimiter.DEFAULT_RATE_LIMIT_COOLDOWN_MILLIS)
                     }
                     LinovelibRateLimiter.coolDown(
-                        reason = "图片 HTTP ${error.statusCode}: $host",
+                        diagnosticReason = "Image HTTP ${error.statusCode}: $host",
                         delayMillis = delay,
                         blocked = error.statusCode != 429
                     )
                 } else if (error.statusCode >= 500 && retryAfter != null) {
-                    LinovelibRateLimiter.coolDown("图片 HTTP ${error.statusCode}: $host", retryAfter)
+                    LinovelibRateLimiter.coolDown("Image HTTP ${error.statusCode}: $host", retryAfter)
                 }
                 throw error
             }

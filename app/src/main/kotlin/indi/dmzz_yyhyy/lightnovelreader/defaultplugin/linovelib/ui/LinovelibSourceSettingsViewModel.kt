@@ -1,8 +1,11 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.ui
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
@@ -25,7 +28,8 @@ import javax.inject.Inject
 class LinovelibSourceSettingsViewModel @Inject constructor(
     userDataRepository: UserDataRepository,
     private val syncRepository: LinovelibSyncRepository,
-    webBookDataSourceProvider: WebBookDataSourceProvider
+    webBookDataSourceProvider: WebBookDataSourceProvider,
+    @param:ApplicationContext private val context: Context
 ) : ViewModel() {
     private val accountStore = LinovelibAccountStore(userDataRepository)
     private val canSync = webBookDataSourceProvider.value.id == LinovelibConstants.SOURCE_ID
@@ -57,7 +61,7 @@ class LinovelibSourceSettingsViewModel @Inject constructor(
     fun saveCookie(cookie: String) {
         viewModelScope.launch(Dispatchers.IO) {
             if (cookie.isBlank()) {
-                accountStore.markSyncError("未读取到 Linovelib Cookie，请先在 WebView 中完成登录")
+                accountStore.markSyncError(context.getString(R.string.linovelib_cookie_missing))
                 return@launch
             }
             accountStore.saveCookie(cookie)

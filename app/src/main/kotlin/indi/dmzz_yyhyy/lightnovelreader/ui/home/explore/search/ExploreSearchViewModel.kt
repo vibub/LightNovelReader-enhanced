@@ -1,14 +1,18 @@
 package indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.search
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.michaelbull.result.Ok
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.data.book.BookRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.bookshelf.BookshelfRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.explore.ExploreRepository
 import indi.dmzz_yyhyy.lightnovelreader.data.userdata.UserDataRepository
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.linovelibUserMessage
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.search.LinovelibSearchProvider
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.search.LinovelibWebSearchRequest
 import io.nightfish.lightnovelreader.api.userdata.UserDataPath
@@ -26,7 +30,8 @@ class ExploreSearchViewModel @Inject constructor(
     private val exploreRepository: ExploreRepository,
     private val bookshelfRepository: BookshelfRepository,
     private val bookRepository: BookRepository,
-    userDataRepository: UserDataRepository
+    userDataRepository: UserDataRepository,
+    @param:ApplicationContext private val context: Context
 ) : ViewModel() {
     private val _uiState = MutableExploreSearchUiState()
     private val searchHistoryUserData =
@@ -147,7 +152,8 @@ class ExploreSearchViewModel @Inject constructor(
 
                     is SearchResult.Error -> {
                         _uiState.isLoadingComplete = true
-                        _uiState.errorMessage = it.error.message.toString()
+                        _uiState.errorMessage = it.error.linovelibUserMessage(context.resources)
+                            ?: it.error.message.orEmpty()
                         if (it.error.message == LinovelibConstants.SEARCH_BLOCKED_MESSAGE) {
                             launch(Dispatchers.Main) {
                                 openLinovelibWebSearch(keyword)
@@ -221,9 +227,9 @@ class ExploreSearchViewModel @Inject constructor(
         _uiState.isLoading = false
         _uiState.isLoadingComplete = true
         if (request.page == 1) {
-            _uiState.errorMessage = "已取消搜索，可重新搜索或使用网页搜索。"
+            _uiState.errorMessage = context.getString(R.string.search_cancelled)
         } else {
-            _uiState.linovelibSearchLoadMoreError = "已取消加载，可手动重试。"
+            _uiState.linovelibSearchLoadMoreError = context.getString(R.string.load_cancelled)
         }
     }
 

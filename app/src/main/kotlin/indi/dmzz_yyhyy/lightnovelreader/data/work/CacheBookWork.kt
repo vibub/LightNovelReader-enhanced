@@ -36,6 +36,7 @@ import indi.dmzz_yyhyy.lightnovelreader.data.web.WebBookDataSourceProvider
 import indi.dmzz_yyhyy.lightnovelreader.data.web.proxy.PriorityWebBookDataSource
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibRateLimiter
+import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.linovelibUserMessage
 import indi.dmzz_yyhyy.lightnovelreader.utils.convertOldId
 import indi.dmzz_yyhyy.lightnovelreader.utils.toLegacyCompatibleSourceId
 import io.nightfish.lightnovelreader.api.book.BookVolumes
@@ -321,7 +322,10 @@ class CacheBookWork @AssistedInject constructor(
                 } else 0L
                 if (cooldown > 0) {
                     // 拦截后暂停整本缓存，不能按后续章节继续穷举或等到冷却结束自动重放。
-                    val message = "站点请求已暂停，请至少等待 ${cooldown / 1_000 + 1} 秒后手动恢复缓存"
+                    val message = applicationContext.getString(
+                        R.string.linovelib_cache_paused_wait,
+                        cooldown / 1_000 + if (cooldown % 1_000 > 0) 1 else 0
+                    )
                     chapterDownloadRepository.resetDownloading(sourceId, bookId)
                     val processed = completedCount + partialCount + failedCount + skippedCount
                     val progress = processed.toFloat() / chaptersToDownload.size
@@ -536,11 +540,13 @@ class CacheBookWork @AssistedInject constructor(
                 .takeIf { it != Int.MIN_VALUE }
                 ?: webBookDataSourceProvider.value.id.toLegacyCompatibleSourceId()
             val sourceKey = inputData.getString("sourceKey").orEmpty()
+            val message = throwable.linovelibUserMessage(applicationContext.resources)
+                ?: throwable.message ?: "缓存任务执行失败"
             runCatching {
                 downloadTaskRepository.markFailed(
                     sourceId = sourceId,
                     bookId = bookId,
-                    message = throwable.message ?: "缓存任务执行失败",
+                    message = message,
                     sourceKey = sourceKey
                 )
             }.onFailure { markError ->
@@ -548,7 +554,7 @@ class CacheBookWork @AssistedInject constructor(
             }
             Log.e(TAG, "缓存任务执行失败：bookId=$bookId", throwable)
             Result.failure(
-                workDataOf("bookId" to bookId, "error" to (throwable.message ?: "缓存任务执行失败"))
+                workDataOf("bookId" to bookId, "error" to message)
             )
         }
     }
@@ -589,7 +595,8 @@ class CacheBookWork @AssistedInject constructor(
                 )
             } catch (throwable: Throwable) {
                 if (throwable is CancellationException) throw throwable
-                errorMessage = throwable.message ?: throwable::class.simpleName.orEmpty()
+                errorMessage = throwable.linovelibUserMessage(applicationContext.resources)
+                    ?: throwable.message ?: throwable::class.simpleName.orEmpty()
                 null
             }
             if (result != null) {

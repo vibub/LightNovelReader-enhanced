@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Linovelib 篩選及請求回饋 -->
+    <string name="linovelib_filter_site_error">篩選請求離開了行動版站點</string>
+    <string name="linovelib_filter_redirect_error">篩選請求重新導向異常</string>
+    <string name="linovelib_filter_redirect_limit">篩選請求重新導向次數過多</string>
+    <string name="linovelib_filter_page_changed">篩選網頁位址已變更，請重試</string>
+    <string name="linovelib_filter_conditions_error">無法辨識篩選條件，請重試</string>
+    <string name="linovelib_filter_closed">篩選網頁已關閉，請重試</string>
+    <string name="linovelib_filter_timeout">篩選網頁載入逾時，請重試</string>
+    <string name="linovelib_filter_parse_error">無法辨識篩選網頁，請重試</string>
+    <string name="linovelib_filter_read_error">讀取行動版篩選網頁失敗，請重試</string>
+    <string name="linovelib_filter_verification_title">篩選網頁驗證</string>
+    <string name="linovelib_filter_verification_hint">請在下方網頁中完成站點驗證，載入篩選結果後將自動返回列表。</string>
+    <string name="linovelib_filter_load_error">篩選網頁載入失敗（錯誤碼 %1$d）</string>
+    <string name="linovelib_book_info_error">Linovelib 書籍資訊請求失敗</string>
+    <string name="linovelib_book_info_error_detail">無法取得書籍 %1$s 的詳細資訊</string>
+    <string name="linovelib_catalog_error">Linovelib 目錄請求失敗</string>
+    <string name="linovelib_catalog_error_detail">無法取得書籍 %1$s 的目錄</string>
+    <string name="linovelib_chapter_timeout">Linovelib 章節請求逾時</string>
+    <string name="linovelib_chapter_timeout_detail">章節 %1$s 載入逾時，請重試</string>
+    <string name="linovelib_chapter_error">Linovelib 章節請求失敗</string>
+    <string name="linovelib_chapter_error_detail">無法取得章節 %1$s</string>
+    <string name="linovelib_cookie_missing">讀取 Linovelib Cookie 失敗，請先在網頁中完成登入</string>
+    <!-- 書籤及通用頁面回饋 -->
+    <string name="bookmark_source_unavailable">目前資料來源不支援新增書籤</string>
+    <string name="bookmark_chapter_unavailable">目前章節無法新增書籤</string>
+    <string name="bookmark_adding">正在新增書籤…</string>
+    <string name="bookmark_timeout">新增書籤逾時，請稍後重試</string>
+    <string name="bookmark_success">新增書籤成功</string>
+    <string name="bookmark_failed">新增書籤失敗</string>
+    <string name="bookmark_failed_detail">新增書籤失敗：%1$s</string>
+    <string name="explore_empty_title">暫無探索頁</string>
+    <string name="explore_empty_description">目前資料來源暫無可用的探索頁。</string>
+    <string name="search_error_title">搜尋失敗</string>
+    <string name="search_cancelled">已取消搜尋，可重新搜尋或使用網頁搜尋。</string>
+    <string name="load_cancelled">已取消載入，請重試。</string>
+    <string name="image_load_failed">圖片載入失敗</string>
+    <!-- Linovelib 網路提示；診斷原因和 URL 保留在日誌/例外中 -->
+    <string name="linovelib_request_blocked">站點請求受限，請開啟網頁檢查或稍後重試。</string>
+    <string name="linovelib_request_blocked_wait">站點請求受限，請在 %1$d 秒後重試，或開啟網頁檢查。</string>
+    <string name="linovelib_request_rate_limited">請求過於頻繁，請稍後重試。</string>
+    <string name="linovelib_request_rate_limited_wait">請求過於頻繁，請在 %1$d 秒後重試。</string>
+    <string name="linovelib_request_http_error">站點請求失敗（HTTP %1$d）。</string>
+    <string name="linovelib_request_http_wait">站點請求失敗（HTTP %1$d），請在 %2$d 秒後重試。</string>
+    <string name="linovelib_request_unsupported_site">不支援該站點位址，請使用網頁瀏覽開啟。</string>
+    <string name="linovelib_request_redirect_error">請求重新導向異常，請開啟網頁檢查。</string>
+    <string name="linovelib_cache_paused_wait">站點請求已暫停，請至少等待 %1$d 秒後繼續快取。</string>
+</resources>

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Linovelib 筛选及请求反馈 -->
+    <string name="linovelib_filter_site_error">Запрос фильтра перешёл за пределы мобильного сайта.</string>
+    <string name="linovelib_filter_redirect_error">Неожиданное перенаправление запроса фильтра.</string>
+    <string name="linovelib_filter_redirect_limit">Слишком много перенаправлений запроса фильтра.</string>
+    <string name="linovelib_filter_page_changed">Адрес страницы фильтра изменился. Повторите попытку.</string>
+    <string name="linovelib_filter_conditions_error">Не удалось распознать параметры фильтра. Повторите попытку.</string>
+    <string name="linovelib_filter_closed">Страница фильтра закрыта. Повторите попытку.</string>
+    <string name="linovelib_filter_timeout">Время загрузки страницы фильтра истекло. Повторите попытку.</string>
+    <string name="linovelib_filter_parse_error">Не удалось распознать страницу фильтра. Повторите попытку.</string>
+    <string name="linovelib_filter_read_error">Не удалось прочитать мобильную страницу фильтра. Повторите попытку.</string>
+    <string name="linovelib_filter_verification_title">Проверка страницы фильтра</string>
+    <string name="linovelib_filter_verification_hint">Пройдите проверку сайта ниже. После загрузки результатов фильтра приложение вернётся к списку.</string>
+    <string name="linovelib_filter_load_error">Не удалось загрузить страницу фильтра (код %1$d).</string>
+    <string name="linovelib_book_info_error">Ошибка запроса информации о книге Linovelib</string>
+    <string name="linovelib_book_info_error_detail">Не удалось получить сведения о книге %1$s.</string>
+    <string name="linovelib_catalog_error">Ошибка запроса оглавления Linovelib</string>
+    <string name="linovelib_catalog_error_detail">Не удалось получить оглавление книги %1$s.</string>
+    <string name="linovelib_chapter_timeout">Время запроса главы Linovelib истекло</string>
+    <string name="linovelib_chapter_timeout_detail">Время загрузки главы %1$s истекло. Повторите попытку.</string>
+    <string name="linovelib_chapter_error">Ошибка запроса главы Linovelib</string>
+    <string name="linovelib_chapter_error_detail">Не удалось получить главу %1$s.</string>
+    <string name="linovelib_cookie_missing">Не удалось прочитать Cookie Linovelib. Сначала войдите через веб-страницу.</string>
+    <!-- 书签及通用页面反馈 -->
+    <string name="bookmark_source_unavailable">Этот источник данных не поддерживает добавление закладок.</string>
+    <string name="bookmark_chapter_unavailable">Не удалось добавить закладку для текущей главы.</string>
+    <string name="bookmark_adding">Добавление закладки…</string>
+    <string name="bookmark_timeout">Время добавления закладки истекло. Повторите попытку позже.</string>
+    <string name="bookmark_success">Закладка добавлена</string>
+    <string name="bookmark_failed">Не удалось добавить закладку</string>
+    <string name="bookmark_failed_detail">Не удалось добавить закладку: %1$s</string>
+    <string name="explore_empty_title">Нет страниц обзора</string>
+    <string name="explore_empty_description">У этого источника данных нет доступных страниц обзора.</string>
+    <string name="search_error_title">Ошибка поиска</string>
+    <string name="search_cancelled">Поиск отменён. Повторите поиск или используйте веб-поиск.</string>
+    <string name="load_cancelled">Загрузка отменена. Повторите попытку.</string>
+    <string name="image_load_failed">Не удалось загрузить изображение</string>
+    <!-- Linovelib 网络提示；诊断原因和 URL 保留在日志/异常中 -->
+    <string name="linovelib_request_blocked">Сайт ограничил запрос. Откройте веб-страницу для проверки или повторите попытку позже.</string>
+    <string name="linovelib_request_blocked_wait">Сайт ограничил запрос. Повторите попытку через %1$d с или откройте веб-страницу для проверки.</string>
+    <string name="linovelib_request_rate_limited">Слишком много запросов. Повторите попытку позже.</string>
+    <string name="linovelib_request_rate_limited_wait">Слишком много запросов. Повторите попытку через %1$d с.</string>
+    <string name="linovelib_request_http_error">Ошибка запроса к сайту (HTTP %1$d).</string>
+    <string name="linovelib_request_http_wait">Ошибка запроса к сайту (HTTP %1$d). Повторите попытку через %2$d с.</string>
+    <string name="linovelib_request_unsupported_site">Этот адрес сайта не поддерживается. Откройте его в веб-браузере.</string>
+    <string name="linovelib_request_redirect_error">Неожиданное перенаправление запроса. Откройте веб-страницу для проверки.</string>
+    <string name="linovelib_cache_paused_wait">Запросы к сайту приостановлены. Подождите не менее %1$d с, прежде чем возобновить кэширование.</string>
+</resources>

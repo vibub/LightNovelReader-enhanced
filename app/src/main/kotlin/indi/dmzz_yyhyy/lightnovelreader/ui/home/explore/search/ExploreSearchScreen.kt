@@ -385,7 +385,7 @@ fun ExploreSearchScreen(
             ) {
                 EmptyPage(
                     icon = painterResource(R.drawable.error_24px),
-                    title = "搜索出现了错误",
+                    title = stringResource(R.string.search_error_title),
                     description = exploreSearchUiState.errorMessage
                 ) {
                     exploreSearchUiState.linovelibSearchRequest?.let { request ->

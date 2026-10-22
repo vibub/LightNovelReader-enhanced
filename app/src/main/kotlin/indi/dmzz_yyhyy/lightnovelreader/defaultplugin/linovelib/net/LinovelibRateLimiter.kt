@@ -22,7 +22,6 @@ internal object LinovelibRateLimiter {
     private val lock = Any()
     private var nextRequestAllowedAt = 0L
     private var cooldownUntil = 0L
-    private var cooldownReason = ""
     private var cooldownIsBlocked = false
     private var requestIntervalMillis = INITIAL_REQUEST_INTERVAL_MILLIS
     private var successStreak = 0
@@ -47,7 +46,8 @@ internal object LinovelibRateLimiter {
         }
     }
 
-    fun coolDown(reason: String, delayMillis: Long, blocked: Boolean = false) {
+    /** diagnosticReason 仅写日志，不保存或拼入用户错误提示。 */
+    fun coolDown(diagnosticReason: String, delayMillis: Long, blocked: Boolean = false) {
         val now = System.currentTimeMillis()
         val boundedDelay = delayMillis.coerceAtLeast(0L)
         // Retry-After 是服务器指定的最早恢复时间，不能按客户端退避上限截短。
@@ -63,7 +63,6 @@ internal object LinovelibRateLimiter {
             successStreak = 0
             if (nextCooldownUntil > cooldownUntil) {
                 cooldownUntil = nextCooldownUntil
-                cooldownReason = reason
                 cooldownIsBlocked = blocked
                 true
             } else {
@@ -71,7 +70,7 @@ internal object LinovelibRateLimiter {
             }
         }
         if (applied && boundedDelay > 0) {
-            Log.w(TAG, "cooldown ${boundedDelay}ms: $reason")
+            Log.w(TAG, "cooldown ${boundedDelay}ms: $diagnosticReason")
         }
     }
 
@@ -116,8 +115,8 @@ internal object LinovelibRateLimiter {
     private fun throwIfCoolingDown(now: Long) {
         if (now >= cooldownUntil) return
         val remainingMillis = cooldownUntil - now
-        val message = "Linovelib requests paused for ${remainingMillis}ms: $cooldownReason"
-        if (cooldownIsBlocked) throw LinovelibBlockedException(message)
+        val message = "Linovelib requests paused for ${remainingMillis}ms"
+        if (cooldownIsBlocked) throw LinovelibBlockedException(message, retryAfterMillis = remainingMillis)
         throw LinovelibHttpException(429, message, remainingMillis)
     }
 

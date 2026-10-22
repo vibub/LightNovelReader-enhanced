@@ -1,5 +1,6 @@
 package indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.explore
 
+import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.LinovelibConstants
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibHttpException
 import indi.dmzz_yyhyy.lightnovelreader.defaultplugin.linovelib.net.LinovelibJsoup
@@ -32,7 +33,10 @@ internal interface LinovelibFilterBrowserDataSource {
 }
 
 /** 移动 HTTP 优先；验证后本次筛选继续使用 WebView 文档，不转运其 Cookie 或自动重试 HTTP。 */
-internal class LinovelibFilterDocumentLoader(private val jsoup: LinovelibJsoup) {
+internal class LinovelibFilterDocumentLoader(
+    private val jsoup: LinovelibJsoup,
+    private val getString: (Int) -> String
+) {
     private data class Pending(
         val request: LinovelibFilterWebRequest,
         val response: CompletableDeferred<Document>
@@ -102,7 +106,7 @@ internal class LinovelibFilterDocumentLoader(private val jsoup: LinovelibJsoup) 
                 currentCoroutineContext().ensureActive()
                 val responseUrl = response.url().toString()
                 if (!LinovelibConstants.isFilterSiteUrl(responseUrl)) {
-                    throw IOException("筛选请求离开了移动站点，已停止加载")
+                    throw IOException(getString(R.string.linovelib_filter_site_error))
                 }
                 val status = response.statusCode()
                 if (status in REDIRECT_STATUS_CODES) {
@@ -110,7 +114,7 @@ internal class LinovelibFilterDocumentLoader(private val jsoup: LinovelibJsoup) 
                     val target = runCatching { URI(responseUrl).resolve(location.trim()).toString() }.getOrNull()
                     if (redirectCount == MAX_REDIRECTS || location.isBlank() || target == null ||
                         !LinovelibConstants.isFilterSiteUrl(target)
-                    ) throw IOException("筛选请求重定向异常，未自动切换站点")
+                    ) throw IOException(getString(R.string.linovelib_filter_redirect_error))
                     requestUrl = target
                     null
                 } else {
@@ -120,7 +124,7 @@ internal class LinovelibFilterDocumentLoader(private val jsoup: LinovelibJsoup) 
                         page.isSecurityVerificationPage()
                     ) {
                         LinovelibRateLimiter.coolDown(
-                            reason = "移动筛选需要网页验证",
+                            diagnosticReason = "Mobile filter verification required",
                             delayMillis = maxOf(retryAfterMillis ?: 0L, LinovelibRateLimiter.DEFAULT_RATE_LIMIT_COOLDOWN_MILLIS),
                             blocked = true
                         )
@@ -128,15 +132,15 @@ internal class LinovelibFilterDocumentLoader(private val jsoup: LinovelibJsoup) 
                     }
                     if (status == 429) {
                         LinovelibRateLimiter.coolDown(
-                            reason = "HTTP 429 移动筛选",
+                            diagnosticReason = "HTTP 429 mobile filter",
                             delayMillis = retryAfterMillis ?: LinovelibRateLimiter.DEFAULT_RATE_LIMIT_COOLDOWN_MILLIS
                         )
                     } else if (status >= 500 && retryAfterMillis != null) {
-                        LinovelibRateLimiter.coolDown("HTTP $status 移动筛选", retryAfterMillis)
+                        LinovelibRateLimiter.coolDown("HTTP $status mobile filter", retryAfterMillis)
                     }
                     if (status !in 200..299) throw LinovelibHttpException(status, url, retryAfterMillis)
                     if (LinovelibFilterUrl.parse(responseUrl) != LinovelibFilterUrl.parse(url)) {
-                        throw IOException("移动筛选返回了其他页面，请重试")
+                        throw IOException(getString(R.string.linovelib_filter_page_changed))
                     }
                     validateDocument(page, responseUrl)
                     page
@@ -144,7 +148,7 @@ internal class LinovelibFilterDocumentLoader(private val jsoup: LinovelibJsoup) 
             }
             if (document != null) return@withContext document
         }
-        throw IOException("筛选请求重定向次数过多")
+        throw IOException(getString(R.string.linovelib_filter_redirect_limit))
     }
 
     suspend fun acceptPage(requestId: Long, url: String, html: String): Boolean {
@@ -182,8 +186,12 @@ internal class LinovelibFilterDocumentLoader(private val jsoup: LinovelibJsoup) 
 
     private fun validateDocument(document: Document, url: String) {
         // 保留原始 HTML 注释内的出版社；错误页或未知书单结构不能进入结果缓存。
-        val page = LinovelibFilterPageParser.parse(document, url)
-        check(page.filters.isNotEmpty()) { "Linovelib 筛选网页没有可识别的筛选条件，请重试" }
+        val page = try {
+            LinovelibFilterPageParser.parse(document, url)
+        } catch (error: IllegalStateException) {
+            throw IOException(getString(R.string.linovelib_filter_parse_error), error)
+        }
+        check(page.filters.isNotEmpty()) { getString(R.string.linovelib_filter_conditions_error) }
     }
 
     private companion object {

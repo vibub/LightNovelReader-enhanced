@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Linovelib 筛选及请求反馈 -->
+    <string name="linovelib_filter_site_error">筛选请求离开了移动站点</string>
+    <string name="linovelib_filter_redirect_error">筛选请求重定向异常</string>
+    <string name="linovelib_filter_redirect_limit">筛选请求重定向次数过多</string>
+    <string name="linovelib_filter_page_changed">筛选网页地址已变化，请重试</string>
+    <string name="linovelib_filter_conditions_error">无法识别筛选条件，请重试</string>
+    <string name="linovelib_filter_closed">筛选网页已关闭，请重试</string>
+    <string name="linovelib_filter_timeout">筛选网页加载超时，请重试</string>
+    <string name="linovelib_filter_parse_error">无法识别筛选网页，请重试</string>
+    <string name="linovelib_filter_read_error">读取移动端筛选网页失败，请重试</string>
+    <string name="linovelib_filter_verification_title">筛选网页验证</string>
+    <string name="linovelib_filter_verification_hint">请在下方网页中完成站点验证，加载筛选结果后将自动返回列表。</string>
+    <string name="linovelib_filter_load_error">筛选网页加载失败（错误码 %1$d）</string>
+    <string name="linovelib_book_info_error">Linovelib 书籍信息请求失败</string>
+    <string name="linovelib_book_info_error_detail">无法获取书籍 %1$s 的详情</string>
+    <string name="linovelib_catalog_error">Linovelib 目录请求失败</string>
+    <string name="linovelib_catalog_error_detail">无法获取书籍 %1$s 的目录</string>
+    <string name="linovelib_chapter_timeout">Linovelib 章节请求超时</string>
+    <string name="linovelib_chapter_timeout_detail">章节 %1$s 加载超时，请重试</string>
+    <string name="linovelib_chapter_error">Linovelib 章节请求失败</string>
+    <string name="linovelib_chapter_error_detail">无法获取章节 %1$s</string>
+    <string name="linovelib_cookie_missing">读取 Linovelib Cookie 失败，请先在网页中完成登录</string>
+    <!-- 书签及通用页面反馈 -->
+    <string name="bookmark_source_unavailable">当前数据源不支持添加书签</string>
+    <string name="bookmark_chapter_unavailable">当前章节无法添加书签</string>
+    <string name="bookmark_adding">正在添加书签…</string>
+    <string name="bookmark_timeout">添加书签超时，请稍后重试</string>
+    <string name="bookmark_success">添加书签成功</string>
+    <string name="bookmark_failed">添加书签失败</string>
+    <string name="bookmark_failed_detail">添加书签失败：%1$s</string>
+    <string name="explore_empty_title">暂无探索页</string>
+    <string name="explore_empty_description">当前数据源暂无可用的探索页。</string>
+    <string name="search_error_title">搜索失败</string>
+    <string name="search_cancelled">已取消搜索，可重新搜索或使用网页搜索。</string>
+    <string name="load_cancelled">已取消加载，请重试。</string>
+    <string name="image_load_failed">图片加载失败</string>
+    <!-- Linovelib 网络提示；诊断原因和 URL 保留在日志/异常中 -->
+    <string name="linovelib_request_blocked">站点请求受限，请打开网页检查或稍后重试。</string>
+    <string name="linovelib_request_blocked_wait">站点请求受限，请在 %1$d 秒后重试，或打开网页检查。</string>
+    <string name="linovelib_request_rate_limited">请求过于频繁，请稍后重试。</string>
+    <string name="linovelib_request_rate_limited_wait">请求过于频繁，请在 %1$d 秒后重试。</string>
+    <string name="linovelib_request_http_error">站点请求失败（HTTP %1$d）。</string>
+    <string name="linovelib_request_http_wait">站点请求失败（HTTP %1$d），请在 %2$d 秒后重试。</string>
+    <string name="linovelib_request_unsupported_site">不支持该站点地址，请使用网页浏览打开。</string>
+    <string name="linovelib_request_redirect_error">请求重定向异常，请打开网页检查。</string>
+    <string name="linovelib_cache_paused_wait">站点请求已暂停，请至少等待 %1$d 秒后恢复缓存。</string>
+</resources>

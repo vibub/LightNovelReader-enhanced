@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Linovelib 筛选及请求反馈 -->
+    <string name="linovelib_filter_site_error">The filter request left the mobile site.</string>
+    <string name="linovelib_filter_redirect_error">Unexpected filter request redirect.</string>
+    <string name="linovelib_filter_redirect_limit">Too many filter request redirects.</string>
+    <string name="linovelib_filter_page_changed">The filter page address changed. Please retry.</string>
+    <string name="linovelib_filter_conditions_error">Unable to recognize the filter options. Please retry.</string>
+    <string name="linovelib_filter_closed">The filter page was closed. Please retry.</string>
+    <string name="linovelib_filter_timeout">The filter page timed out. Please retry.</string>
+    <string name="linovelib_filter_parse_error">Unable to recognize the filter page. Please retry.</string>
+    <string name="linovelib_filter_read_error">Unable to read the mobile filter page. Please retry.</string>
+    <string name="linovelib_filter_verification_title">Filter page verification</string>
+    <string name="linovelib_filter_verification_hint">Complete the site verification below. The app will return to the list when the filter results are ready.</string>
+    <string name="linovelib_filter_load_error">The filter page failed to load (code %1$d).</string>
+    <string name="linovelib_book_info_error">Linovelib book information request failed</string>
+    <string name="linovelib_book_info_error_detail">Unable to load details for book %1$s.</string>
+    <string name="linovelib_catalog_error">Linovelib catalog request failed</string>
+    <string name="linovelib_catalog_error_detail">Unable to load the catalog for book %1$s.</string>
+    <string name="linovelib_chapter_timeout">Linovelib chapter request timed out</string>
+    <string name="linovelib_chapter_timeout_detail">Chapter %1$s timed out. Please retry.</string>
+    <string name="linovelib_chapter_error">Linovelib chapter request failed</string>
+    <string name="linovelib_chapter_error_detail">Unable to load chapter %1$s.</string>
+    <string name="linovelib_cookie_missing">Unable to read the Linovelib Cookie. Please sign in using the web page first.</string>
+    <!-- 书签及通用页面反馈 -->
+    <string name="bookmark_source_unavailable">This data source does not support adding bookmarks.</string>
+    <string name="bookmark_chapter_unavailable">Unable to bookmark the current chapter.</string>
+    <string name="bookmark_adding">Adding bookmark…</string>
+    <string name="bookmark_timeout">Adding the bookmark timed out. Please try again later.</string>
+    <string name="bookmark_success">Bookmark added</string>
+    <string name="bookmark_failed">Failed to add bookmark</string>
+    <string name="bookmark_failed_detail">Failed to add bookmark: %1$s</string>
+    <string name="explore_empty_title">No explore pages</string>
+    <string name="explore_empty_description">This data source has no explore pages available.</string>
+    <string name="search_error_title">Search failed</string>
+    <string name="search_cancelled">Search cancelled. Search again or use web search.</string>
+    <string name="load_cancelled">Loading cancelled. Please retry.</string>
+    <string name="image_load_failed">Failed to load image</string>
+    <!-- Linovelib 网络提示；诊断原因和 URL 保留在日志/异常中 -->
+    <string name="linovelib_request_blocked">The site restricted this request. Open the web page to check or retry later.</string>
+    <string name="linovelib_request_blocked_wait">The site restricted this request. Retry in %1$d seconds or open the web page to check.</string>
+    <string name="linovelib_request_rate_limited">Too many requests. Please retry later.</string>
+    <string name="linovelib_request_rate_limited_wait">Too many requests. Please retry in %1$d seconds.</string>
+    <string name="linovelib_request_http_error">The site request failed (HTTP %1$d).</string>
+    <string name="linovelib_request_http_wait">The site request failed (HTTP %1$d). Please retry in %2$d seconds.</string>
+    <string name="linovelib_request_unsupported_site">This site address is not supported. Please open it in the web browser.</string>
+    <string name="linovelib_request_redirect_error">Unexpected request redirect. Please open the web page to check.</string>
+    <string name="linovelib_cache_paused_wait">Site requests are paused. Wait at least %1$d seconds before resuming caching.</string>
+</resources>
