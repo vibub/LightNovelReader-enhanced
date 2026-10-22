@@ -26,6 +26,8 @@ interface ExpandedPageUiState {
     val isEmptyResult: Boolean
     val errorMessage: String?
     val resultVersion: Int
+    val usesPullToLoadMore: Boolean
+    val hasNextPage: Boolean
     val linovelibFilterRequest: LinovelibFilterWebRequest?
 }
 
@@ -41,5 +43,7 @@ class MutableExpandedPageUiState : ExpandedPageUiState {
     override var isEmptyResult: Boolean by mutableStateOf(false)
     override var errorMessage: String? by mutableStateOf(null)
     override var resultVersion: Int by mutableIntStateOf(0)
+    override var usesPullToLoadMore: Boolean by mutableStateOf(false)
+    override var hasNextPage: Boolean by mutableStateOf(true)
     override var linovelibFilterRequest: LinovelibFilterWebRequest? by mutableStateOf(null)
 }

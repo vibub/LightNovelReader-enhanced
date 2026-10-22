@@ -45,40 +45,49 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlin.coroutines.resume
 import kotlin.time.Duration.Companion.seconds
 
-/** 原生筛选页的文档宿主；轮询只读取 DOM，任何一次加载都不会自动刷新或重放网络请求。 */
+/** HTTP 确认遇到验证后才启动；验证后的筛选、翻页继续复用本页的同一 WebView。 */
 @Composable
 fun LinovelibFilterLoader(
-    request: LinovelibFilterWebRequest,
-    onPageReady: suspend (url: String, html: String) -> Boolean,
-    onFailure: (String) -> Unit
+    request: LinovelibFilterWebRequest?,
+    onPageReady: suspend (requestId: Long, url: String, html: String) -> Boolean,
+    onFailure: (requestId: Long, message: String) -> Unit
 ) {
     var webView: WebView? by remember { mutableStateOf(null) }
-    var showBrowser by remember { mutableStateOf(false) }
-    var showVerificationDialog by remember { mutableStateOf(false) }
-    var verificationApproved by remember { mutableStateOf(false) }
-    var waitingForVerification by remember { mutableStateOf(false) }
-    var pageLoading by remember { mutableStateOf(true) }
-    var httpError by remember { mutableStateOf<String?>(null) }
-    var finished by remember { mutableStateOf(false) }
-    var attempt by remember { mutableIntStateOf(0) }
+    var browserUrl by remember { mutableStateOf<String?>(null) }
+    var loadedRequestId by remember { mutableStateOf<Long?>(null) }
+    var showBrowser by remember(request?.id) { mutableStateOf(false) }
+    var showVerificationDialog by remember(request?.id) {
+        mutableStateOf(request?.requiresVerification == true)
+    }
+    var verificationApproved by remember(request?.id) { mutableStateOf(false) }
+    var waitingForVerification by remember(request?.id) { mutableStateOf(false) }
+    var pageLoading by remember(request?.id) { mutableStateOf(true) }
+    var httpError by remember(request?.id) { mutableStateOf<String?>(null) }
+    var finished by remember(request?.id) { mutableStateOf(false) }
+    var attempt by remember(request?.id) { mutableIntStateOf(0) }
     val lifecycleOwner = LocalLifecycleOwner.current
     val verificationCancelledMessage = stringResource(R.string.linovelib_verification_cancelled)
     val verificationTimeoutMessage = stringResource(R.string.linovelib_verification_timeout)
+    val currentRequest by rememberUpdatedState(request)
     val currentOnPageReady by rememberUpdatedState(onPageReady)
     val currentOnFailure by rememberUpdatedState(onFailure)
     val fail: (String) -> Unit = { message ->
-        if (!finished) {
+        if (request != null && !finished) {
             finished = true
+            showBrowser = false
+            showVerificationDialog = false
             webView?.stopLoading()
-            currentOnFailure(message)
+            browserUrl = null
+            loadedRequestId = null
+            currentOnFailure(request.id, message)
         }
     }
 
-    BackHandler(enabled = showBrowser) { fail("已取消筛选网页验证，请重试") }
-    DisposableEffect(request.id) {
+    BackHandler(enabled = request != null && showBrowser) { fail(verificationCancelledMessage) }
+    DisposableEffect(Unit) {
         onDispose {
-            // 配置变化或离开页面都必须结束等待；旧 ID 不会取消后续的筛选请求。
-            if (!finished) currentOnFailure("筛选网页已关闭，请重试")
+            // 离开页面时结束等待并销毁；请求之间则保留同一浏览器及其站点会话。
+            currentRequest?.let { currentOnFailure(it.id, "筛选网页已关闭，请重试") }
             webView?.run {
                 stopLoading()
                 destroy()
@@ -86,9 +95,25 @@ fun LinovelibFilterLoader(
             webView = null
         }
     }
+    LaunchedEffect(request?.id) {
+        if (request != null && !request.requiresVerification && browserUrl == null) {
+            // 浏览器通道已获确认；失败释放或配置变化后，手动重试仍能重新创建宿主。
+            loadedRequestId = request.id
+            browserUrl = request.url
+        }
+    }
+    LaunchedEffect(request?.id, webView, showVerificationDialog) {
+        val view = webView ?: return@LaunchedEffect
+        if (request == null) {
+            view.stopLoading()
+        } else if (!showVerificationDialog && !finished && loadedRequestId != request.id) {
+            view.stopLoading()
+            loadedRequestId = request.id
+            view.loadUrl(request.url, mapOf("Referer" to LinovelibConstants.FILTER_BASE_URL))
+        }
+    }
     LaunchedEffect(webView, showBrowser) {
         webView?.apply {
-            // 隐藏 Compose 呈现而非网页本身，保持正常网页脚本和渲染行为。
             visibility = View.VISIBLE
             isFocusable = showBrowser
             isFocusableInTouchMode = showBrowser
@@ -97,19 +122,23 @@ fun LinovelibFilterLoader(
             if (!showBrowser) clearFocus()
         }
     }
-    LaunchedEffect(webView, attempt, waitingForVerification, showVerificationDialog) {
-        if (webView == null || waitingForVerification || showVerificationDialog || finished) return@LaunchedEffect
+    LaunchedEffect(request?.id, webView, attempt, waitingForVerification, showVerificationDialog) {
+        if (request == null || webView == null || waitingForVerification || showVerificationDialog || finished) {
+            return@LaunchedEffect
+        }
         delay(30.seconds)
         fail("筛选网页加载超时，未自动重试，请重试")
     }
-    LaunchedEffect(webView, attempt, verificationApproved) {
-        if (webView == null || !verificationApproved || finished) return@LaunchedEffect
+    LaunchedEffect(request?.id, webView, attempt, verificationApproved) {
+        if (request == null || webView == null || !verificationApproved || finished) return@LaunchedEffect
         // 从用户确认起独立计时，不因验证页自身的导航反复重置。
         delay(120.seconds)
         fail(verificationTimeoutMessage)
     }
-    LaunchedEffect(webView, lifecycleOwner, attempt) {
+    LaunchedEffect(request?.id, webView, lifecycleOwner, attempt, loadedRequestId) {
         val view = webView ?: return@LaunchedEffect
+        val activeRequest = request ?: return@LaunchedEffect
+        if (loadedRequestId != activeRequest.id) return@LaunchedEffect
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (!finished) {
                 if (showVerificationDialog) {
@@ -123,13 +152,8 @@ fun LinovelibFilterLoader(
                 if (page?.get("blocked")?.jsonPrimitive?.booleanOrNull == true ||
                     page?.get("challengePending")?.jsonPrimitive?.booleanOrNull == true
                 ) {
-                    // 已确认的验证文档也需保留，等待站点脚本插入控件，不能提前交给结果解析器。
                     waitingForVerification = true
-                    if (verificationApproved) {
-                        showBrowser = true
-                    } else {
-                        showVerificationDialog = true
-                    }
+                    if (verificationApproved) showBrowser = true else showVerificationDialog = true
                     pageLoading = false
                     httpError = null
                 } else if (!pageLoading && page?.get("ready")?.jsonPrimitive?.booleanOrNull == true) {
@@ -141,8 +165,9 @@ fun LinovelibFilterLoader(
                         fail(error)
                     } else if (url != null && html != null) {
                         try {
-                            if (currentOnPageReady(url, html)) {
+                            if (currentOnPageReady(activeRequest.id, url, html)) {
                                 finished = true
+                                showBrowser = false
                             } else {
                                 fail("筛选网页地址已变化，请重试")
                             }
@@ -152,7 +177,7 @@ fun LinovelibFilterLoader(
                             fail(error.message ?: "无法识别筛选网页，请重试")
                         }
                     } else {
-                        fail("未能读取电脑端筛选网页，请重试")
+                        fail("未能读取移动端筛选网页，请重试")
                     }
                 }
                 if (!finished) delay(1.seconds)
@@ -160,88 +185,101 @@ fun LinovelibFilterLoader(
         }
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize()
-            .zIndex(if (showBrowser) 1f else -1f)
-            .graphicsLayer { alpha = if (showBrowser) 1f else 0f },
-        topBar = {
-            if (showBrowser) {
-                TopAppBar(
-                    title = { Text("筛选网页验证") },
-                    navigationIcon = { LinovelibWebCloseButton { fail("已取消筛选网页验证，请重试") } },
-                    actions = {
-                        TextButton(
-                            enabled = !pageLoading && !finished,
-                            onClick = {
-                                // 用户主动重试不经过应用冷却，也不自动循环。
-                                attempt++
-                                waitingForVerification = false
-                                httpError = null
-                                pageLoading = true
-                                webView?.run {
-                                    stopLoading()
-                                    loadUrl(request.url)
-                                }
-                            }
-                        ) { Text(stringResource(R.string.retry)) }
-                    }
-                )
+    browserUrl?.let { initialUrl ->
+        DisposableEffect(Unit) {
+            onDispose {
+                webView?.run {
+                    stopLoading()
+                    destroy()
+                }
+                webView = null
             }
         }
-    ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize()) {
-            if (showBrowser) {
-                Text(
-                    text = "请在下方网页中手动完成站点验证，识别到本次筛选结果后将自动返回列表。",
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    style = MaterialTheme.typography.bodySmall
-                )
-                if (pageLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
-            }
-            LinovelibWebView(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                initialUrl = request.url,
-                mode = LinovelibWebViewMode.DesktopBrowsing,
-                onWebViewCreated = { view ->
-                    view.visibility = View.VISIBLE
-                    view.isFocusable = false
-                    view.isFocusableInTouchMode = false
-                    view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
-                    view.settings.blockNetworkImage = false
-                    view.settings.loadsImagesAutomatically = true
-                    webView = view
-                },
-                onPageStarted = { _, _ ->
-                    pageLoading = true
-                    waitingForVerification = false
-                    httpError = null
-                },
-                onPageFinished = { _, _ -> pageLoading = false },
-                onPageError = { code, _ ->
-                    val message = "筛选网页加载失败（错误码 $code），未自动重试"
-                    if (code > 0) {
-                        // 先读取错误响应的 DOM，让真实验证页仍然可以人工操作。
-                        httpError = message
-                    } else {
-                        fail(message)
-                    }
+        Scaffold(
+            modifier = Modifier.fillMaxSize()
+                .zIndex(if (showBrowser) 1f else -1f)
+                .graphicsLayer { alpha = if (showBrowser) 1f else 0f },
+            topBar = {
+                if (showBrowser) {
+                    TopAppBar(
+                        title = { Text("筛选网页验证") },
+                        navigationIcon = { LinovelibWebCloseButton { fail(verificationCancelledMessage) } },
+                        actions = {
+                            TextButton(
+                                enabled = !pageLoading && !finished,
+                                onClick = {
+                                    request?.let { activeRequest ->
+                                        attempt++
+                                        waitingForVerification = false
+                                        httpError = null
+                                        pageLoading = true
+                                        webView?.run {
+                                            stopLoading()
+                                            loadUrl(activeRequest.url, mapOf("Referer" to LinovelibConstants.FILTER_BASE_URL))
+                                        }
+                                    }
+                                }
+                            ) { Text(stringResource(R.string.retry)) }
+                        }
+                    )
                 }
-            )
+            }
+        ) { padding ->
+            Column(Modifier.padding(padding).fillMaxSize()) {
+                if (showBrowser) {
+                    Text(
+                        text = "请在下方网页中手动完成站点验证，识别到本次筛选结果后将自动返回列表。",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    if (pageLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+                LinovelibWebView(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    initialUrl = initialUrl,
+                    mode = LinovelibWebViewMode.MobileFilter,
+                    onWebViewCreated = { view ->
+                        view.visibility = View.VISIBLE
+                        view.isFocusable = showBrowser
+                        view.isFocusableInTouchMode = showBrowser
+                        view.importantForAccessibility = if (showBrowser) View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+                            else View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+                        webView = view
+                    },
+                    onPageStarted = { _, _ ->
+                        if (request != null && loadedRequestId == request.id && !finished) {
+                            pageLoading = true
+                            waitingForVerification = false
+                            httpError = null
+                        }
+                    },
+                    onPageFinished = { _, _ ->
+                        if (request != null && loadedRequestId == request.id) pageLoading = false
+                    },
+                    onPageError = { code, _ ->
+                        if (request != null && loadedRequestId == request.id && !finished) {
+                            val message = "筛选网页加载失败（错误码 $code），未自动重试"
+                            if (code > 0) httpError = message else fail(message)
+                        }
+                    }
+                )
+            }
         }
     }
 
-    if (showVerificationDialog && !finished) {
+    if (showVerificationDialog && request != null && !finished) {
         LinovelibVerificationDialog(
             onConfirm = {
                 verificationApproved = true
                 showVerificationDialog = false
-                // 保留当前页面和浏览器会话，只切换到用户可见状态。
                 showBrowser = true
+                if (browserUrl == null) {
+                    // 首次 HTTP 验证经用户确认后才创建浏览器；已有浏览器只展示，不刷新当前验证页。
+                    loadedRequestId = request.id
+                    browserUrl = request.url
+                }
             },
-            onDismiss = {
-                showVerificationDialog = false
-                fail(verificationCancelledMessage)
-            }
+            onDismiss = { fail(verificationCancelledMessage) }
         )
     }
 }
@@ -256,7 +294,7 @@ private val FILTER_PAGE_SNAPSHOT_SCRIPT = $$"""
 (function() {
     if (!document.body) return null;
     var ready = document.readyState === 'complete';
-    if (location.origin !== $${Json.encodeToString(LinovelibConstants.BASE_URL)}) return {ready: ready};
+    if (location.origin !== $${Json.encodeToString(LinovelibConstants.FILTER_BASE_URL)}) return {ready: ready};
     var blocked = Array.prototype.some.call(document.querySelectorAll(
         '#challenge-running, #cf-challenge-running, #challenge-stage, .cf-turnstile, ' +
         'iframe[src*="challenges.cloudflare.com"], form[action*="/cdn-cgi/challenge-platform/"], ' +

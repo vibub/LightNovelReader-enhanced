@@ -84,7 +84,7 @@ internal data class LinovelibFilterUrl(
     }.withPage(1)
 
     fun toAbsoluteUrl(): String = buildString {
-        append(LinovelibConstants.BASE_URL)
+        append(LinovelibConstants.FILTER_BASE_URL)
         append("/wenku/")
         append(sort)
         append('_')
@@ -185,9 +185,15 @@ internal object LinovelibFilterPageParser {
         }
         val currentUrl = LinovelibFilterUrl.parse(pageUrl)
             ?: error("无法解析 Linovelib 筛选页地址：$pageUrl")
+        val filters = document.parseFilterGroups(currentUrl)
+        val books = document.parseFilterBooks()
+        check(books.isNotEmpty() || document.select(".book-ol, .book-img-text, .book-list, .search-result").any {
+            it.children().isEmpty() || Regex("(?:暂无|暫無|没有|沒有|未找到).{0,20}(?:小说|小說|作品|书籍|書籍|结果|結果)")
+                .containsMatchIn(it.text())
+        }) { "Linovelib 筛选页没有可识别的书单，请重试" }
         return LinovelibFilterPage(
-            filters = document.parseFilterGroups(currentUrl),
-            books = document.parseFilterBooks(),
+            filters = filters,
+            books = books,
             hasNextPage = document.hasNextFilterPage(currentUrl)
         )
     }
@@ -288,7 +294,9 @@ internal class LinovelibFilterPageDataSource(
     private var currentUrl = LinovelibFilterUrl.Default
     private var loadedPage = 0
     private var requestedPage = 1
-    private var hasNextPage = true
+    private var morePagesAvailable = true
+    override val hasNextPage: Boolean
+        get() = synchronized(stateLock) { morePagesAvailable }
     private var forceRefreshFirstPage = false
 
     override fun reset() {
@@ -301,6 +309,7 @@ internal class LinovelibFilterPageDataSource(
                 // 清除上次页面会话遗留的加载信号。
             }
         }
+        filterDocumentLoader?.resetSession()
         mutableFiltersFlow.value = emptyList()
     }
 
@@ -331,7 +340,7 @@ internal class LinovelibFilterPageDataSource(
                 synchronized(stateLock) {
                     if (forceRefresh && page == 1) forceRefreshFirstPage = false
                     loadedPage = page
-                    hasNextPage = result.hasNextPage
+                    morePagesAvailable = result.hasNextPage
                 }
 
                 if (page == 1 && result.books.isEmpty()) {
@@ -520,7 +529,7 @@ internal class LinovelibFilterPageDataSource(
         bookSummaries.clear()
         loadedPage = 0
         requestedPage = 1
-        hasNextPage = true
+        morePagesAvailable = true
     }
 }
 
@@ -759,13 +768,15 @@ private fun Document.hasNextFilterPage(currentUrl: LinovelibFilterUrl): Boolean 
     return totalPage != null && currentUrl.page < totalPage
 }
 
-private fun Document.isSecurityVerificationPage(): Boolean {
+internal fun Document.isSecurityVerificationPage(): Boolean {
     val normalizedTitle = title().lowercase()
     val normalizedText = text().lowercase()
     return "just a moment" in normalizedTitle ||
         "performing security verification" in normalizedText ||
         "security service to protect against malicious bots" in normalizedText ||
-        select("#challenge-running, #cf-challenge-running, script[src*=/cdn-cgi/challenge-platform/]")
+        select("#challenge-running, #cf-challenge-running, #challenge-stage, .cf-turnstile, " +
+            "script[src*=/cdn-cgi/challenge-platform/], iframe[src*=challenges.cloudflare.com], " +
+            "form[action*=/cdn-cgi/challenge-platform/], input[name*=captcha], input[id*=captcha], img[src*=captcha]")
             .isNotEmpty()
 }
 
@@ -793,7 +804,7 @@ private fun String.normalizeFilterName(): String = cleanFilterText()
 private const val MAX_THEME_SELECTIONS = 4
 private val FILTER_PARAMETER_REGEX = Regex("\\d+(?:-\\d+)*")
 private val FILTER_PAGE_URL_REGEX = Regex(
-    "(?:https?://[^/]+)?/wenku/([a-z]+)_((?:[\\d-]+_){8}[\\d-]+)\\.html(?:[?#].*)?$",
+    "^(?:https?://[^/]+)?/wenku/([a-z]+)_((?:[\\d-]+_){8}[\\d-]+)\\.html(?:[?#].*)?$",
     RegexOption.IGNORE_CASE
 )
 private val FILTER_BOOK_PAGE_REGEX = Regex("/novel/(\\d+)\\.html(?:[?#].*)?$")

@@ -486,6 +486,7 @@ private const val LOGIN_INPUT_CARET_FIX_SCRIPT = """
 enum class LinovelibWebViewMode {
     Browsing,
     DesktopBrowsing,
+    MobileFilter,
     Login
 }
 
@@ -544,14 +545,24 @@ fun LinovelibWebView(
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                 webViewClient = object : WebViewClient() {
                     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                        val blocked = mode == LinovelibWebViewMode.DesktopBrowsing && request.isForMainFrame &&
-                            !LinovelibConstants.isDesktopPageUrl(request.url.toString())
+                        val blocked = request.isForMainFrame && when (mode) {
+                            LinovelibWebViewMode.DesktopBrowsing ->
+                                !LinovelibConstants.isDesktopPageUrl(request.url.toString())
+                            LinovelibWebViewMode.MobileFilter ->
+                                !LinovelibConstants.isFilterSiteUrl(request.url.toString())
+                            else -> false
+                        }
                         if (blocked) currentOnPageError(0, null)
                         return blocked
                     }
 
                     override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                         super.onPageStarted(view, url, favicon)
+                        if (mode == LinovelibWebViewMode.MobileFilter && !LinovelibConstants.isFilterSiteUrl(url)) {
+                            view.stopLoading()
+                            currentOnPageError(0, null)
+                            return
+                        }
                         currentOnPageStarted(view, url)
                     }
 
@@ -587,7 +598,11 @@ fun LinovelibWebView(
                 val restored = restoredState?.let { restoreState(it) } != null
                 currentOnWebViewCreated(this)
                 if (!restored) {
-                    loadUrl(initialUrl)
+                    if (mode == LinovelibWebViewMode.MobileFilter) {
+                        loadUrl(initialUrl, mapOf("Referer" to LinovelibConstants.FILTER_BASE_URL))
+                    } else {
+                        loadUrl(initialUrl)
+                    }
                 }
             }
         },

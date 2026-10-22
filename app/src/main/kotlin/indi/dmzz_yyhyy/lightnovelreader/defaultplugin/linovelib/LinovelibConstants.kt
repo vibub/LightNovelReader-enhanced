@@ -5,11 +5,11 @@ import java.net.URI
 import java.net.URLEncoder
 
 object LinovelibConstants {
-    /** 桌面端 URL，用于后台详情、目录、章节、探索、筛选与原生搜索。 */
+    /** 桌面端 URL，用于后台详情、目录、章节、探索首页与原生搜索。 */
     const val BASE_URL = "https://www.linovelib.com"
     /** 移动端 URL，用于 WebView 浏览、登录、搜索、书架 */
     const val MOBILE_BASE_URL = "https://m.bilinovel.com"
-    /** 移动网页入口站点，仅用于可见网页搜索；后台筛选使用 BASE_URL。 */
+    /** 移动网页入口站点，用于网页搜索与原生筛选。 */
     const val FILTER_BASE_URL = "https://www.bilinovel.net"
     const val SOURCE_NAME = "Linovelib"
     const val SEARCH_BLOCKED_MESSAGE = "Linovelib 搜索入口被 Cloudflare 拦截。请在网页中搜索并点进小说详情页。"
@@ -74,6 +74,13 @@ object LinovelibConstants {
         val uri = URI(url)
         uri.scheme == "https" && uri.userInfo == null && uri.port in listOf(-1, 443) &&
             uri.host == URI(BASE_URL).host
+    }.getOrDefault(false)
+
+    /** 公共筛选仅允许此 HTTPS origin，不把账号域或语言站当作自动回退。 */
+    fun isFilterSiteUrl(url: String): Boolean = runCatching {
+        val uri = URI(url)
+        uri.scheme.equals("https", ignoreCase = true) && uri.userInfo == null &&
+            uri.port in listOf(-1, 443) && uri.host.equals(URI(FILTER_BASE_URL).host, ignoreCase = true)
     }.getOrDefault(false)
 
     fun isDesktopSearchPageUrl(url: String): Boolean = runCatching {

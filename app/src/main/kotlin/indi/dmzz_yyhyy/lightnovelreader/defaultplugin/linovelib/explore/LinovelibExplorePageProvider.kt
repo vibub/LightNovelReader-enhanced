@@ -22,7 +22,7 @@ class LinovelibExplorePageProvider internal constructor(
     private val filterDocumentLoader: LinovelibFilterDocumentLoader? = null
 ) : AbstractDefaultExplorePageProvider() {
     private val filterPageCache = LinovelibFilterPageCache(loadFilterDocument)
-    constructor(jsoup: LinovelibJsoup) : this(jsoup, LinovelibFilterDocumentLoader())
+    constructor(jsoup: LinovelibJsoup) : this(jsoup, LinovelibFilterDocumentLoader(jsoup))
 
     private constructor(
         jsoup: LinovelibJsoup,
@@ -40,7 +40,7 @@ class LinovelibExplorePageProvider internal constructor(
                 )
             }
         ),
-        // metadata 与结果均直接加载各自真实 URL，不先触发注定失败的 Jsoup 请求。
+        // 移动 HTTP 优先；仅真实验证文档转交同源移动 WebView，不补抓单本详情。
         loadFilterDocument = filterDocumentLoader::loadDocument,
         filterDocumentLoader = filterDocumentLoader
     )

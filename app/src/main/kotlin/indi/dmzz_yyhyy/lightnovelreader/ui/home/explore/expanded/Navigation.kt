@@ -3,7 +3,6 @@ package indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.expanded
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,18 +65,12 @@ fun NavEntryScope.exploreExpandDestination() {
                     navigator.navigateToBookDetailDestination(it)
                 }
             )
-            exploreExpandedPageHomeViewModel.uiState.linovelibFilterRequest?.let { request ->
-                key(request.id) {
-                    LinovelibFilterLoader(
-                        request = request,
-                        onPageReady = { url, html ->
-                            exploreExpandedPageHomeViewModel.acceptLinovelibFilterPage(request.id, url, html)
-                        },
-                        onFailure = { message ->
-                            exploreExpandedPageHomeViewModel.failLinovelibFilterRequest(request.id, message)
-                        }
-                    )
-                }
+            if (isLinovelib) {
+                LinovelibFilterLoader(
+                    request = exploreExpandedPageHomeViewModel.uiState.linovelibFilterRequest,
+                    onPageReady = exploreExpandedPageHomeViewModel::acceptLinovelibFilterPage,
+                    onFailure = exploreExpandedPageHomeViewModel::failLinovelibFilterRequest
+                )
             }
         }
         dialog.invoke()

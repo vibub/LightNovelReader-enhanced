@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 internal interface ManagedExploreExpandedPageDataSource {
     val filtersFlow: StateFlow<List<Filter<*>>>
+    val hasNextPage: Boolean
 
     fun reset()
 

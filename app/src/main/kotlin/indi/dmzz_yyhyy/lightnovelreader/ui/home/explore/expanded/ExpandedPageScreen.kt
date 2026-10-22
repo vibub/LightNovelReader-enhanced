@@ -49,6 +49,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.BookCardItem
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.Component
+import indi.dmzz_yyhyy.lightnovelreader.ui.components.rememberPullToLoadMoreConnection
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.ExploreScreen
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.ExploreUiState
 import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
@@ -77,6 +78,20 @@ fun ExpandedPageScreen(
     }
 
     val listState = rememberLazyListState()
+    val loadMoreConnection = rememberPullToLoadMoreConnection(
+        listState = listState,
+        canLoadMore = {
+            expandedPageUiState.usesPullToLoadMore &&
+                expandedPageUiState.bookList.isNotEmpty() &&
+                expandedPageUiState.hasNextPage &&
+                !expandedPageUiState.isInitialLoading &&
+                !expandedPageUiState.isLoadingMore &&
+                !expandedPageUiState.isRefreshing &&
+                expandedPageUiState.linovelibFilterRequest == null &&
+                expandedPageUiState.errorMessage == null
+        },
+        onLoadMore = loadMore
+    )
     TopAppBarDefaults.enterAlwaysScrollBehavior().let { scrollBehavior ->
         Scaffold(
             topBar = {
@@ -105,6 +120,7 @@ fun ExpandedPageScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .nestedScroll(scrollBehavior.nestedScrollConnection)
+                            .nestedScroll(loadMoreConnection)
                             .background(MaterialTheme.colorScheme.surface),
                         contentPadding = PaddingValues(vertical = 3.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -190,6 +206,18 @@ fun ExpandedPageScreen(
                                         onRetry = retry
                                     )
                                 }
+                                expandedPageUiState.usesPullToLoadMore &&
+                                    expandedPageUiState.bookList.isNotEmpty() -> {
+                                    Text(
+                                        text = stringResource(
+                                            if (expandedPageUiState.hasNextPage) R.string.linovelib_search_pull_more
+                                            else R.string.linovelib_search_no_more
+                                        ),
+                                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
                             }
                         }
                     }
@@ -203,7 +231,8 @@ fun ExpandedPageScreen(
             listState.scrollToItem(0)
         }
     }
-    LaunchedEffect(listState) {
+    LaunchedEffect(listState, expandedPageUiState.usesPullToLoadMore) {
+        if (expandedPageUiState.usesPullToLoadMore) return@LaunchedEffect
         snapshotFlow {
             val layoutInfo = listState.layoutInfo
             layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1

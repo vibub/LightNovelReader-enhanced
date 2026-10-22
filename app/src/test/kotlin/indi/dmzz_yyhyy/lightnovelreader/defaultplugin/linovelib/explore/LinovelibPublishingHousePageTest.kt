@@ -12,6 +12,7 @@ import kotlinx.coroutines.withTimeout
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -24,7 +25,7 @@ class LinovelibPublishingHousePageTest {
     private val filterDocument by lazy {
         Jsoup.parse(
             checkNotNull(javaClass.getResource("/linovelib/explore/filter-page.html")).readText(),
-            LinovelibConstants.BASE_URL
+            LinovelibConstants.FILTER_BASE_URL
         )
     }
 
@@ -57,7 +58,7 @@ class LinovelibPublishingHousePageTest {
         assertEquals(listOf("奇幻", "冒险"), firstBook.tags)
         assertEquals(2_154_000, firstBook.wordCount)
         assertEquals(
-            "${LinovelibConstants.BASE_URL}/files/article/image/7/7001/7001s.jpg",
+            "${LinovelibConstants.FILTER_BASE_URL}/files/article/image/7/7001/7001s.jpg",
             firstBook.coverUrl
         )
         assertEquals(LocalDateTime.MIN, firstBook.lastUpdated)
@@ -75,8 +76,16 @@ class LinovelibPublishingHousePageTest {
 
     @Test
     fun filterUrlSupportsMultipleThemesAndPublishingHouseRegionDependency() {
+        assertTrue(LinovelibConstants.isFilterSiteUrl(metadataUrl))
+        listOf(
+            "http://www.bilinovel.net/wenku/",
+            "https://www.bilinovel.net:8443/wenku/",
+            "https://user@www.bilinovel.net/wenku/",
+            "https://www.bilinovel.net.example.com/wenku/",
+            "${LinovelibConstants.BASE_URL}/wenku/"
+        ).forEach { assertFalse(it, LinovelibConstants.isFilterSiteUrl(it)) }
         val multiThemeUrl = LinovelibFilterUrl.parse(
-            "${LinovelibConstants.BASE_URL}/wenku/lastupdate_64-48-63_0_0_0_0_0_0_4_0.html"
+            "${LinovelibConstants.FILTER_BASE_URL}/wenku/lastupdate_64-48-63_0_0_0_0_0_0_4_0.html"
         )!!
         assertEquals("64-48-63", multiThemeUrl.parameters[0])
         assertEquals(4, multiThemeUrl.page)
@@ -89,7 +98,7 @@ class LinovelibPublishingHousePageTest {
             relatedRegion = "1"
         )
         assertEquals(
-            "${LinovelibConstants.BASE_URL}/wenku/lastupdate_0_0_0_1_1_0_0_1_0.html",
+            "${LinovelibConstants.FILTER_BASE_URL}/wenku/lastupdate_0_0_0_1_1_0_0_1_0.html",
             LinovelibFilterUrl.Default.withPage(3)
                 .withOption(
                     LinovelibFilterKey.Parameter(
@@ -129,7 +138,7 @@ class LinovelibPublishingHousePageTest {
         )
         assertTrue(
             requestedUrls.contains(
-                "${LinovelibConstants.BASE_URL}/wenku/lastupdate_0_0_0_1_1_0_0_1_0.html"
+                "${LinovelibConstants.FILTER_BASE_URL}/wenku/lastupdate_0_0_0_1_1_0_0_1_0.html"
             )
         )
     }
@@ -197,7 +206,7 @@ class LinovelibPublishingHousePageTest {
         dataSource.getResultFlow().takeWhile { it !is SearchResult.End }.toList()
 
         assertEquals(
-            "${LinovelibConstants.BASE_URL}/wenku/lastupdate_64-48-63-27_0_0_1_1_0_0_1_0.html",
+            "${LinovelibConstants.FILTER_BASE_URL}/wenku/lastupdate_64-48-63-27_0_0_1_1_0_0_1_0.html",
             requestedUrls.last()
         )
     }
@@ -227,6 +236,8 @@ class LinovelibPublishingHousePageTest {
             results.filterIsInstance<SearchResult.MultipleBook>().map { it.bookId }
         )
         assertEquals(2, results.count { it is SearchResult.End })
+        assertFalse(dataSource.hasNextPage)
+        assertFalse(dataSource.requestLoadMore())
     }
 
     @Test
@@ -345,12 +356,18 @@ class LinovelibPublishingHousePageTest {
             <body>Performing security verification</body>
             </html>
             """.trimIndent(),
-            LinovelibConstants.BASE_URL
+            LinovelibConstants.FILTER_BASE_URL
         )
 
         assertThrows(IllegalStateException::class.java) {
             LinovelibFilterPageParser.parse(verificationDocument, metadataUrl)
         }
+        assertThrows(IllegalStateException::class.java) {
+            LinovelibFilterPageParser.parse(Jsoup.parse("<body>服务暂不可用</body>"), metadataUrl)
+        }
+        val emptyPage = LinovelibFilterPageParser.parse(resultDocument(defaultUrl, emptyList()), defaultUrl)
+        assertTrue(emptyPage.books.isEmpty())
+        assertFalse(emptyPage.hasNextPage)
     }
 
     @Test
@@ -378,7 +395,7 @@ class LinovelibPublishingHousePageTest {
         val books = bookIds.joinToString("\n") { bookId ->
             """
             <li class="book-li">
-                <a class="book-layout" href="${LinovelibConstants.BASE_URL}/novel/$bookId.html">
+                <a class="book-layout" href="${LinovelibConstants.FILTER_BASE_URL}/novel/$bookId.html">
                     <h4 class="book-title">小说 $bookId</h4>
                 </a>
             </li>
@@ -403,7 +420,7 @@ class LinovelibPublishingHousePageTest {
             </body>
             </html>
             """.trimIndent(),
-            LinovelibConstants.BASE_URL
+            LinovelibConstants.FILTER_BASE_URL
         )
     }
 }

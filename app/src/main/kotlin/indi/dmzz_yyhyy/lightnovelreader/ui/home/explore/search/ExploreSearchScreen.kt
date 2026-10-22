@@ -36,15 +36,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
@@ -57,7 +52,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpOffset
-import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -66,6 +60,7 @@ import indi.dmzz_yyhyy.lightnovelreader.R
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.AnimatedText
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.BookCardItem
 import indi.dmzz_yyhyy.lightnovelreader.ui.components.EmptyPage
+import indi.dmzz_yyhyy.lightnovelreader.ui.components.rememberPullToLoadMoreConnection
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.ExploreScreen
 import indi.dmzz_yyhyy.lightnovelreader.ui.home.explore.ExploreUiState
 import indi.dmzz_yyhyy.lightnovelreader.utils.LocalSnackbarHost
@@ -95,38 +90,16 @@ fun ExploreSearchScreen(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val resultListState = rememberLazyListState()
-    val currentLoadMore by rememberUpdatedState(loadMoreLinovelibSearchResults)
-    val pullThreshold = with(LocalDensity.current) { 48.dp.toPx() }
-    val loadMoreConnection = remember(resultListState, exploreSearchUiState, pullThreshold) {
-        var pullDistance = 0f
-        var requestedForGesture = false
-        object : NestedScrollConnection {
-            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                if (source != NestedScrollSource.UserInput || requestedForGesture) return Offset.Zero
-                if (available.y < 0 && !resultListState.canScrollForward &&
-                    exploreSearchUiState.searchResult.isNotEmpty() &&
-                    exploreSearchUiState.linovelibSearchHasNextPage &&
-                    exploreSearchUiState.linovelibSearchRequest == null &&
-                    exploreSearchUiState.linovelibSearchLoadMoreError.isEmpty()
-                ) {
-                    pullDistance -= available.y
-                    if (pullDistance >= pullThreshold) {
-                        requestedForGesture = true
-                        currentLoadMore()
-                    }
-                } else {
-                    pullDistance = 0f
-                }
-                return Offset.Zero
-            }
-
-            override suspend fun onPreFling(available: Velocity): Velocity {
-                pullDistance = 0f
-                requestedForGesture = false
-                return Velocity.Zero
-            }
-        }
-    }
+    val loadMoreConnection = rememberPullToLoadMoreConnection(
+        listState = resultListState,
+        canLoadMore = {
+            exploreSearchUiState.searchResult.isNotEmpty() &&
+                exploreSearchUiState.linovelibSearchHasNextPage &&
+                exploreSearchUiState.linovelibSearchRequest == null &&
+                exploreSearchUiState.linovelibSearchLoadMoreError.isEmpty()
+        },
+        onLoadMore = loadMoreLinovelibSearchResults
+    )
     LaunchedEffect(exploreSearchUiState.linovelibSearchKeyword) {
         resultListState.scrollToItem(0)
     }

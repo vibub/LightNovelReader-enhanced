@@ -61,6 +61,8 @@ class ExpandedPageViewModel @Inject constructor(
                 (dataSource as? ManagedExploreExpandedPageDataSource)?.reset()
             }
 
+        _uiState.usesPullToLoadMore = expandedPageDataSource is LinovelibFilterBrowserDataSource
+        _uiState.hasNextPage = true
         _uiState.filters.clear()
         filterRequestJob?.cancel()
         _uiState.linovelibFilterRequest = null
@@ -100,6 +102,10 @@ class ExpandedPageViewModel @Inject constructor(
 
     fun loadMore() {
         val dataSource = expandedPageDataSource ?: return
+        if (_uiState.usesPullToLoadMore &&
+            (_uiState.bookList.isEmpty() || !_uiState.hasNextPage ||
+                _uiState.isInitialLoading || _uiState.isLoadingMore || _uiState.isRefreshing)
+        ) return
         if (dataSource is ManagedExploreExpandedPageDataSource) {
             if (dataSource.requestLoadMore()) {
                 _uiState.errorMessage = null
@@ -122,6 +128,7 @@ class ExpandedPageViewModel @Inject constructor(
         exploreExpandedPageBookListCollectJob?.cancel()
         pageMetadataJob?.cancel()
         filterRequestJob?.cancel()
+        filterDocumentLoader?.resetSession()
         filterDocumentLoader = null
         _uiState.linovelibFilterRequest = null
         expandedPageDataSource = null
@@ -134,6 +141,7 @@ class ExpandedPageViewModel @Inject constructor(
         if (clearResults) {
             _uiState.bookList.clear()
             _uiState.isEmptyResult = false
+            _uiState.hasNextPage = true
             _uiState.resultVersion++
         }
         _uiState.errorMessage = null
@@ -157,7 +165,11 @@ class ExpandedPageViewModel @Inject constructor(
                         _uiState.isEmptyResult = _uiState.bookList.isEmpty()
                         finishLoading()
                     }
-                    is SearchResult.End -> finishLoading()
+                    is SearchResult.End -> {
+                        _uiState.hasNextPage = (expandedPageDataSource as? ManagedExploreExpandedPageDataSource)
+                            ?.hasNextPage ?: false
+                        finishLoading()
+                    }
                 }
             }
         }
